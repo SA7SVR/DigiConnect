@@ -66,3 +66,16 @@ def test_no_callsign_is_refused_with_message(tmp_path):
     msgs = []; ctx.toast.connect(msgs.append)
     ctx.select(Target("C4FM", "00006", "x")); ctx.toggle_listen()
     assert not ctx.rules.rx and any("callsign" in m.lower() for m in msgs)
+
+
+def test_volume_mute_and_ducking_reach_the_engine(tmp_path):
+    from app.rules import Receiver
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    store = Store(tmp_path); sent = []
+    eng = EngineClient(ENGINE, store); eng.set_rx_volume = lambda h, v: sent.append((h, v))
+    ctx = Ctx(store, eng)
+    t = Target("C4FM", "00006", "x"); ctx.rules.listen(t); h = ctx.rules.rx[0].handle
+    ctx._sync_audio(); assert sent[-1] == (h, 1.0)
+    ctx.rules.net_volume["C4FM"] = 0.4; ctx._sync_audio(); assert sent[-1] == (h, 0.4)
+    ctx.rules.net_muted["C4FM"] = True; ctx._sync_audio(); assert sent[-1] == (h, 0.0)
+    n = len(sent); ctx._sync_audio(); assert len(sent) == n, "unchanged volume must not be re-sent"

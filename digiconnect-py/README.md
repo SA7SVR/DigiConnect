@@ -3,22 +3,28 @@
 Cross-platform digital-voice client (DMR / D-Star / EchoLink / C4FM). Original code; layout and operating
 rules follow the HORIZON DIGI CONNECT 1.0.11 manual and screenshots. Branding: DigiConnect / HELLAS Zone.
 
-## Run from source (Windows / macOS / Linux)
+## Layout
+- `app/` — the Qt user interface (PySide6) and the operating rules.
+- `engine/` — `dcengine`, the headless C++ protocol engine (Qt6). The UI starts one helper process per link and talks
+  to it with JSON lines on stdin/stdout (`app/engine_client.py`). A crash in the engine never freezes the UI.
+- `LICENSES/` — GPL-3.0 text and third-party notices. `packaging/` — PyInstaller spec and Windows installer script.
+
+## Build the engine (needs Qt 6, Multimedia + SerialPort)
+    cmake -S engine -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build --parallel
+Windows: build with MinGW (the bundled codec2 uses C99 variable-length arrays). The GitHub workflow does all of this
+for Windows, Linux and macOS and bundles the engine next to the app.
+
+## Run from source
     pip install -r requirements.txt
-    python run.py
+    DC_ENGINE=/path/to/dcengine python run.py        # without DC_ENGINE the UI starts in preview mode
 
 ## Tests
-    QT_QPA_PLATFORM=offscreen python -m pytest -q tests      # Windows: set QT_QPA_PLATFORM=offscreen
-
-## Layout
-- `app/rules.py` — operating rules (Listen vs Connect(TX), single/multiple listening, PTT hold/latch, limit, ducking, validators). No Qt.
-- `app/engine.py` — interface the protocol back-ends implement. `NullEngine` is the current placeholder.
-- `app/store.py` — settings, favorites (JSON) and QSO journal (SQLite); ADIF/CSV import/export.
-- `app/ui/` — main window, workspace, favorites, QSO log, mixer/dock/PTT controls, Settings and New QSO drawers.
-- `docs/SPEC.md` — UI inventory and rules distilled from the manual.
+    DC_ENGINE=/path/to/dcengine QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+    python engine/tests/check_ysf_loopback.py /path/to/dcengine    # engine against a fake YSF reflector
 
 ## Status (honest)
-Working: all pages and controls, rules enforced through the UI (tests), favorites, QSO journal, ADIF/CSV, backup/restore,
-profiles, diagnostics, device lists and speaker/microphone tests.
-NOT yet working: any real network audio. `NullEngine` connects nothing and says so in the UI. DMR/D-Star/YSF/EchoLink
-back-ends, live directories, callbooks, recording, real DTMF, languages other than English, light theme are the next steps.
+Verified here: operating rules, UI, engine connect/transmit/receive/disconnect against a fake YSF reflector, and the UI
+driving the real engine end to end (tests). NOT verified here (no radio/network/audio hardware in the build
+environment): real audio quality, the real servers, DMR master login, D-Star reflectors (DCS/REF/XRF), EchoLink (not
+implemented yet). Server addresses are never guessed: the app asks once for host:port and remembers it (`servers.json`).

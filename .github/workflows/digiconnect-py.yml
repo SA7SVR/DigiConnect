@@ -40,6 +40,7 @@ jobs:
       - name: Build app
         shell: bash
         run: |
+          export PATH=$(echo "$PATH" | tr ':' '\n' | grep -vi '/Qt/' | paste -sd:)   # the CI Qt must not shadow PySide6's own Qt
           pip install PySide6 sounddevice numpy pyinstaller pytest
           DC_ENGINE="$PWD/engine_dist/dcengine.exe" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
@@ -89,6 +90,7 @@ jobs:
         with: { python-version: '3.12' }
       - name: Build app
         run: |
+          unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR   # the CI Qt must not shadow PySide6's own Qt
           pip install PySide6 sounddevice numpy pyinstaller pytest
           DC_ENGINE="$PWD/engine_dist/bin/dcengine" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
@@ -98,7 +100,7 @@ jobs:
         with: { name: DigiConnect-Linux, path: digiconnect-py/DigiConnect-Linux-x86_64.tar.gz }
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install Qt
@@ -117,6 +119,7 @@ jobs:
         with: { python-version: '3.12' }
       - name: Build app
         run: |
+          unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR   # the CI Qt must not shadow PySide6's own Qt
           pip install PySide6 sounddevice numpy pyinstaller pytest
           DC_ENGINE="$PWD/build/dcengine.app/Contents/MacOS/dcengine" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec

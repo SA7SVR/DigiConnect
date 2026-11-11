@@ -50,9 +50,9 @@ public:
 	void stop_playback();
 	void write(int16_t *, size_t, float fade_from = 1.0f, float fade_to = 1.0f);
 	bool playback_drained();
-	void set_output_buffer_size(uint32_t b) { m_out->setBufferSize(b); }
+	void set_output_buffer_size(uint32_t b) { if(m_out != nullptr) m_out->setBufferSize(b); }
 	void set_input_buffer_size(uint32_t b) { if(m_in != nullptr) m_in->setBufferSize(b); }
-	void set_output_volume(qreal v){ m_out->setVolume(v); }
+	void set_output_volume(qreal v){ if(m_out != nullptr) m_out->setVolume(v); }
 	void set_input_volume(qreal v){ if(m_in != nullptr) m_in->setVolume(v); }
 	void set_agc(bool agc) { m_agc = agc; }
 	bool frame_available() { return (m_audioinq.size() >= 320) ? true : false; }

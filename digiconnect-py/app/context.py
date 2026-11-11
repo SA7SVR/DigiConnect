@@ -25,13 +25,27 @@ class Ctx(QtCore.QObject):
         self.dmr_password = ""                   # session only, never written to disk
         if hasattr(self.engine, "status"):
             self.engine.status.connect(self._on_status); self.engine.heard.connect(self._on_heard)
+            self.engine.volume_refresh.connect(lambda: self.__dict__.pop("_vol_cache", None))
         self._timer = QtCore.QTimer(self); self._timer.setInterval(250); self._timer.timeout.connect(self._tick)
         self._timer.start()
 
     @property
     def selected(self): return self.rules.selected
 
+    def _sync_audio(self):
+        """Push the effective receive volume (volume slider, mute, ducking, no self-monitoring) to the engine."""
+        if not hasattr(self.engine, "set_rx_volume"): return
+        cache = self.__dict__.setdefault("_vol_cache", {})
+        live = set()
+        for r in self.rules.rx:
+            live.add(r.handle); v = round(self.rules.effective_volume(r), 3)
+            if cache.get(r.handle) != v:
+                cache[r.handle] = v; self.engine.set_rx_volume(r.handle, v)
+        for h in list(cache):
+            if h not in live: del cache[h]
+
     def _tick(self):
+        self._sync_audio()
         if self.rules.ptt:
             self.rules.tick(250)
             if not self.rules.ptt:

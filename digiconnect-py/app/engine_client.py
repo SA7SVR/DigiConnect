@@ -88,6 +88,7 @@ class EngineClient(QtCore.QObject, Engine):
     name = "dcengine"
     status = Signal(object, str, str)     # (link, state, message)
     heard = Signal(object, dict)          # (link, rx event)
+    volume_refresh = Signal()             # a link just connected: re-send the receive volumes
 
     def __init__(self, path: str, store, parent=None):
         QtCore.QObject.__init__(self, parent)
@@ -108,7 +109,8 @@ class EngineClient(QtCore.QObject, Engine):
         if not call: return None, "Enter your callsign first (Settings › Station)."
         ep = self.servers.resolve(t)
         if not ep: return None, "NEED_ENDPOINT"
-        p = dict(mode=proto, host=ep["host"], port=ep["port"], callsign=call, name=t.id, vocoder="Software vocoder")
+        p = dict(mode=proto, host=ep["host"], port=ep["port"], callsign=call, name=t.id, vocoder="Software vocoder",
+                 capture=s.get("mic") or "", playback=s.get("speakers") or "")
         if proto == "DMR":
             if not str(s.get("dmr_id") or "").strip().isdigit(): return None, "A DMR ID is required for DMR (Settings › Radio networks)."
             p.update(dmrid=int(s["dmr_id"]), essid=int(s.get("essid") or 0) if str(s.get("essid") or "0").isdigit() else 0,
@@ -174,6 +176,7 @@ class EngineClient(QtCore.QObject, Engine):
         ev = e.get("ev")
         if ev == "status":
             ln.state = e.get("state", ln.state)
+            if ln.state == "connected": self.__dict__.pop("_resend", None); self.volume_refresh.emit()
             self.status.emit(ln, ln.state, e.get("msg", ""))
             if ln.state in ("error", "timeout", "disconnected"):
                 ln.rx.clear(); ln.tx = False; self._release(ln)

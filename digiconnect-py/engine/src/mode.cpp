@@ -171,12 +171,16 @@ void Mode::in_audio_vol_changed(qreal v)
 
 void Mode::out_audio_vol_changed(qreal v)
 {
-	m_audio->set_output_volume(v);
+	if (m_audio) {
+		m_audio->set_output_volume(v);
+	}
 }
 
 void Mode::agc_state_changed(int s)
 {
-	m_audio->set_agc(s);
+	if (m_audio) {
+		m_audio->set_agc(s);
+	}
 }
 
 void Mode::begin_connect()
