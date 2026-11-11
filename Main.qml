@@ -110,6 +110,7 @@ ApplicationWindow {
 
 		MainTab{
 			id: mainTab
+			onOpenSettings: bar.currentIndex = 1
 		}
 		SettingsTab{
 			id: settingsTab

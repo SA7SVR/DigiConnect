@@ -21,6 +21,7 @@ import QtQuick.Layouts
 
 Item {
 	id: mainTab
+	signal openSettings()
 	property int rows: {
 		if(USE_FLITE){
             mainTab.rows = 20;
@@ -997,10 +998,10 @@ Item {
                 Layout.preferredWidth: 86; Layout.fillHeight: true; color: ws.rail
                 ColumnLayout {
                     anchors.fill: parent; anchors.topMargin: 14; anchors.bottomMargin: 14; spacing: 6
-                    Rectangle {
-                        Layout.alignment: Qt.AlignHCenter; width: 50; height: 50; radius: 14
-                        gradient: Gradient { GradientStop{position:0;color:ws.acc2} GradientStop{position:1;color:ws.acc} }
-                        Text { anchors.centerIn: parent; text: "☷"; color: "white"; font.pixelSize: 22 }
+                    Image {
+                        Layout.alignment: Qt.AlignHCenter; Layout.preferredWidth: 52; Layout.preferredHeight: 52
+                        source: "images/droidstar.png"; sourceSize.width: 52; sourceSize.height: 52
+                        fillMode: Image.PreserveAspectFit; smooth: true
                     }
                     Item { height: 8 }
                     Repeater {
@@ -1033,6 +1034,8 @@ Item {
                     Layout.fillWidth: true; implicitHeight: 58; color: ws.rail
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20; spacing: 12
+                        Image { Layout.alignment: Qt.AlignVCenter; Layout.preferredWidth: 30; Layout.preferredHeight: 30
+                            source: "images/droidstar.png"; sourceSize.width: 30; sourceSize.height: 30; fillMode: Image.PreserveAspectFit; smooth: true }
                         Column {
                             Layout.alignment: Qt.AlignVCenter
                             Text { text: "HELLAS ZONE +"; color: ws.muted; font.pixelSize: 10; font.letterSpacing: 2 }
@@ -1050,7 +1053,8 @@ Item {
                         Rectangle { implicitHeight: 34; implicitWidth: 104; radius: 9; color: ws.panel; border.color: ws.line2
                             Row { anchors.centerIn: parent; spacing: 6
                                 Text { text: "⚙"; color: ws.text2; font.pixelSize: 14; anchors.verticalCenter: parent.verticalCenter }
-                                Text { text: "Settings"; color: ws.text; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter } } }
+                                Text { text: "Settings"; color: ws.text; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter } }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: mainTab.openSettings() } }
                     }
                 }
 
@@ -1068,7 +1072,8 @@ Item {
                         Rectangle { implicitHeight: 36; implicitWidth: 104; radius: 9; color: ws.panel; border.color: ws.line2
                             Text { anchors.centerIn: parent; text: "+ New QSO"; color: ws.text; font.pixelSize: 13 } }
                         Rectangle { implicitHeight: 36; implicitWidth: 100; radius: 9; color: ws.panel; border.color: ws.line2
-                            Text { anchors.centerIn: parent; text: "⚙ Settings"; color: ws.text; font.pixelSize: 13 } }
+                            Text { anchors.centerIn: parent; text: "⚙ Settings"; color: ws.text; font.pixelSize: 13 }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: mainTab.openSettings() } }
                     }
                 }
 
