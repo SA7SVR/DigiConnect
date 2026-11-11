@@ -15,6 +15,7 @@
 #ifndef MBEVOCODER_H
 #define MBEVOCODER_H
 
+#include <cstdlib>
 #include <cinttypes>
 #include "ambe2.h"
 #include "imbe_vocoder/imbe_vocoder.h"
