@@ -100,7 +100,16 @@ jobs:
         with: { name: DigiConnect-Linux, path: digiconnect-py/DigiConnect-Linux-x86_64.tar.gz }
 
   macos:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest,    arch: AppleSilicon, label: "Apple Silicon (M1/M2/M3/M4)" }
+          - { runner: macos-15-intel,  arch: Intel,        label: "Intel" }
+    name: macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
     steps:
       - uses: actions/checkout@v4
       - name: Install Qt
@@ -108,9 +117,11 @@ jobs:
         with: { version: '6.9.3', modules: 'qtmultimedia qtserialport', cache: true }
       - name: Build engine
         run: |
-          cmake -S engine -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          uname -m
+          cmake -S engine -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build --parallel
           "$QT_ROOT_DIR/bin/macdeployqt" build/dcengine.app
+          lipo -archs build/dcengine.app/Contents/MacOS/dcengine
       - name: Engine smoke test
         run: |
           (echo '{"cmd":"hello"}'; sleep 3; echo '{"cmd":"quit"}') | build/dcengine.app/Contents/MacOS/dcengine | head -1 | tee hello.txt   # macOS has no 'timeout'
@@ -125,6 +136,7 @@ jobs:
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           cp -R build/dcengine.app dist/DigiConnect.app/Contents/Resources/
           codesign --force --deep --sign - dist/DigiConnect.app || true
-          hdiutil create -volname DigiConnect -srcfolder dist/DigiConnect.app -ov -format UDZO DigiConnect-macOS.dmg
+          lipo -archs dist/DigiConnect.app/Contents/MacOS/DigiConnect || file dist/DigiConnect.app/Contents/MacOS/*
+          hdiutil create -volname DigiConnect -srcfolder dist/DigiConnect.app -ov -format UDZO DigiConnect-macOS-${{ matrix.arch }}.dmg
       - uses: actions/upload-artifact@v4
-        with: { name: DigiConnect-macOS, path: digiconnect-py/DigiConnect-macOS.dmg }
+        with: { name: "DigiConnect-macOS-${{ matrix.arch }}", path: "digiconnect-py/DigiConnect-macOS-${{ matrix.arch }}.dmg" }
