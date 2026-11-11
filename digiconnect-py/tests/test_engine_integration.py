@@ -1,0 +1,68 @@
+"""End to end: UI context -> EngineClient -> real dcengine process -> fake YSF reflector."""
+import os, socket, threading, time, pytest
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from app.qt import QtWidgets, QtCore
+from app.engine_client import EngineClient, find_engine
+from app.context import Ctx
+from app.store import Store
+from app.rules import Target
+
+ENGINE = find_engine()
+pytestmark = pytest.mark.skipif(not ENGINE, reason="dcengine not built (set DC_ENGINE)")
+PORT = 42177
+
+
+@pytest.fixture
+def reflector():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); sock.bind(("127.0.0.1", PORT)); sock.settimeout(0.2)
+    stop = threading.Event(); seen = {"ysfp": 0, "ysfd": 0}
+    def run():
+        while not stop.is_set():
+            try: data, addr = sock.recvfrom(2048)
+            except socket.timeout: continue
+            if data[:4] == b"YSFP": seen["ysfp"] += 1; sock.sendto(b"YSFP" + b"TESTREFLEC", addr)
+            elif data[:4] == b"YSFD": seen["ysfd"] += 1
+    th = threading.Thread(target=run, daemon=True); th.start()
+    yield seen
+    stop.set(); th.join(1); sock.close()
+
+
+def pump(app, cond, timeout=10.0):
+    end = time.time() + timeout
+    while time.time() < end:
+        app.processEvents(QtCore.QEventLoop.ProcessEventsFlag.AllEvents, 50)
+        if cond(): return True
+    return False
+
+
+def test_listen_and_tx_through_real_engine(tmp_path, reflector):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    store = Store(tmp_path); store.settings["callsign"] = "SA7SVR"
+    eng = EngineClient(ENGINE, store); ctx = Ctx(store, eng)
+    t = Target("C4FM", "00006", "Test reflector")
+    # unknown address -> the UI is asked for it, nothing is connected
+    asked = []; ctx.need_endpoint.connect(asked.append)
+    ctx.select(t); ctx.toggle_listen()
+    assert asked == [t] and not ctx.rules.rx
+    assert eng.servers.remember(t, f"127.0.0.1:{PORT}")
+    ctx.retry_pending()
+    assert ctx.rules.rx, "receiver should be registered"
+    assert pump(app, lambda: reflector["ysfp"] > 0), "engine never contacted the reflector"
+    assert pump(app, lambda: eng.links and next(iter(eng.links.values())).state == "connected")
+    # Connect (TX) on the same destination reuses the same engine process
+    ctx.toggle_tx()
+    assert ctx.rules.tx_connected and len(eng.links) == 1
+    ctx.ptt_down(); pump(app, lambda: reflector["ysfd"] >= 3, 8)
+    ctx.ptt_up()
+    assert reflector["ysfd"] >= 3, "PTT must produce voice frames at the reflector"
+    # stopping everything ends the engine process
+    ctx.stop_all(); assert pump(app, lambda: not eng.links, 3)
+    eng.shutdown()
+
+
+def test_no_callsign_is_refused_with_message(tmp_path):
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    store = Store(tmp_path); eng = EngineClient(ENGINE, store); ctx = Ctx(store, eng)
+    msgs = []; ctx.toast.connect(msgs.append)
+    ctx.select(Target("C4FM", "00006", "x")); ctx.toggle_listen()
+    assert not ctx.rules.rx and any("callsign" in m.lower() for m in msgs)

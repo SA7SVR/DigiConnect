@@ -1,0 +1,127 @@
+name: Build DigiConnect (Python UI + engine)
+
+on:
+  push:
+    branches: [ digiconnect-py ]
+    paths: [ 'digiconnect-py/**', '.github/workflows/digiconnect-py.yml' ]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: digiconnect-py
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt (MinGW)
+        uses: jurplel/install-qt-action@v4
+        with: { version: '6.8.1', host: windows, target: desktop, arch: win64_mingw, modules: 'qtmultimedia qtserialport', tools: 'tools_mingw1310', cache: true }
+      - name: Put MinGW on PATH
+        shell: bash
+        run: |
+          GCC=$(find "$IQTA_TOOLS" -name gcc.exe 2>/dev/null | head -1)
+          echo "$(dirname "$GCC")" >> "$GITHUB_PATH"
+      - name: Build engine
+        shell: bash
+        run: |
+          cmake -S engine -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+          cmake --build build --parallel
+          mkdir -p engine_dist && cp build/dcengine.exe engine_dist/
+          "$QT_ROOT_DIR/bin/windeployqt.exe" --release --no-translations engine_dist/dcengine.exe
+      - name: Engine smoke test
+        shell: bash
+        run: |
+          echo '{"cmd":"hello"}' | timeout 20 engine_dist/dcengine.exe | head -1 | tee hello.txt
+          grep -q '"ev":"hello"' hello.txt
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Build app
+        shell: bash
+        run: |
+          pip install PySide6 sounddevice numpy pyinstaller pytest
+          DC_ENGINE="$PWD/engine_dist/dcengine.exe" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+          python -m PyInstaller --noconfirm packaging/DigiConnect.spec
+          mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
+      - name: Installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc packaging\DigiConnect.iss
+      - uses: actions/upload-artifact@v4
+        with: { name: DigiConnect-Windows-Setup, path: digiconnect-py/installer_out/DigiConnect-Setup.exe }
+      - uses: actions/upload-artifact@v4
+        with: { name: DigiConnect-Windows-portable, path: digiconnect-py/dist/DigiConnect }
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ninja-build libgl1-mesa-dev libpulse-dev libxkbcommon-dev libfontconfig1 libfreetype6 \
+            libportaudio2 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libegl1 libfuse2
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with: { version: '6.8.1', modules: 'qtmultimedia qtserialport', cache: true }
+      - name: Build engine
+        run: |
+          cmake -S engine -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake --build build --parallel
+      - name: Deploy engine with Qt libraries
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+          printf '[Desktop Entry]\nType=Application\nName=dcengine\nExec=dcengine\nIcon=dcengine\nCategories=Utility;\n' > dcengine.desktop
+          cp assets/logo.png dcengine.png
+          export QMAKE="$QT_ROOT_DIR/bin/qmake" EXTRA_QT_PLUGINS="multimedia" APPIMAGE_EXTRACT_AND_RUN=1
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir -e build/dcengine -d dcengine.desktop -i dcengine.png --plugin qt
+          mkdir -p engine_dist && cp -r AppDir/usr/* engine_dist/
+      - name: Engine smoke test
+        run: |
+          echo '{"cmd":"hello"}' | QT_QPA_PLATFORM=offscreen timeout 20 engine_dist/bin/dcengine | head -1 | tee hello.txt
+          grep -q '"ev":"hello"' hello.txt
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Build app
+        run: |
+          pip install PySide6 sounddevice numpy pyinstaller pytest
+          DC_ENGINE="$PWD/engine_dist/bin/dcengine" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+          python -m PyInstaller --noconfirm packaging/DigiConnect.spec
+          mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
+          tar -C dist -czf DigiConnect-Linux-x86_64.tar.gz DigiConnect
+      - uses: actions/upload-artifact@v4
+        with: { name: DigiConnect-Linux, path: digiconnect-py/DigiConnect-Linux-x86_64.tar.gz }
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with: { version: '6.8.1', modules: 'qtmultimedia qtserialport', cache: true }
+      - name: Build engine
+        run: |
+          cmake -S engine -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake --build build --parallel
+          "$QT_ROOT_DIR/bin/macdeployqt" build/dcengine.app
+      - name: Engine smoke test
+        run: |
+          echo '{"cmd":"hello"}' | timeout 20 build/dcengine.app/Contents/MacOS/dcengine | head -1 | tee hello.txt
+          grep -q '"ev":"hello"' hello.txt
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Build app
+        run: |
+          pip install PySide6 sounddevice numpy pyinstaller pytest
+          DC_ENGINE="$PWD/build/dcengine.app/Contents/MacOS/dcengine" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+          python -m PyInstaller --noconfirm packaging/DigiConnect.spec
+          cp -R build/dcengine.app dist/DigiConnect.app/Contents/Resources/
+          codesign --force --deep --sign - dist/DigiConnect.app || true
+          hdiutil create -volname DigiConnect -srcfolder dist/DigiConnect.app -ov -format UDZO DigiConnect-macOS.dmg
+      - uses: actions/upload-artifact@v4
+        with: { name: DigiConnect-macOS, path: digiconnect-py/DigiConnect-macOS.dmg }

@@ -1,0 +1,26 @@
+DigiConnect — HELLAS Zone Net
+Copyright (C) 2026 SA7SVR (Panagiotis Tsekouras)
+
+Built on DroidStar, Copyright (C) Doug McLain (AD8DP) and contributors.
+Upstream project: https://github.com/nostar/DroidStar
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+The full text of the GNU General Public License version 3 applies to
+this program and must be distributed with it. The authoritative text is
+published by the Free Software Foundation at:
+
+    https://www.gnu.org/licenses/gpl-3.0.txt
+
+When creating this repository on GitHub, select the "GNU General Public
+License v3.0" template so the complete licence text is included, or add
+the gpl-3.0.txt file above as COPYING. The per-file GPL notices in the
+source code remain in force in all cases.
