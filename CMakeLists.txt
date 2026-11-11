@@ -32,6 +32,7 @@ qt_add_executable(DroidStar WIN32 MACOSX_BUNDLE
     YSFConvolution.cpp YSFConvolution.h
     YSFFICH.cpp YSFFICH.h
     audioengine.cpp audioengine.h
+    core/session_rules.cpp core/session_rules.h
     cbptc19696.cpp cbptc19696.h
     cgolay2087.cpp cgolay2087.h
     codec2/codebooks.cpp
@@ -265,3 +266,12 @@ qt_generate_deploy_app_script(
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 install(SCRIPT ${deploy_script})
+
+# Unit tests for the Qt-free rules engine (cmake -DDC_TESTS=ON)
+option(DC_TESTS "Build rules-engine unit tests" OFF)
+if(DC_TESTS)
+    enable_testing()
+    add_executable(test_session_rules tests/test_session_rules.cpp core/session_rules.cpp)
+    target_compile_features(test_session_rules PRIVATE cxx_std_17)
+    add_test(NAME session_rules COMMAND test_session_rules)
+endif()
