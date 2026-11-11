@@ -22,6 +22,9 @@ import QtQuick.Layouts
 Item {
 	id: mainTab
 	signal openSettings()
+	signal openLog()
+	signal openHosts()
+	signal openAbout()
 	property int rows: {
 		if(USE_FLITE){
             mainTab.rows = 20;
@@ -960,6 +963,13 @@ Item {
         property bool   connected: (_connectbutton.text === "Disconnect")
         property bool   connecting: (_connectbutton.text === "Connecting")
         property string search: ""
+        property var    favs: []
+        property bool   showFavs: false
+        property real   micGain: 0.5
+        property int    page: 0
+        readonly property int pageSize: 100
+        property var pagedHosts: filteredHosts.slice(page*pageSize, page*pageSize+pageSize)
+        onFilteredHostsChanged: if(page*pageSize >= filteredHosts.length) page = 0
 
         property var nets: [
             {label:"DMR",      mode:"DMR", col:"#a78bfa"},
@@ -972,12 +982,26 @@ Item {
         function provider(){ var m=_comboMode.currentText; if(m==="DMR") return "BrandMeister"; if(m==="REF"||m==="XRF"||m==="DCS") return "Reflectors"; if(m==="IAX") return "EchoLink"; return "YSF" }
 
         property var filteredHosts: {
-            var _n=_comboHost.count; var _m=_comboMode.currentText; var q=ws.search.toLowerCase();
+            var _n=_comboHost.count; var _m=_comboMode.currentText; var q=ws.search.toLowerCase(); var _f=ws.favs; var sf=ws.showFavs;
             var src=_comboHost.model; var a=[];
-            if(src){ for(var i=0;i<src.length;i++){ var t=String(src[i]); if(q==="" || t.toLowerCase().indexOf(q)>=0) a.push(t); } }
+            if(src){ for(var i=0;i<src.length;i++){ var t=String(src[i]);
+                if(q!=="" && t.toLowerCase().indexOf(q)<0) continue;
+                if(sf && ws.favs.indexOf(t)<0) continue;
+                a.push(t); } }
             return a;
         }
-        function selectMode(mode,label){ ws.curNet=label; ws.selHost=""; ws.search=""; ws.listening=false; _comboMode.loaded=true; var ix=_comboMode.find(mode); if(ix>=0) _comboMode.currentIndex=ix; }
+        function isFav(h){ return ws.favs.indexOf(h)>=0 }
+        function toggleFav(h){ if(h==="") return; var a=ws.favs.slice(); var i=a.indexOf(h); if(i>=0) a.splice(i,1); else a.push(h); ws.favs=a; }
+        function setMic(val){ var v=Math.max(0,Math.min(1,val)); ws.micGain=v; droidstar.set_input_volume(v); }
+        function railAct(a){
+            if(a==="dir"){ ws.showFavs=false; }
+            else if(a==="favs"){ ws.showFavs=true; }
+            else if(a==="settings"){ mainTab.openSettings(); }
+            else if(a==="log"){ mainTab.openLog(); }
+            else if(a==="hosts"){ mainTab.openHosts(); }
+            else if(a==="about"){ mainTab.openAbout(); }
+        }
+        function selectMode(mode,label){ ws.curNet=label; ws.selHost=""; ws.search=""; ws.listening=false; ws.showFavs=false; _comboMode.loaded=true; var ix=_comboMode.find(mode); if(ix>=0) _comboMode.currentIndex=ix; }
         function selectHost(h){ ws.selHost=h; var ix=_comboHost.find(h); if(ix>=0) _comboHost.currentIndex=ix; }
         function doConnect(){ if(!ws.connected && !ws.connecting && ws.selHost!=="") _connectbutton.clicked() }
         function doStop(){ if(ws.connected || ws.connecting) _connectbutton.clicked(); ws.listening=false }
@@ -987,7 +1011,7 @@ Item {
         function pad(n){ return (n<10?"0":"")+n }
         function tick(){ var d=new Date(); ws.clockUtc=pad(d.getUTCHours())+":"+pad(d.getUTCMinutes())+":"+pad(d.getUTCSeconds()); ws.clockLocal=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds()) }
         Timer { interval:1000; running:true; repeat:true; triggeredOnStart:true; onTriggered: ws.tick() }
-        Component.onCompleted: { ws.tick(); _comboMode.loaded=true; var ix=_comboMode.find(ws.netMode(ws.curNet)); if(ix>=0) _comboMode.currentIndex=ix }
+        Component.onCompleted: { ws.tick(); ws.setMic(ws.micGain); _comboMode.loaded=true; var ix=_comboMode.find(ws.netMode(ws.curNet)); if(ix>=0) _comboMode.currentIndex=ix }
 
         RowLayout {
             anchors.fill: parent
@@ -1005,20 +1029,24 @@ Item {
                     }
                     Item { height: 8 }
                     Repeater {
-                        model: ["▦","✚","☰","☷","◷","🎧","○"]
+                        model: [ {ic:"🎧", act:"dir"}, {ic:"▦", act:"favs"}, {ic:"☰", act:"log"}, {ic:"☷", act:"hosts"} ]
                         delegate: Rectangle {
                             required property var modelData
-                            required property int index
-                            Layout.alignment: Qt.AlignHCenter; width: 44; height: 40; radius: 11
-                            color: index===5 ? Qt.rgba(0.54,0.49,0.96,0.16) : "transparent"
-                            Text { anchors.centerIn: parent; text: modelData; color: index===5?ws.acc2:ws.muted; font.pixelSize: 17 }
+                            Layout.alignment: Qt.AlignHCenter; width: 44; height: 42; radius: 11
+                            property bool on: (modelData.act==="dir" && !ws.showFavs) || (modelData.act==="favs" && ws.showFavs)
+                            color: on ? Qt.rgba(0.54,0.49,0.96,0.16) : (ra.hovered ? ws.panel2 : "transparent")
+                            HoverHandler { id: ra }
+                            Text { anchors.centerIn: parent; text: modelData.ic; color: on?ws.acc2:ws.muted; font.pixelSize: 17 }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ws.railAct(modelData.act) }
                         }
                     }
                     Item { Layout.fillHeight: true }
                     Repeater {
-                        model: ["⤓","?","⚙"]
-                        delegate: Rectangle { required property var modelData; Layout.alignment: Qt.AlignHCenter; width: 44; height: 36; color: "transparent"
-                            Text { anchors.centerIn: parent; text: modelData; color: ws.muted; font.pixelSize: 16 } }
+                        model: [ {ic:"⤓", act:"hosts"}, {ic:"?", act:"about"}, {ic:"⚙", act:"settings"} ]
+                        delegate: Rectangle { required property var modelData; Layout.alignment: Qt.AlignHCenter; width: 44; height: 38; radius: 10; color: rb.hovered ? ws.panel2 : "transparent"
+                            HoverHandler { id: rb }
+                            Text { anchors.centerIn: parent; text: modelData.ic; color: ws.muted; font.pixelSize: 16 }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ws.railAct(modelData.act) } }
                     }
                     Rectangle { Layout.alignment: Qt.AlignHCenter; width: 36; height: 36; radius: 18; color: ws.panel2; border.color: ws.line2
                         Text { anchors.centerIn: parent; text: "SA"; color: ws.text; font.pixelSize: 12; font.bold: true } }
@@ -1064,9 +1092,12 @@ Item {
                             Text { text: "Choose a station, then Listen. Connect transmission separately to participate."; color: ws.muted; font.pixelSize: 12 }
                         }
                         Item { Layout.fillWidth: true }
-                        Rectangle { implicitHeight: 36; implicitWidth: 104; radius: 9; color: ws.panel; border.color: ws.line2
-                            Text { anchors.centerIn: parent; text: "+ New QSO"; color: ws.text; font.pixelSize: 13 } }
-                        Rectangle { implicitHeight: 36; implicitWidth: 100; radius: 9; color: ws.panel; border.color: ws.line2
+                        Rectangle { implicitHeight: 36; implicitWidth: 104; radius: 9; color: nq.hovered ? ws.panel2 : ws.panel; border.color: ws.line2
+                            HoverHandler { id: nq }
+                            Text { anchors.centerIn: parent; text: "⤓ Hosts"; color: ws.text; font.pixelSize: 13 }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: mainTab.openHosts() } }
+                        Rectangle { implicitHeight: 36; implicitWidth: 100; radius: 9; color: stg.hovered ? ws.panel2 : ws.panel; border.color: ws.line2
+                            HoverHandler { id: stg }
                             Text { anchors.centerIn: parent; text: "⚙ Settings"; color: ws.text; font.pixelSize: 13 }
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: mainTab.openSettings() } }
                     }
@@ -1076,19 +1107,21 @@ Item {
                 Flow {
                     Layout.fillWidth: true; Layout.leftMargin: 22; Layout.rightMargin: 22; Layout.bottomMargin: 12; spacing: 8
                     Rectangle {
-                        implicitHeight: 38; implicitWidth: favr.implicitWidth+24; radius: 10; color: ws.panel; border.color: ws.line2
+                        implicitHeight: 38; implicitWidth: favr.implicitWidth+24; radius: 10
+                        color: ws.showFavs ? Qt.rgba(0.54,0.49,0.96,0.14) : ws.panel; border.color: ws.showFavs ? ws.acc : ws.line2
                         Row { id: favr; anchors.centerIn: parent; spacing: 8
-                            Text { text: "▦"; color: ws.text2; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "▦"; color: ws.showFavs?ws.acc2:ws.text2; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
                             Text { text: "My favorites"; color: ws.text; font.pixelSize: 13; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
                             Rectangle { width: 20; height: 20; radius: 6; color: ws.acc; anchors.verticalCenter: parent.verticalCenter
-                                Text { anchors.centerIn: parent; text: "4"; color: "#0a0a14"; font.pixelSize: 11; font.bold: true } } }
+                                Text { anchors.centerIn: parent; text: ws.favs.length; color: "#0a0a14"; font.pixelSize: 11; font.bold: true } } }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ws.showFavs=true }
                     }
                     Repeater {
                         model: ws.nets
                         delegate: Rectangle {
                             required property var modelData
                             implicitHeight: 38; implicitWidth: tr.implicitWidth+26; radius: 10
-                            property bool on: ws.curNet===modelData.label
+                            property bool on: ws.curNet===modelData.label && !ws.showFavs
                             color: on ? Qt.rgba(0.54,0.49,0.96,0.14) : ws.panel
                             border.color: on ? modelData.col : ws.line2
                             Row { id: tr; anchors.centerIn: parent; spacing: 9
@@ -1114,10 +1147,12 @@ Item {
                                 Layout.fillWidth: true; spacing: 8
                                 Rectangle { radius: 9; color: ws.panel2; border.color: ws.line2; implicitHeight: 34; implicitWidth: 230
                                     Row { anchors.fill: parent; anchors.margins: 3
-                                        Rectangle { width: 120; height: parent.height; radius: 7; color: Qt.rgba(0.54,0.49,0.96,0.18)
-                                            Text { anchors.centerIn: parent; text: ws.curNet==="DMR"?"TG catalogue":"Station directory"; color: ws.acc2; font.pixelSize: 12; font.bold: true } }
-                                        Rectangle { width: 100; height: parent.height; color: "transparent"
-                                            Text { anchors.centerIn: parent; text: "My favorites"; color: ws.muted; font.pixelSize: 12 } } } }
+                                        Rectangle { width: 120; height: parent.height; radius: 7; color: ws.showFavs ? "transparent" : Qt.rgba(0.54,0.49,0.96,0.18)
+                                            Text { anchors.centerIn: parent; text: ws.curNet==="DMR"?"TG catalogue":"Station directory"; color: ws.showFavs?ws.muted:ws.acc2; font.pixelSize: 12; font.bold: !ws.showFavs }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ws.showFavs=false } }
+                                        Rectangle { width: 100; height: parent.height; radius: 7; color: ws.showFavs ? Qt.rgba(0.54,0.49,0.96,0.18) : "transparent"
+                                            Text { anchors.centerIn: parent; text: "My favorites"; color: ws.showFavs?ws.acc2:ws.muted; font.pixelSize: 12; font.bold: ws.showFavs }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ws.showFavs=true } } } }
                                 Item { Layout.fillWidth: true }
                                 Rectangle { implicitHeight: 30; implicitWidth: 72; radius: 8; color: ws.panel2; border.color: ws.line2
                                     Text { anchors.centerIn: parent; text: "Refresh"; color: ws.text2; font.pixelSize: 12 }
@@ -1137,40 +1172,47 @@ Item {
                                     Text { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: ws.muted; font.pixelSize: 14 } }
                                 Rectangle { visible: ws.curNet==="D-Star"; Layout.preferredWidth: 120; implicitHeight: 36; radius: 9; color: ws.panel2; border.color: ws.line2
                                     Text { anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "All protocols"; color: ws.text2; font.pixelSize: 12 } }
-                                Rectangle { implicitHeight: 36; implicitWidth: 104; radius: 9; color: ws.panel2; border.color: ws.line2
-                                    Text { anchors.centerIn: parent; text: "Manual entry"; color: ws.text2; font.pixelSize: 12 } }
+                                Rectangle { implicitHeight: 36; implicitWidth: 104; radius: 9; color: me.hovered ? ws.panel2 : ws.panel2; border.color: ws.line2
+                                    HoverHandler { id: me }
+                                    Text { anchors.centerIn: parent; text: "Manual entry"; color: ws.text2; font.pixelSize: 12 }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: mainTab.openHosts() } }
                             }
-                            Text { text: ws.provider()+" · "+ws.filteredHosts.length+" entries"; color: ws.muted; font.pixelSize: 12 }
+                            Text { text: ws.provider()+" · "+ws.filteredHosts.length+(ws.showFavs?" favourites":" entries"); color: ws.muted; font.pixelSize: 12 }
                             ListView {
-                                id: lv; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; model: ws.filteredHosts; spacing: 6
+                                id: lv; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; model: ws.pagedHosts; spacing: 6
                                 ScrollBar.vertical: ScrollBar { }
                                 delegate: Rectangle {
                                     required property var modelData
                                     required property int index
-                                    width: lv.width-4; implicitHeight: 62; radius: 11
+                                    width: lv.width-4; implicitHeight: 54; radius: 11
                                     property bool sel: ws.selHost===modelData
+                                    property bool fav: ws.isFav(modelData)
                                     color: sel ? Qt.rgba(0.54,0.49,0.96,0.12) : (hh.hovered ? ws.panel2 : "transparent")
                                     border.color: sel ? ws.acc : "transparent"
                                     HoverHandler { id: hh }
                                     Rectangle { visible: sel; width: 3; height: parent.height-16; radius: 2; color: ws.acc; anchors.left: parent.left; anchors.leftMargin: 2; anchors.verticalCenter: parent.verticalCenter }
                                     RowLayout {
-                                        anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 12; spacing: 8
-                                        Column { Layout.fillWidth: true; spacing: 3
+                                        anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 10; spacing: 8
+                                        Column { Layout.fillWidth: true; spacing: 2
                                             Text { text: modelData; color: ws.text; font.pixelSize: 13; font.bold: true; elide: Text.ElideRight; width: parent.width }
-                                            Text { text: ("0000"+(index+6)).slice(-5)+" · "+(ws.curNet==="DMR"?"TG":"YSF")+" · "+(index%2?"international":"Greece"); color: ws.muted; font.pixelSize: 11 }
-                                            Text { text: index===9 ? "Traffic detected" : "Activity unavailable"; color: index===9?ws.rxc:ws.muted; font.pixelSize: 11 } }
-                                        Text { text: sel?"★":"☆"; color: sel?ws.acc2:ws.muted; font.pixelSize: 17 }
+                                            Text { text: ws.curNet+" · reflector"; color: ws.muted; font.pixelSize: 11 } }
+                                        Rectangle { width: 30; height: 30; radius: 8; color: starh.hovered ? ws.panel2 : "transparent"
+                                            Text { anchors.centerIn: parent; text: fav?"★":"☆"; color: fav?ws.acc2:ws.muted; font.pixelSize: 17 }
+                                            HoverHandler { id: starh }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ws.toggleFav(modelData) } }
                                     }
-                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; enabled: !ws.connected; onClicked: ws.selectHost(modelData) }
+                                    MouseArea { anchors.fill: parent; z: -1; cursorShape: Qt.PointingHandCursor; enabled: !ws.connected; onClicked: ws.selectHost(modelData) }
                                 }
                             }
                             RowLayout { Layout.fillWidth: true
-                                Text { text: "1–"+Math.min(100,ws.filteredHosts.length)+" / "+ws.filteredHosts.length; color: ws.muted; font.pixelSize: 11 }
+                                Text { text: ws.filteredHosts.length===0 ? "0" : ((ws.page*ws.pageSize+1)+"–"+Math.min((ws.page+1)*ws.pageSize, ws.filteredHosts.length)+" / "+ws.filteredHosts.length); color: ws.muted; font.pixelSize: 11 }
                                 Item { Layout.fillWidth: true }
-                                Rectangle { implicitHeight: 28; implicitWidth: 78; radius: 8; color: "transparent"; border.color: ws.line2
-                                    Text { anchors.centerIn: parent; text: "Previous"; color: ws.muted; font.pixelSize: 11 } }
-                                Rectangle { implicitHeight: 28; implicitWidth: 56; radius: 8; color: ws.panel2; border.color: ws.line2
-                                    Text { anchors.centerIn: parent; text: "Next"; color: ws.text2; font.pixelSize: 11 } }
+                                Rectangle { implicitHeight: 28; implicitWidth: 78; radius: 8; color: "transparent"; border.color: ws.line2; opacity: ws.page>0?1:0.4
+                                    Text { anchors.centerIn: parent; text: "Previous"; color: ws.text2; font.pixelSize: 11 }
+                                    MouseArea { anchors.fill: parent; enabled: ws.page>0; cursorShape: Qt.PointingHandCursor; onClicked: { ws.page=ws.page-1; lv.positionViewAtBeginning() } } }
+                                Rectangle { implicitHeight: 28; implicitWidth: 56; radius: 8; color: ws.panel2; border.color: ws.line2; opacity: ((ws.page+1)*ws.pageSize < ws.filteredHosts.length)?1:0.4
+                                    Text { anchors.centerIn: parent; text: "Next"; color: ws.text2; font.pixelSize: 11 }
+                                    MouseArea { anchors.fill: parent; enabled: (ws.page+1)*ws.pageSize < ws.filteredHosts.length; cursorShape: Qt.PointingHandCursor; onClicked: { ws.page=ws.page+1; lv.positionViewAtBeginning() } } }
                             }
                         }
                     }
@@ -1204,8 +1246,10 @@ Item {
                                     Text { anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: ws.muted; font.pixelSize: 14 }
                                     MouseArea { anchors.fill: parent; enabled: !ws.connected; cursorShape: Qt.PointingHandCursor; onClicked: { var n=_comboModule.currentIndex+1; if(n>=_comboModule.count) n=0; _comboModule.currentIndex=n } } }
 
-                                Rectangle { Layout.topMargin: 12; implicitHeight: 32; implicitWidth: fav.width+24; radius: 8; color: ws.panel2; border.color: ws.line2
-                                    Text { id: fav; anchors.centerIn: parent; text: (ws.selHost!=="" ? "★ Remove favourite" : "☆ Add favorite"); color: ws.text2; font.pixelSize: 12 } }
+                                Rectangle { Layout.topMargin: 12; implicitHeight: 32; implicitWidth: fav.width+24; radius: 8; visible: ws.selHost!==""
+                                    color: ws.isFav(ws.selHost) ? Qt.rgba(0.54,0.49,0.96,0.14) : ws.panel2; border.color: ws.isFav(ws.selHost) ? ws.acc : ws.line2
+                                    Text { id: fav; anchors.centerIn: parent; text: (ws.isFav(ws.selHost) ? "★ Remove favourite" : "☆ Add favorite"); color: ws.isFav(ws.selHost)?ws.acc2:ws.text2; font.pixelSize: 12 }
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ws.toggleFav(ws.selHost) } }
 
                                 Text { text: "AUDIO"; color: ws.muted; font.pixelSize: 11; font.letterSpacing: 1; Layout.topMargin: 16 }
                                 Text { text: "Microphone"; color: ws.text2; font.pixelSize: 11; Layout.topMargin: 8 }
@@ -1219,18 +1263,22 @@ Item {
                                     Text { id: spkch; anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: ws.muted; font.pixelSize: 14 }
                                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { var n=settingsTab.comboPlayback.currentIndex+1; if(n>=settingsTab.comboPlayback.count) n=0; settingsTab.comboPlayback.currentIndex=n } } }
                                 RowLayout { Layout.topMargin: 10; spacing: 8
-                                    Repeater { model: ["Refresh devices","Test microphone","Test speakers"]
-                                        delegate: Rectangle { required property var modelData; implicitHeight: 28; implicitWidth: dtt.width+18; radius: 8; color: ws.panel2; border.color: ws.line2
-                                            Text { id: dtt; anchors.centerIn: parent; text: modelData; color: ws.text2; font.pixelSize: 11 } } } }
+                                    Repeater { model: ["Refresh devices","Audio settings"]
+                                        delegate: Rectangle { required property var modelData; implicitHeight: 28; implicitWidth: dtt.width+18; radius: 8; color: dh.hovered?ws.line2:ws.panel2; border.color: ws.line2
+                                            HoverHandler { id: dh }
+                                            Text { id: dtt; anchors.centerIn: parent; text: modelData; color: ws.text2; font.pixelSize: 11 }
+                                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { if(modelData==="Refresh devices") droidstar.process_mode_change(_comboMode.currentText); else mainTab.openSettings() } } } } }
                                 Text { text: settingsTab.comboCapture.count+" available microphones"; color: ws.muted; font.pixelSize: 11; Layout.topMargin: 8 }
                                 Rectangle { Layout.fillWidth: true; Layout.topMargin: 6; implicitHeight: 4; radius: 2; color: ws.line }
                                 RowLayout { Layout.fillWidth: true; Layout.topMargin: 12; spacing: 10
-                                    Text { text: "RX volume"; color: ws.text2; font.pixelSize: 12 }
+                                    Text { text: "Mic gain"; color: ws.text2; font.pixelSize: 12 }
                                     Rectangle { Layout.fillWidth: true; implicitHeight: 6; radius: 3; color: ws.line2
-                                        Rectangle { width: parent.width*0.82; height: parent.height; radius: 3; color: ws.acc
-                                            Rectangle { width: 16; height: 16; radius: 8; color: ws.acc2; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter } } }
-                                    Rectangle { width: 30; height: 30; radius: 8; color: ws.panel2; border.color: ws.line2
-                                        Text { anchors.centerIn: parent; text: "♪"; color: ws.muted; font.pixelSize: 13 } } }
+                                        Rectangle { width: Math.max(8, parent.width*ws.micGain); height: parent.height; radius: 3; color: ws.acc
+                                            Rectangle { width: 16; height: 16; radius: 8; color: ws.acc2; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter } }
+                                        MouseArea { anchors.fill: parent; anchors.topMargin: -9; anchors.bottomMargin: -9; cursorShape: Qt.PointingHandCursor
+                                            onPressed: (m)=> ws.setMic(m.x/width)
+                                            onPositionChanged: (m)=> { if(pressed) ws.setMic(m.x/width) } } }
+                                    Text { text: Math.round(ws.micGain*100)+"%"; color: ws.muted; font.pixelSize: 11; Layout.preferredWidth: 36 } }
 
                                 // Listen
                                 RowLayout { Layout.fillWidth: true; Layout.topMargin: 18; spacing: 10
@@ -1303,39 +1351,6 @@ Item {
                             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: ws.line }
                             Text { text: "LAST HEARD"; color: ws.muted; font.pixelSize: 10; font.letterSpacing: 1; Layout.topMargin: 14 }
                             Text { text: (_data1.text!==""?_data1.text:"Waiting for data"); color: _data1.text!==""?ws.text2:ws.muted; font.pixelSize: 12; Layout.topMargin: 6 }
-                        }
-                    }
-                }
-
-                // ===== AUDIO MIXER =====
-                Rectangle {
-                    Layout.fillWidth: true; implicitHeight: 128; color: ws.rail
-                    ColumnLayout {
-                        anchors.fill: parent; anchors.leftMargin: 22; anchors.rightMargin: 22; anchors.topMargin: 12; anchors.bottomMargin: 10; spacing: 8
-                        RowLayout { Layout.fillWidth: true
-                            Text { text: "Audio mixer"; color: ws.text; font.pixelSize: 13; font.bold: true }
-                            Item { Layout.fillWidth: true }
-                            Rectangle { radius: 8; color: ws.panel; border.color: ws.line2; implicitHeight: 30; implicitWidth: 240
-                                Row { anchors.fill: parent; anchors.margins: 3
-                                    Rectangle { width: 115; height: parent.height; radius: 6; color: "transparent"
-                                        Text { anchors.centerIn: parent; text: "Single listening"; color: ws.muted; font.pixelSize: 11 } }
-                                    Rectangle { width: 115; height: parent.height; radius: 6; color: Qt.rgba(0.54,0.49,0.96,0.18)
-                                        Text { anchors.centerIn: parent; text: "Multiple listening"; color: ws.acc2; font.pixelSize: 11 } } } }
-                            Rectangle { implicitHeight: 30; implicitWidth: 64; radius: 8; color: ws.panel; border.color: ws.line2
-                                Text { anchors.centerIn: parent; text: "Hide ✕"; color: ws.muted; font.pixelSize: 11 } }
-                        }
-                        RowLayout { Layout.fillWidth: true; Layout.fillHeight: true; spacing: 12
-                            Repeater { model: ws.nets
-                                delegate: Rectangle { required property var modelData; Layout.fillWidth: true; Layout.fillHeight: true; radius: 10; color: ws.panel; border.color: ws.line
-                                    RowLayout { anchors.fill: parent; anchors.margins: 12; spacing: 10
-                                        Text { text: modelData.label; color: modelData.col; font.pixelSize: 12; font.bold: true }
-                                        Text { text: modelData.label==="C4FM"?"RX volume":"Reception muted"; color: ws.muted; font.pixelSize: 11 }
-                                        Rectangle { Layout.fillWidth: true; implicitHeight: 5; radius: 3; color: ws.line2
-                                            Rectangle { width: parent.width*(modelData.label==="C4FM"?0.85:0.6); height: parent.height; radius: 3; color: modelData.col
-                                                Rectangle { width: 12; height: 12; radius: 6; color: modelData.col; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter } } }
-                                        Rectangle { width: 26; height: 26; radius: 13; color: "transparent"; border.color: ws.line2
-                                            Text { anchors.centerIn: parent; text: modelData.label==="C4FM"?"♪":"🔇"; color: ws.muted; font.pixelSize: 11 } } } }
-                            }
                         }
                     }
                 }

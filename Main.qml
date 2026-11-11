@@ -111,6 +111,9 @@ ApplicationWindow {
 		MainTab{
 			id: mainTab
 			onOpenSettings: bar.currentIndex = 1
+			onOpenLog: bar.currentIndex = 2
+			onOpenHosts: bar.currentIndex = 3
+			onOpenAbout: bar.currentIndex = 4
 		}
 		SettingsTab{
 			id: settingsTab
