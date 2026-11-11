@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     QQuickStyle::setStyle("Fusion");
-    app.setWindowIcon(QIcon(":/images/droidstar.png"));
+    app.setWindowIcon(QIcon(":/qt/qml/DroidStarApp/images/droidstar.png"));
     qmlRegisterType<DroidStar>("org.dudetronics.droidstar", 1, 0, "DroidStar");
     QQmlApplicationEngine engine;
 #ifdef USE_FLITE
