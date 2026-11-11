@@ -18,7 +18,7 @@ BUILTIN: dict[str, dict] = {
 
 def protocol_for(t: Target) -> str | None:
     if t.net == "C4FM": return "YSF"
-    if t.net == "DMR": return "DMR"
+    if t.net in ("DMR", "NXDN", "P25", "M17"): return t.net
     if t.net == "D-Star":
         p = t.id.strip().upper()
         if p.startswith("REF"): return "REF"
@@ -46,7 +46,7 @@ class Servers:
 
     @staticmethod
     def key(t: Target) -> str:
-        if t.net == "D-Star": return f"{t.net}:{split_dstar(t)[0]}"      # module is not part of the address
+        if t.net in ("D-Star", "M17"): return f"{t.net}:{split_dstar(t)[0]}"      # module is not part of the address
         return f"{t.net}:{t.id}"
 
     def resolve(self, t: Target) -> dict | None:
@@ -57,6 +57,8 @@ class Servers:
         k = self.key(t)
         if self.user.get(k) or BUILTIN.get(k): return self.user.get(k) or BUILTIN.get(k)
         if t.net == "C4FM": return self.hosts.find("YSF", t.id)                    # worldwide list, downloaded
+        if t.net in ("NXDN", "P25"): return self.hosts.find(t.net, t.id.strip())
+        if t.net == "M17": return self.hosts.find("M17", split_dstar(t)[0])
         if t.net == "D-Star":
             ref = split_dstar(t)[0]
             for proto in ("REF", "XRF", "DCS", "XLX"):

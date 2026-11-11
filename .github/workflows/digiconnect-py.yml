@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           export PATH=$(echo "$PATH" | tr ':' '\n' | grep -vi '/Qt/' | paste -sd:)   # the CI Qt must not shadow PySide6's own Qt
-          pip install PySide6 sounddevice numpy pyinstaller pytest
+          pip install PySide6 sounddevice numpy certifi pyinstaller pytest
           DC_ENGINE="$PWD/engine_dist/dcengine.exe" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
@@ -91,13 +91,17 @@ jobs:
       - name: Build app
         run: |
           unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR   # the CI Qt must not shadow PySide6's own Qt
-          pip install PySide6 sounddevice numpy pyinstaller pytest
+          pip install PySide6 sounddevice numpy certifi pyinstaller pytest
           DC_ENGINE="$PWD/engine_dist/bin/dcengine" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
           tar -C dist -czf DigiConnect-Linux-x86_64.tar.gz DigiConnect
+          VER=$(python -c "import re;print(re.search(r'\"([0-9.]+)\"', open('app/version.py').read()).group(1))")
+          python tools/build_dcpkg.py "$VER" --out update_pkg
       - uses: actions/upload-artifact@v4
         with: { name: DigiConnect-Linux, path: digiconnect-py/DigiConnect-Linux-x86_64.tar.gz }
+      - uses: actions/upload-artifact@v4
+        with: { name: DigiConnect-update-package-dcpkg, path: digiconnect-py/update_pkg/*.dcpkg }
 
   macos:
     strategy:
@@ -131,7 +135,7 @@ jobs:
       - name: Build app
         run: |
           unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR   # the CI Qt must not shadow PySide6's own Qt
-          pip install PySide6 sounddevice numpy pyinstaller pytest
+          pip install PySide6 sounddevice numpy certifi pyinstaller pytest
           DC_ENGINE="$PWD/build/dcengine.app/Contents/MacOS/dcengine" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           cp -R build/dcengine.app dist/DigiConnect.app/Contents/Resources/

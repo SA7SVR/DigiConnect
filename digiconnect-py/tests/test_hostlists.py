@@ -18,6 +18,9 @@ DPLUS = "# dplus\nREF001\t1.2.3.4\t20001\nREF030  ref030.example.org  20001\nXYZ
 DEXTRA = "XRF001  xrf001.example.net  30001\nXRF757\t5.6.7.8\n"
 DCS = "DCS001;dcs001.example.com;30051\n"
 XLX = "XLX001;xlx001.example.org;4\nXLXQRZ;xlxqrz.example.gr;\n"
+NXDN = "# nxdn\n65000 nxdn.example.org 41400\n10200;nxdn2.example.org;41401\nbad\n"
+P25 = "10100 p25.example.org 41000\n10200 192.0.2.7\n"
+M17 = "M17-DEU  m17-deu.example.org  17000\nM17-USA  203.0.113.5\nfoo bar\n"
 DMR = ("# name\n"
        "BM_Greece_202\t0\t0\t0\t0\tgreece.master.example.net\tpassw0rd\t62031\n"
        "BM_United_States_3101\t0\t0\t0\t0\t3101.master.example.net\tpassw0rd\t62031\n"
@@ -37,13 +40,16 @@ def test_parsers():
     assert [e["id"] for e in H.parse_dstar(XLX, "XLX")] == ["XLX001 A", "XLXQRZ A"]
     m = H.parse_dmr(DMR); assert len(m) == 3 and m[0]["country"] == "Greece" and m[1]["country"] == "United States" and m[2]["port"] == 55555
     assert m[0]["host"] == "greece.master.example.net" and m[0]["port"] == 62031
+    nx = H.parse_numeric(NXDN, "NXDN"); assert [(e["id"], e["host"], e["port"]) for e in nx] == [("65000", "nxdn.example.org", 41400), ("10200", "nxdn2.example.org", 41401)]
+    p = H.parse_numeric(P25, "P25"); assert p[1]["host"] == "192.0.2.7" and p[1]["port"] == 41000 and p[0]["net"] == "P25"
+    m7 = H.parse_m17(M17); assert [(e["id"], e["port"]) for e in m7] == [("M17-DEU A", 17000), ("M17-USA A", 17000)]
     a = H.parse_xlx_api(XLXAPI); assert {e["id"] for e in a} == {"XLX001 A", "XLX999 A"} and a[0]["country"] == "Germany"
 
 
 @pytest.fixture
 def web(tmp_path):
     root = tmp_path / "www"; root.mkdir()
-    for n, t in {"YSFHosts.txt": YSF, "DPlus_Hosts.txt": DPLUS, "DExtra_Hosts.txt": DEXTRA, "DCS_Hosts.txt": DCS, "XLXHosts.txt": XLX, "DMR_Hosts.txt": DMR, "xlx.xml": XLXAPI}.items():
+    for n, t in {"YSFHosts.txt": YSF, "DPlus_Hosts.txt": DPLUS, "DExtra_Hosts.txt": DEXTRA, "DCS_Hosts.txt": DCS, "XLXHosts.txt": XLX, "DMR_Hosts.txt": DMR, "NXDNHosts.txt": NXDN, "P25Hosts.txt": P25, "M17Hosts.txt": M17, "xlx.xml": XLXAPI}.items():
         (root / n).write_text(t, encoding="utf-8")
     h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
     class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -64,6 +70,7 @@ def test_download_cache_and_resolve(tmp_path, web):
     assert {k: v for k, v in hl.status.items()} and all(v.startswith("ok") for v in hl.status.values()), hl.status
     assert hl.find("YSF", "00006") == {"host": "ysf.example.gr", "port": 42000}
     assert hl.find("REF", "ref030") == {"host": "ref030.example.org", "port": 20001}
+    assert hl.find("NXDN", "65000")["host"] == "nxdn.example.org" and hl.find("P25", "10100")["port"] == 41000 and hl.find("M17", "M17-DEU")["host"] == "m17-deu.example.org"
     assert hl.find("XLX", "XLX999")["host"] == "xlx999.example.org"                          # added from the API
     assert [e["country"] for e in hl.entries if e["id"] == "XLX001 A"] == ["Germany"]
     assert len(hl.dmr_masters()) == 3 and len(hl.for_net("C4FM")) == 3 and len(hl.for_net("D-Star")) >= 6

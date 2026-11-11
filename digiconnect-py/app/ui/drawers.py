@@ -1,7 +1,9 @@
 """Right-hand drawers: Settings (5 tabs) and New QSO form with drafts."""
 from ..qt import QtWidgets as W, QtCore, Qt, Signal
-from ..rules import valid_text_size
+from ..rules import valid_text_size, NETS
 from ..theme import C
+from .. import i18n
+from ..i18n import tr
 from .widgets import *
 import json, zipfile, datetime as dt, platform
 
@@ -29,16 +31,17 @@ class SettingsDrawer(W.QFrame):
         p1 = W.QWidget(); l1 = vbox(p1, m=(16, 4, 16, 4), s=8)
         l1.addWidget(field("Callsign", le("callsign"))); r = hbox(); r.addWidget(field("Grid locator", le("locator"))); r.addWidget(field("Module", le("module"))); l1.addLayout(r)
         l1.addWidget(field("Equipment", le("equipment"))); l1.addWidget(field("Radio message", le("radio_message")))
-        self.lang = W.QComboBox(); self.lang.addItems(["English", "Ελληνικά", "Français", "Italiano", "Deutsch"]); self.lang.setCurrentText(s["language"]); l1.addWidget(field("Language", self.lang))
+        self.lang = W.QComboBox(); self.lang.addItems(list(i18n.LANGS)); self.lang.setCurrentText(s["language"]); l1.addWidget(field("Language", self.lang))
+        self.theme = W.QComboBox(); self.theme.addItem(tr("Dark"), "dark"); self.theme.addItem(tr("Light"), "light"); i18n.combo_item(self.theme, 0, "Dark"); i18n.combo_item(self.theme, 1, "Light"); self.sync_theme(); l1.addWidget(field("Theme", self.theme))
         self.size = W.QSpinBox(); self.size.setRange(11, 20); self.size.setValue(s["text_size"]); self.ptt = W.QComboBox(); self.ptt.addItems(["60 s", "120 s", "180 s"]); self.ptt.setCurrentText(f"{s['max_ptt']} s")
         r2 = hbox(); r2.addWidget(field("Text size", self.size)); r2.addWidget(field("Maximum PTT duration (s)", self.ptt)); l1.addLayout(r2)
-        self.favview = W.QComboBox(); self.favview.addItems(["Full cards", "Names only"]); self.favview.setCurrentText(s["fav_view"]); l1.addWidget(field("Favorites display", self.favview))
+        self.favview = W.QComboBox(); self.favview.addItem(tr("Full cards"), "Full cards"); self.favview.addItem(tr("Names only"), "Names only"); i18n.combo_item(self.favview, 0, "Full cards"); i18n.combo_item(self.favview, 1, "Names only"); self.favview.setCurrentIndex(max(0, self.favview.findData(s["fav_view"]))); l1.addWidget(field("Favorites display", self.favview))
         l1.addWidget(label("PROFILES", section=True)); pr = hbox(); self.prof = W.QComboBox(); self.prof.addItem("—"); self.prof.addItems(sorted(s.get("profiles", {})))
         self.load = button("Load"); pr.addWidget(self.prof, 1); pr.addWidget(self.load); l1.addLayout(pr)
         self.pname = W.QLineEdit(); l1.addWidget(field("Profile name", self.pname)); self.saveprof = button("Save profile"); l1.addWidget(self.saveprof, 0, Qt.AlignmentFlag.AlignLeft); l1.addStretch()
         # -- Radio networks
         p2 = W.QWidget(); l2 = vbox(p2, m=(16, 4, 16, 4), s=8); l2.addWidget(label("DMR", section=True))
-        r = hbox(); r.addWidget(field("DMR ID", le("dmr_id"))); r.addWidget(field("ESSID", le("essid"))); l2.addLayout(r)
+        r = hbox(); r.addWidget(field("DMR ID (also used for P25)", le("dmr_id"))); r.addWidget(field("ESSID", le("essid"))); l2.addLayout(r); l2.addWidget(field("NXDN ID", le("nxdn_id")))
         l2.addWidget(field("Server", le("dmr_server", "hostname"))); r = hbox(); r.addWidget(field("Port", le("dmr_port")))
         self.slot = W.QComboBox(); self.slot.addItems(["1", "2"]); self.slot.setCurrentText(str(s["slot"])); r.addWidget(field("Time slot", self.slot)); l2.addLayout(r)
         l2.addWidget(field("Color code", le("cc"))); self.dpw = W.QLineEdit(); self.dpw.setEchoMode(W.QLineEdit.EchoMode.Password); l2.addWidget(field("Password", self.dpw))
@@ -48,7 +51,7 @@ class SettingsDrawer(W.QFrame):
         self.mic = W.QComboBox(); self.spk = W.QComboBox(); l3.addWidget(field("Microphone", self.mic)); l3.addWidget(field("Speakers", self.spk))
         r = hbox(); self.tm = button("Test microphone"); self.ts = button("Test speakers"); self.rd = button("Refresh devices"); [r.addWidget(b) for b in (self.tm, self.ts, self.rd)]; l3.addLayout(r)
         self.devinfo = label("", muted=True); l3.addWidget(self.devinfo)
-        self.duck = W.QCheckBox("Lower other channels while transmitting"); self.duck.setChecked(s["duck"]); l3.addWidget(self.duck)
+        self.duck = checkbox("Lower other channels while transmitting"); self.duck.setChecked(s["duck"]); l3.addWidget(self.duck)
         l3.addWidget(label("RECORDINGS", section=True)); self.recp = label(s.get("rec_path") or str(ctx.store.root / "Recordings"), muted=True); self.recp.setWordWrap(True); l3.addWidget(self.recp)
         self.choose = button("Choose"); l3.addWidget(self.choose, 0, Qt.AlignmentFlag.AlignLeft); l3.addStretch()
         # -- Callbooks / Backup
@@ -66,6 +69,9 @@ class SettingsDrawer(W.QFrame):
         self.bk.clicked.connect(self._backup); self.rs.clicked.connect(self._restore); self.dg.clicked.connect(self._diag); self.choose.clicked.connect(self._choose)
         self._tab(0); self.refresh_devices()
 
+    def sync_theme(self):
+        self.theme.setCurrentIndex(max(0, self.theme.findData(self.ctx.store.settings.get("theme", "dark"))))
+
     def _tab(self, i):
         self.stack.setCurrentIndex(i)
         for k, b in self.tb.items(): b.setChecked(k == i)
@@ -77,7 +83,7 @@ class SettingsDrawer(W.QFrame):
         from ..audio_devices import list_devices
         ins, outs, err = list_devices()
         if err: self.devinfo.setText(err)
-        self.mic.addItems(ins or ["(none found)"]); self.spk.addItems(outs or ["(none found)"])
+        self.mic.addItems(ins or [tr("(none found)")]); self.spk.addItems(outs or [tr("(none found)")])
         if s.get("mic") in ins: self.mic.setCurrentText(s["mic"])
         if s.get("speakers") in outs: self.spk.setCurrentText(s["speakers"])
         if ins: self.devinfo.setText(f"{len(ins)} available microphone{'s' if len(ins) != 1 else ''}")
@@ -97,7 +103,7 @@ class SettingsDrawer(W.QFrame):
         except Exception as e: self.devinfo.setText(f"Microphone test failed: {e}")
 
     def _choose(self):
-        d = W.QFileDialog.getExistingDirectory(self, "Recordings folder")
+        d = W.QFileDialog.getExistingDirectory(self, tr("Recordings folder"))
         if d: self.recp.setText(d); self.ctx.store.settings["rec_path"] = d
 
     def _collect(self):
@@ -111,7 +117,7 @@ class SettingsDrawer(W.QFrame):
                 s[k] = val.upper()
             else:
                 s[k] = val
-        s.update(language=self.lang.currentText(), text_size=self.size.value(), max_ptt=int(self.ptt.currentText().split()[0]), fav_view=self.favview.currentText(),
+        s.update(language=self.lang.currentText(), theme=self.theme.currentData() or "dark", text_size=self.size.value(), max_ptt=int(self.ptt.currentText().split()[0]), fav_view=self.favview.currentData() or "Full cards",
                  slot=int(self.slot.currentText()), duck=self.duck.isChecked(), mic=self.mic.currentText(), speakers=self.spk.currentText())
 
     def _save(self):
@@ -137,7 +143,7 @@ class SettingsDrawer(W.QFrame):
         self.applied.emit(); self.ctx.toast.emit(f"Profile '{n}' loaded. Active connections were stopped; check network, devices and credentials.")
 
     def _backup(self):
-        fn, _ = W.QFileDialog.getSaveFileName(self, "Backup", f"DigiConnect-backup-{dt.date.today()}.zip")
+        fn, _ = W.QFileDialog.getSaveFileName(self, tr("Backup"), f"DigiConnect-backup-{dt.date.today()}.zip")
         if not fn: return
         self.ctx.store.db.commit()
         with zipfile.ZipFile(fn, "w", zipfile.ZIP_DEFLATED) as z:
@@ -146,18 +152,18 @@ class SettingsDrawer(W.QFrame):
         self.ctx.toast.emit("Backup written")
 
     def _restore(self):
-        fn, _ = W.QFileDialog.getOpenFileName(self, "Restore a backup", "", "ZIP (*.zip)")
+        fn, _ = W.QFileDialog.getOpenFileName(self, tr("Restore a backup"), "", "ZIP (*.zip)")
         if not fn: return
-        if W.QMessageBox.question(self, "Restore", "Restoring replaces settings, favorites and the journal. Continue?") != W.QMessageBox.StandardButton.Yes: return
+        if W.QMessageBox.question(self, tr("Restore"), tr("Restoring replaces settings, favorites and the journal. Continue?")) != W.QMessageBox.StandardButton.Yes: return
         self.ctx.stop_all(); root = self.ctx.store.root; stamp = root / f"BeforeRestore_{dt.datetime.now():%Y%m%d_%H%M%S}"; stamp.mkdir()
         self.ctx.store.db.close()
         for n in ("settings.json", "favorites.json", "journal.sqlite3"):
             if (root / n).exists(): (root / n).replace(stamp / n)
         with zipfile.ZipFile(fn) as z: z.extractall(root)
-        W.QMessageBox.information(self, "Restore", "Backup restored. Please restart DigiConnect.")
+        W.QMessageBox.information(self, tr("Restore"), tr("Backup restored. Please restart DigiConnect."))
 
     def _diag(self):
-        fn, _ = W.QFileDialog.getSaveFileName(self, "Export diagnostics", "digiconnect-diagnostics.json")
+        fn, _ = W.QFileDialog.getSaveFileName(self, tr("Export diagnostics"), "digiconnect-diagnostics.json")
         if not fn: return
         r = self.ctx.rules; d = dict(product="DigiConnect", utc=dt.datetime.now(dt.timezone.utc).isoformat(), os=platform.platform(), engine=self.ctx.engine.name,
                                     mode=r.mode.value, receivers=[(x.target.net, x.target.id) for x in r.rx], tx_connected=r.tx_connected)
@@ -175,14 +181,14 @@ class QsoDrawer(W.QFrame):
         def le(k): e = W.QLineEdit(); self.w[k] = e; return e
         b.addWidget(field("Callsign", le("callsign")))
         r = hbox(); r.addWidget(field("Start UTC", le("start_utc"))); r.addWidget(field("End UTC", le("end_utc"))); b.addLayout(r)
-        self.sys = W.QComboBox(); self.sys.addItems(["DMR", "D-Star", "EchoLink", "C4FM"]); r = hbox(); r.addWidget(field("System", self.sys)); r.addWidget(field("TG / reflector / room", le("dest"))); b.addLayout(r)
+        self.sys = W.QComboBox(); self.sys.addItems(list(NETS)); r = hbox(); r.addWidget(field("System", self.sys)); r.addWidget(field("TG / reflector / room", le("dest"))); b.addLayout(r)
         b.addWidget(field("Name", le("name")))
         for pair in (("country", "Country", "qth", "QTH / city"), ("grid", "Grid locator", "band", "Band"), ("freq", "Frequency MHz", "equipment", "Equipment"), ("rst_s", "RST sent", "rst_r", "RST received")):
             r = hbox(); r.addWidget(field(pair[1], le(pair[0]))); r.addWidget(field(pair[3], le(pair[2]))); b.addLayout(r)
         self.notes = W.QPlainTextEdit(); self.notes.setFixedHeight(80); b.addWidget(field("Personal notes", self.notes))
         self.src = label("Source: Manual entry\nYour manual corrections are preserved.", muted=True); b.addWidget(self.src)
         r = hbox(); self.cb = button("Fill from callbook"); self.hist = button("Contact history"); r.addWidget(self.cb); r.addWidget(self.hist); b.addLayout(r)
-        r = hbox(); self.drafts = W.QComboBox(); self.drafts.addItem("Saved drafts…"); self.resume = button("Resume"); r.addWidget(self.drafts, 1); r.addWidget(self.resume); b.addLayout(r); b.addStretch()
+        r = hbox(); self.drafts = W.QComboBox(); self.drafts.addItem(tr("Saved drafts…")); i18n.combo_item(self.drafts, 0, "Saved drafts…"); self.resume = button("Resume"); r.addWidget(self.drafts, 1); r.addWidget(self.resume); b.addLayout(r); b.addStretch()
         foot = hbox(m=(16, 8, 16, 14), s=8); self.save = button("Save", "primary"); self.next = button("Next contact"); foot.addWidget(self.save); foot.addWidget(self.next); foot.addStretch(); v.addLayout(foot)
         self.cb.clicked.connect(lambda: ctx.toast.emit("Callbook lookups are not connected in this build. Enter the details manually; nothing is invented."))
         self.hist.clicked.connect(self._history); self.save.clicked.connect(self._save); self.next.clicked.connect(self._next); self.resume.clicked.connect(self._resume)
@@ -205,7 +211,7 @@ class QsoDrawer(W.QFrame):
         d = {k: e.text().strip() for k, e in self.w.items()}; d["system"] = self.sys.currentText(); d["notes"] = self.notes.toPlainText().strip(); return d
 
     def _drafts(self):
-        self.drafts.clear(); self.drafts.addItem("Saved drafts…")
+        self.drafts.clear(); self.drafts.addItem(tr("Saved drafts…")); i18n.combo_item(self.drafts, 0, "Saved drafts…")
         for d in self.parked: self.drafts.addItem(f"{d['callsign'] or '(no call)'} · {d['start_utc']}")
 
     def _resume(self):
@@ -218,7 +224,7 @@ class QsoDrawer(W.QFrame):
     def _history(self):
         c = self.w["callsign"].text().strip()
         rows = self.ctx.store.search_qso(c) if c else []
-        W.QMessageBox.information(self, "Contact history", "\n".join(f"{r['start_utc']}  {r['system']}  {r['dest']}" for r in rows[:15]) or "No earlier contacts.")
+        W.QMessageBox.information(self, tr("Contact history"), "\n".join(f"{r['start_utc']}  {r['system']}  {r['dest']}" for r in rows[:15]) or tr("No earlier contacts."))
 
     def _save(self):
         d = self.read(); cs = d["callsign"].upper()
@@ -237,10 +243,10 @@ class QsoDrawer(W.QFrame):
                 if float(d["freq"]) <= 0: raise ValueError
             except ValueError: self.ctx.toast.emit("Frequency must be a positive value in MHz."); return
         near = [r for r in self.ctx.store.search_qso(cs, d["system"]) if abs((dt.datetime.fromisoformat(r["start_utc"]) - s).total_seconds()) <= 120]
-        if near and W.QMessageBox.question(self, "Possible duplicate", f"{cs} on {d['system']} was already saved within two minutes of this time. Save both entries?") != W.QMessageBox.StandardButton.Yes: return
+        if near and W.QMessageBox.question(self, tr("Possible duplicate"), tr(f"{cs} on {d['system']} was already saved within two minutes of this time. Save both entries?")) != W.QMessageBox.StandardButton.Yes: return
         self.ctx.store.add_qso(d); self.clear(); self.saved.emit(); self.ctx.toast.emit(f"QSO with {cs} saved")
 
     def _next(self):
         d = self.read()
-        if d["callsign"] and W.QMessageBox.question(self, "Next contact", "The current entry is not saved. Discard it and prepare the next contact?") != W.QMessageBox.StandardButton.Yes: return
+        if d["callsign"] and W.QMessageBox.question(self, tr("Next contact"), tr("The current entry is not saved. Discard it and prepare the next contact?")) != W.QMessageBox.StandardButton.Yes: return
         self.prepare()

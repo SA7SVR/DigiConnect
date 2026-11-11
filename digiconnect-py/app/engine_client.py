@@ -115,8 +115,14 @@ class EngineClient(QtCore.QObject, Engine):
             if not str(s.get("dmr_id") or "").strip().isdigit(): return None, "A DMR ID is required for DMR (Settings › Radio networks)."
             p.update(dmrid=int(s["dmr_id"]), essid=int(s.get("essid") or 0) if str(s.get("essid") or "0").isdigit() else 0,
                      password=self.dmr_password, tg=int(t.id) if t.id.isdigit() else 0, cc=int(s.get("cc") or 1), slot=int(s.get("slot") or 2))
-        elif proto in ("REF", "XRF", "DCS"):
+        elif proto in ("REF", "XRF", "DCS", "M17"):
             ref, mod = split_dstar(t); p.update(name=ref, module=mod)
+        elif proto == "NXDN":
+            if not str(s.get("nxdn_id") or "").strip().isdigit(): return None, "An NXDN ID is required for NXDN (Settings › Radio networks)."
+            p.update(nxdnid=int(s["nxdn_id"]), name=t.id.strip())
+        elif proto == "P25":
+            if not str(s.get("dmr_id") or "").strip().isdigit(): return None, "A radio ID is required for P25: enter your DMR ID (Settings › Radio networks)."
+            p.update(dmrid=int(s["dmr_id"]), name=t.id.strip())
         return p, ""
 
     def _link(self, t: Target) -> tuple[Link | None, str]:

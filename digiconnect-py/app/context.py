@@ -10,7 +10,6 @@ import threading
 class Ctx(QtCore.QObject):
     changed = Signal()
     toast = Signal(str)
-    need_endpoint = Signal(object)      # Target whose server address is unknown
     hosts_changed = Signal()            # the worldwide server lists were (re)loaded
     _hosts_done = Signal(int, object)
 
@@ -53,11 +52,15 @@ class Ctx(QtCore.QObject):
 
     def _on_hosts_done(self, n, problems):
         self._hosts_busy = False
+        retry, self._retry = getattr(self, "_retry", None), None
         if problems:
             self.toast.emit(("Server lists: " + "; ".join(problems[:2]) + (" …" if len(problems) > 2 else "")) + (" — using the saved copy." if n else ""))
         elif n:
             self.toast.emit(f"Server lists updated: {self.hosts.summary()}")
         self.hosts_changed.emit()
+        if retry and getattr(self, "_auto_dl", False):
+            if n: retry()
+            self._auto_dl = False
 
     def _sync_audio(self):
         """Push the effective receive volume (volume slider, mute, ducking, no self-monitoring) to the engine."""
@@ -156,10 +159,18 @@ class Ctx(QtCore.QObject):
         if rx: self.rules.stop_listening(handle)
         else: self.rules.disconnect_tx()
         self.engine_msg = ""
-        if m == "NEED_ENDPOINT":
-            self._retry = self.toggle_listen if rx else self.toggle_tx
-            self.need_endpoint.emit(t)
+        if m == "NEED_ENDPOINT": self._no_address(t, rx)
         else: self.toast.emit(m)
+
+    def _no_address(self, t: Target, rx: bool):
+        """The entry is not in the downloaded worldwide list: never ask the user for host:port.
+        Download the lists once and retry by itself; if it still is not there, say so."""
+        if t.net == "DMR":
+            self.toast.emit("Choose a DMR master server in the list first (Master server), then press Listen."); return
+        if not self.hosts.entries and not self._hosts_busy and not getattr(self, "_auto_dl", False):
+            self._auto_dl = True; self._retry = self.toggle_listen if rx else self.toggle_tx
+            self.toast.emit("Downloading the worldwide server lists, then connecting…"); self.refresh_hosts(True); return
+        self.toast.emit(f"{t.id} is not in the worldwide server list. Press Refresh in the directory to download the newest lists.")
 
     def _on_status(self, ln, state: str, msg: str):
         t = ln.target

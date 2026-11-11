@@ -3,6 +3,8 @@ from collections import Counter
 from ..qt import QtWidgets as W, QtCore, Qt
 from ..rules import NETS
 from .widgets import *
+from .. import i18n
+from ..i18n import tr
 
 COLS = [("callsign", "Callsign"), ("start_utc", "UTC"), ("system", "System"), ("dest", "TG / reflector / room"), ("name", "Name"), ("country", "Country"), ("grid", "Grid locator")]
 PER = 50
@@ -15,7 +17,7 @@ class QsoLog(W.QWidget):
         h = hbox(); t = vbox(s=2); title = label("QSO log"); title.setStyleSheet("font-size:24px;font-weight:700;")
         t.addWidget(title); t.addWidget(label("Your contacts, notes and recordings.", muted=True)); h.addLayout(t); h.addStretch()
         self.nq = button("New QSO", "primary", "plus"); self.an = button("Log analysis", "", "bars"); h.addWidget(self.nq); h.addWidget(self.an); v.addLayout(h)
-        f = hbox(s=8); self.q = W.QLineEdit(); self.q.setPlaceholderText("Search the log…"); self.sys = W.QComboBox(); self.sys.addItems(["All networks", *NETS, "ADIF"])
+        f = hbox(s=8); self.q = W.QLineEdit(); self.q.setPlaceholderText("Search the log…"); self.sys = W.QComboBox(); self.sys.addItems([tr("All networks"), *NETS, "ADIF"]); i18n.combo_item(self.sys, 0, "All networks")
         self.d1 = W.QLineEdit(); self.d1.setPlaceholderText("from yyyy-mm-dd"); self.d2 = W.QLineEdit(); self.d2.setPlaceholderText("to yyyy-mm-dd")
         self.cty = W.QLineEdit(); self.cty.setPlaceholderText("Country"); self.refresh_b = button("Refresh")
         for w in (self.q, self.sys, self.d1, self.d2, self.cty, self.refresh_b): f.addWidget(w)
@@ -25,7 +27,7 @@ class QsoLog(W.QWidget):
         self.trash_b = button("Trash", checkable=True); self.delete = button("Delete"); self.restore = button("Restore"); self.restore.setVisible(False)
         for b in (self.imp, self.eadif, self.ecsv, self.trash_b, self.delete, self.restore): a.addWidget(b)
         a.addStretch(); v.addLayout(a)
-        self.table = W.QTableWidget(0, len(COLS)); self.table.setHorizontalHeaderLabels([c[1] for c in COLS])
+        self.table = W.QTableWidget(0, len(COLS)); self.table.setHorizontalHeaderLabels([tr(c[1]) for c in COLS])
         self.table.horizontalHeader().setStretchLastSection(True); self.table.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers); self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(W.QHeaderView.ResizeMode.Stretch); v.addWidget(self.table, 1)
@@ -47,7 +49,7 @@ class QsoLog(W.QWidget):
 
     def filtered(self):
         s = self.sys.currentText()
-        return self.ctx.store.search_qso(self.q.text().strip(), "" if s == "All networks" else s, self.d1.text().strip(), self.d2.text().strip(), self.cty.text().strip(), self.trash)
+        return self.ctx.store.search_qso(self.q.text().strip(), "" if self.sys.currentIndex() == 0 else s, self.d1.text().strip(), self.d2.text().strip(), self.cty.text().strip(), self.trash)
 
     def reload(self):
         self.rows = self.filtered(); total = len(self.rows); self.page = min(self.page, max(0, (total - 1) // PER))
@@ -81,11 +83,11 @@ class QsoLog(W.QWidget):
         fn, _ = W.QFileDialog.getOpenFileName(self, "Import ADIF", "", "ADIF (*.adi *.adif *.adx)")
         if not fn: return
         txt = open(fn, encoding="utf-8", errors="replace").read(); recs = self.ctx.store.parse_adif(txt)
-        if W.QMessageBox.question(self, "Import ADIF", f"{len(recs)} contact(s) found. Duplicates (same callsign, network and exact UTC time) are skipped. Import?") != W.QMessageBox.StandardButton.Yes: return
+        if W.QMessageBox.question(self, tr("Import ADIF"), tr("{} contact(s) found. Duplicates (same callsign, network and exact UTC time) are skipped. Import?").format(len(recs))) != W.QMessageBox.StandardButton.Yes: return
         a, s = self.ctx.store.import_adif(txt); self.reload(); self.ctx.toast.emit(f"Import finished: added {a}, skipped {s}")
 
     def _analysis(self):
-        rows = self.filtered(); d = W.QDialog(self); d.setWindowTitle("Log analysis"); d.resize(560, 520); l = vbox(d, m=(18, 18, 18, 18), s=8)
+        rows = self.filtered(); d = W.QDialog(self); d.setWindowTitle(tr("Log analysis")); d.resize(560, 520); l = vbox(d, m=(18, 18, 18, 18), s=8)
         l.addWidget(label("Log analysis")); l.itemAt(0).widget().setStyleSheet("font-size:20px;font-weight:700;")
         l.addWidget(label(f"Contacts: {len(rows)}   ·   Stations: {len({r['callsign'] for r in rows})}   ·   Countries: {len({r['country'] for r in rows if r['country']})}"))
         def block(title, cnt, n):

@@ -23,10 +23,13 @@ SOURCES = {
     "DCS": ("DCS_Hosts.txt", "dstar:DCS", "D-Star DCS"),
     "XLX": ("XLXHosts.txt", "dstar:XLX", "XLX reflectors"),
     "DMR": ("DMR_Hosts.txt", "dmr", "DMR masters"),
+    "NXDN": ("NXDNHosts.txt", "num:NXDN", "NXDN talkgroups"),
+    "P25": ("P25Hosts.txt", "num:P25", "P25 talkgroups"),
+    "M17": ("M17Hosts.txt", "m17", "M17 reflectors"),
 }
-DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031}
-DEFAULT_MODULE = {"REF": "C", "XRF": "C", "DCS": "A", "XLX": "A"}
-NET_OF = {"YSF": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR"}
+DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000}
+DEFAULT_MODULE = {"REF": "C", "XRF": "C", "DCS": "A", "XLX": "A", "M17": "A"}
+NET_OF = {"YSF": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR", "NXDN": "NXDN", "P25": "P25", "M17": "M17"}
 
 _HOST = re.compile(r"^(?:\d{1,3}(?:\.\d{1,3}){3}|(?=.*[A-Za-z])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)$")
 
@@ -85,6 +88,33 @@ def parse_dstar(text: str, proto: str) -> list[dict]:
     return out
 
 
+def parse_numeric(text: str, proto: str) -> list[dict]:
+    """NXDN / P25: 'TG host port' per line (talkgroup number first)."""
+    out = []
+    for line in text.splitlines():
+        tok = _tokens(line)
+        if len(tok) < 2 or not tok[0].isdigit() or not 0 < int(tok[0]) <= 16777215: continue
+        hi = _host_index(tok)
+        if hi is None: continue
+        name = f"{proto} TG {tok[0]}"; desc = " ".join(x for x in tok[1:hi] if x)
+        out.append(_entry(proto, tok[0], name + (f" · {desc}" if desc else ""), f"TG {tok[0]} · {proto}", tok[hi], _port_after(tok, hi + 1, DEFAULT_PORT[proto])))
+    return out
+
+
+def parse_m17(text: str) -> list[dict]:
+    """M17: 'M17-XXX host port' per line; the module (A-Z) is chosen when linking."""
+    out = []
+    for line in text.splitlines():
+        tok = _tokens(line)
+        if len(tok) < 2: continue
+        ref = tok[0].upper()
+        if not re.match(r"^M17-[A-Z0-9]{3}$", ref): continue
+        hi = _host_index(tok)
+        if hi is None: continue
+        out.append(_entry("M17", f"{ref} A", ref, f"{ref} · module A · M17", tok[hi], _port_after(tok, hi + 1, DEFAULT_PORT["M17"])))
+    return out
+
+
 def parse_dmr(text: str) -> list[dict]:
     out = []
     for line in text.splitlines():
@@ -117,15 +147,14 @@ def parse_xlx_api(text: str) -> list[dict]:
 def parse(kind: str, text: str) -> list[dict]:
     if kind == "ysf": return parse_ysf(text)
     if kind == "dmr": return parse_dmr(text)
+    if kind == "m17": return parse_m17(text)
+    if kind.startswith("num:"): return parse_numeric(text, kind.split(":")[1])
     return parse_dstar(text, kind.split(":")[1])
 
 
 def fetch(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": "DigiConnect (HELLAS Zone)"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        data = r.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES: raise ValueError("file too large")
-    return data.decode("utf-8", "replace")
+    from . import net
+    return net.get(url, TIMEOUT, MAX_BYTES).decode("utf-8", "replace")
 
 
 class HostLists:

@@ -1,6 +1,8 @@
 from ..qt import QtGui, QtCore, Qt
+from ..theme import C
 
-def icon(name: str, color="#aab0d8", size=22) -> QtGui.QIcon:
+def icon(name: str, color=None, size=22) -> QtGui.QIcon:
+    color = color or C["icon"]
     pm = QtGui.QPixmap(size * 2, size * 2); pm.fill(Qt.GlobalColor.transparent)
     p = QtGui.QPainter(pm); p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
     p.scale(2, 2)

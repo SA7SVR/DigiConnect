@@ -2,7 +2,7 @@
 import sys
 block_cipher = None
 a = Analysis(['../run.py'], pathex=['..'], datas=[('../assets', 'assets'), ('../LICENSES', 'LICENSES')],
-             hiddenimports=['sounddevice', 'numpy'], excludes=['PyQt6', 'tkinter'])
+             hiddenimports=['sounddevice', 'numpy', 'certifi', 'bootstrap', 'xml.etree.ElementTree', 'sqlite3', 'csv', 'zipfile', 'gzip', 'base64', 'hashlib', 'ssl', 'http.server', 'http.client', 'email', 'html', 'difflib', 'decimal', 'statistics', 'zoneinfo', 'uuid', 'platform', 'shutil', 'tempfile', 'struct', 'math', 'random', 'secrets', 'textwrap', 'unicodedata', 'ipaddress', 'socket', 'collections', 'itertools', 'functools', 'dataclasses', 'enum', 'typing'], excludes=['PyQt6', 'tkinter'])
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='DigiConnect', console=False, icon=None)
 coll = COLLECT(exe, a.binaries, a.datas, name='DigiConnect')

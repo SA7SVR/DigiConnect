@@ -2,6 +2,7 @@
 from ..qt import QtWidgets as W, QtCore, Qt, Signal
 from ..rules import Target, ListenMode, CardState, valid_favorite_name, valid_dtmf
 from ..theme import NET_COLOR, C
+from ..i18n import tr
 from .widgets import *
 
 
@@ -13,8 +14,8 @@ class Card(W.QFrame):
         super().__init__(); self.setObjectName("card"); self.fav = fav; self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMinimumHeight(70 if names_only else 160); self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         v = vbox(self, m=(14, 10, 12, 10), s=4)
-        top = hbox(); net = label(fav["net"]); net.setStyleSheet(f"color:{NET_COLOR[fav['net']]};font-weight:700;font-size:10px;")
-        star = label("★"); star.setStyleSheet(f"color:{C['amber']};"); top.addWidget(net); top.addStretch(); top.addWidget(star); v.addLayout(top)
+        top = hbox(); net = label(fav["net"], net=fav["net"])
+        star = label("★", tone="amber"); top.addWidget(net); top.addStretch(); top.addWidget(star); v.addLayout(top)
         self.name = label(fav["name"]); self.name.setStyleSheet("font-size:15px;font-weight:700;"); self.name.setWordWrap(True); v.addWidget(self.name)
         if not names_only:
             v.addWidget(label(f"{fav['id']} · {'YSF' if fav['net'] == 'C4FM' else fav['net']}", muted=True))
@@ -38,7 +39,7 @@ class Favorites(W.QWidget):
         super().__init__(); self.ctx = ctx; self.filter = "all"
         v = vbox(self, s=12)
         self.nq = button("New QSO", "", "plus"); self.add = button("☆ Add favorite", "primary")   # placed in the page head by MainWindow
-        tb = hbox(s=8); self.search = W.QLineEdit(); self.search.setPlaceholderText("Search favorites…"); self.search.setMinimumWidth(320)
+        tb = FlowLayout(hspace=8, vspace=8); self.search = W.QLineEdit(); self.search.setPlaceholderText("Search favorites…"); self.search.setFixedWidth(280)
         tb.addWidget(self.search); self.fb = {}
         for k, txt in (("all", "All"), ("active", "Active"), ("conn", "Connections")):
             b = button(txt, "seg", checkable=True); b.clicked.connect(lambda _, k=k: self._filter(k)); tb.addWidget(b); self.fb[k] = b
@@ -46,18 +47,23 @@ class Favorites(W.QWidget):
         self.single = button("Single listening", "seg", checkable=True); self.multi = button("Multiple listening", "seg", checkable=True)
         self.display = button("Display"); self.dtmf = button("DTMF", "", "grid")
         for b in (self.single, self.multi, self.display, self.dtmf): tb.addWidget(b)
-        tb.addStretch(); v.addLayout(tb)
+        v.addLayout(tb)
         self.scroll = W.QScrollArea(); self.scroll.setWidgetResizable(True); self.host = W.QWidget(); self.grid = W.QGridLayout(self.host)
         self.grid.setSpacing(12); self.grid.setAlignment(Qt.AlignmentFlag.AlignTop); self.host.setObjectName('scrollinner'); self.host.setStyleSheet('QWidget#scrollinner{background:transparent;}'); self.scroll.setWidget(self.host); v.addWidget(self.scroll, 1)
         self.empty = label("No favorites yet. Use the star in a station directory or press Add favorite.", muted=True); self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         leg = hbox(s=18)
-        for col, txt in ((C["green"], "Traffic detected"), (C["border"], "Selection"), (C["pink"], "Listening enabled"), (C["amber"], "Receiving audio"), (C["muted"], "Connections")):
-            d = label(f"● {txt}", muted=True); d.setStyleSheet(f"color:{C['muted']};"); leg.addWidget(d)
+        self.legend = []
+        for key, txt in (("green", "Traffic detected"), ("accent", "Selection"), ("pink", "Listening enabled"), ("amber", "Receiving audio"), ("muted", "Connections")):
+            d = label("", muted=True); d.setTextFormat(Qt.TextFormat.RichText); self.legend.append((d, key, txt)); leg.addWidget(d)
+        self.restyle()
         leg.addStretch(); self.updated = label("", muted=True); leg.addWidget(self.updated); v.addLayout(leg)
         self.search.textChanged.connect(self.rebuild); self.refresh_b.clicked.connect(self.rebuild)
         self.single.clicked.connect(lambda: ctx.set_mode(ListenMode.SINGLE)); self.multi.clicked.connect(lambda: ctx.set_mode(ListenMode.MULTIPLE))
         self.display.clicked.connect(self._display); self.dtmf.clicked.connect(self._dtmf); self.add.clicked.connect(self._add)
         ctx.changed.connect(self.refresh_state); self.rebuild()
+
+    def restyle(self):
+        for d, key, txt in self.legend: d.setText(f"<span style='color:{C[key]}'>●</span> {tr(txt)}")
 
     def _filter(self, k):
         self.filter = k
@@ -75,11 +81,11 @@ class Favorites(W.QWidget):
         r = self.ctx.rules
         if not (r.tx_connected and r.tx_target and r.tx_target.net == "EchoLink"):
             self.ctx.toast.emit("DTMF is sent to the connected EchoLink peer. Sign in and enable Connect (TX) on that peer first."); return
-        s, ok = W.QInputDialog.getText(self, "DTMF", f"Peer {r.tx_target.id}\nSequence (0-9 A-D * #, up to 32):")
+        s, ok = W.QInputDialog.getText(self, "DTMF", tr("Peer {}\nSequence (0-9 A-D * #, up to 32):").format(r.tx_target.id))
         if ok and not valid_dtmf(s.upper()): self.ctx.toast.emit("DTMF accepts 1 to 32 characters from 0-9, A-D, * and #.")
 
     def _rename(self, fav):
-        txt, ok = W.QInputDialog.getText(self, "Rename favorite", "Display name (1–80 characters):", text=fav["name"])
+        txt, ok = W.QInputDialog.getText(self, tr("Rename favorite"), tr("Display name (1–80 characters):"), text=fav["name"])
         if ok:
             if not valid_favorite_name(txt.strip()): self.ctx.toast.emit("A favorite name must be 1 to 80 characters."); return
             fav["name"] = txt.strip(); self.ctx.store.save_favorites(); self.rebuild()
@@ -117,4 +123,4 @@ class Favorites(W.QWidget):
             c.setProperty("state", r.card_state(rx).value if rx else "neutral")
             c.setProperty("sel", bool(r.selected == t)); repolish(c)
             if hasattr(c, "tx"): c.tx.setText("Transmit ready" if r.tx_connected and r.tx_target == t else "Transmit disconnected")
-        self.updated.setText("Updated " + self.ctx.utc_now().strftime("%H:%M:%S UTC"))
+        self.updated.setText(tr("Updated {}").format(self.ctx.utc_now().strftime("%H:%M:%S UTC")))

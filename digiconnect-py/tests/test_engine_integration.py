@@ -40,12 +40,13 @@ def test_listen_and_tx_through_real_engine(tmp_path, reflector):
     store = Store(tmp_path); store.settings["callsign"] = "SA7SVR"
     eng = EngineClient(ENGINE, store); ctx = Ctx(store, eng)
     t = Target("C4FM", "00006", "Test reflector")
-    # unknown address -> the UI is asked for it, nothing is connected
-    asked = []; ctx.need_endpoint.connect(asked.append)
+    # entry not in the worldwide list -> nothing is connected and the user is told (never asked for host:port)
+    msgs = []; ctx.toast.connect(msgs.append); ctx._auto_dl = True      # no network in tests
     ctx.select(t); ctx.toggle_listen()
-    assert asked == [t] and not ctx.rules.rx
-    assert eng.servers.remember(t, f"127.0.0.1:{PORT}")
-    ctx.retry_pending()
+    assert not ctx.rules.rx and any("worldwide" in m for m in msgs)
+    # entry present in the downloaded list -> plain Listen connects
+    eng.servers.hosts._set([dict(net="C4FM", proto="YSF", id="00006", name="Test", sub="", activity="", host="127.0.0.1", port=PORT, country="")], {}, 1e12)
+    ctx.toggle_listen()
     assert ctx.rules.rx, "receiver should be registered"
     assert pump(app, lambda: reflector["ysfp"] > 0), "engine never contacted the reflector"
     assert pump(app, lambda: eng.links and next(iter(eng.links.values())).state == "connected")

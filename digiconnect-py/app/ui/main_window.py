@@ -1,5 +1,7 @@
 from datetime import datetime
 from ..qt import QtWidgets as W, QtCore, QtGui, Qt
+from .. import theme, i18n
+from ..i18n import tr
 from ..theme import C, qss
 from ..rules import NETS
 from ..context import Ctx
@@ -20,7 +22,7 @@ RAIL = [("favorites", "grid", "My favorites"), ("newqso", "plus", "New QSO"), ("
 
 class Toast(W.QLabel):
     def __init__(self, parent):
-        super().__init__(parent); self.setStyleSheet(f"background:#241f4d;border:1px solid {C['accent']};border-radius:10px;padding:10px 16px;")
+        super().__init__(parent); self.setObjectName("toast")
         self.setWordWrap(True); self.hide(); self.t = QtCore.QTimer(self); self.t.setSingleShot(True); self.t.timeout.connect(self.hide)
 
     def show_msg(self, text):
@@ -30,7 +32,7 @@ class Toast(W.QLabel):
 
 class MainWindow(W.QMainWindow):
     def __init__(self, ctx: Ctx | None = None):
-        super().__init__(); self.ctx = ctx or Ctx(); self.setWindowTitle("DigiConnect · HELLAS Zone"); self.resize(1500, 900); self.setMinimumSize(1100, 700)
+        super().__init__(); self.ctx = ctx or Ctx(); theme.set_theme(self.ctx.store.settings.get("theme", "dark")); i18n.set_language(self.ctx.store.settings.get("language", "English")); self.setWindowTitle("DigiConnect · HELLAS Zone"); self.resize(1500, 900); self.setMinimumSize(1100, 700)
         if LOGO.exists(): self.setWindowIcon(QtGui.QIcon(str(LOGO)))
         root = W.QWidget(); root.setObjectName("root"); self.setCentralWidget(root); outer = vbox(root, s=0)
         body = hbox(s=0); outer.addLayout(body, 1)
@@ -39,20 +41,20 @@ class MainWindow(W.QMainWindow):
         lg = W.QLabel(); lg.setPixmap(QtGui.QPixmap(str(LOGO)).scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)); lg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         rv.addWidget(lg); rv.addSpacing(10); self.rail_btn = {}
         def rb(key, ic, tip):
-            b = button("", "rail", checkable=True, tip=tip); b.setIcon(icon(ic)); b.setIconSize(QtCore.QSize(22, 22)); b.setFixedSize(46, 42); b.clicked.connect(lambda _, k=key: self.nav(k)); self.rail_btn[key] = b; return b
+            b = button("", "rail", checkable=True, tip=tip); b.setIcon(icon(ic)); b.setProperty("icon_name", ic); b.setIconSize(QtCore.QSize(22, 22)); b.setFixedSize(46, 42); b.clicked.connect(lambda _, k=key: self.nav(k)); self.rail_btn[key] = b; return b
         for k, ic, tip in RAIL: rv.addWidget(rb(k, ic, tip), 0, Qt.AlignmentFlag.AlignHCenter)
         rv.addStretch()
         for k, ic, tip in (("updates", "download", "Updates"), ("help", "help", "Help"), ("settings", "gear", "Settings")): rv.addWidget(rb(k, ic, tip), 0, Qt.AlignmentFlag.AlignHCenter)
         self.avatar = W.QLabel("SA"); self.avatar.setFixedSize(36, 36); self.avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.avatar.setStyleSheet(f"background:#26305f;border-radius:18px;font-weight:700;"); rv.addWidget(self.avatar, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.avatar.setObjectName("avatar"); rv.addWidget(self.avatar, 0, Qt.AlignmentFlag.AlignHCenter)
         body.addWidget(rail)
         # centre column
         col = vbox(s=0); body.addLayout(col, 1)
         top = W.QFrame(); top.setObjectName("topbar"); top.setFixedHeight(64); th = hbox(top, m=(24, 8, 20, 8), s=14)
         th.addStretch()
         self.clock = label(""); self.clock.setAlignment(Qt.AlignmentFlag.AlignRight); th.addWidget(self.clock)
-        self.callsign = label(""); self.callsign.setStyleSheet(f"color:{C['accent']};font-weight:700;"); th.addWidget(self.callsign)
-        self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top); col.addWidget(top)
+        self.callsign = label(""); self.callsign.setProperty("tone", "accent"); th.addWidget(self.callsign)
+        self.theme_btn = button("", ""); th.addWidget(self.theme_btn); self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top); col.addWidget(top)
         # head (page title + tabs) – used by workspace pages
         self.head = W.QWidget(); hv = vbox(self.head, m=(24, 14, 24, 8), s=8)
         hr = hbox(); tl = vbox(s=2); self.title = label(""); self.title.setStyleSheet("font-size:26px;font-weight:700;"); tl.addWidget(self.title)
@@ -78,9 +80,9 @@ class MainWindow(W.QMainWindow):
         self.toast = Toast(root); self.ctx.toast.connect(self.toast.show_msg)
         # wiring
         self.mixer.hide_requested.connect(lambda: self.mixer.setVisible(False)); self.h_nq.clicked.connect(self.open_qso); self.h_set.clicked.connect(lambda: self.open_settings())
-        self.set_top.clicked.connect(lambda: self.open_settings()); self.settings.closed.connect(self._close_drawers); self.qdrawer.closed.connect(self._close_drawers)
+        self.set_top.clicked.connect(lambda: self.open_settings()); self.theme_btn.clicked.connect(self.toggle_theme); self.settings.closed.connect(self._close_drawers); self.qdrawer.closed.connect(self._close_drawers)
         self.qdrawer.saved.connect(self.log.reload); self.settings.applied.connect(self.apply_settings)
-        self.ctx.changed.connect(self._sync_chrome); self.ctx.need_endpoint.connect(self._need_endpoint)
+        self.ctx.changed.connect(self._sync_chrome)
         t = QtCore.QTimer(self); t.timeout.connect(self._clock); t.start(1000)
         QtGui.QShortcut(QtGui.QKeySequence("F4"), self, activated=self._mute_all)
         QtGui.QShortcut(QtGui.QKeySequence("F2"), self, activated=self._f2)
@@ -94,9 +96,10 @@ class MainWindow(W.QMainWindow):
     def nav(self, key):
         if key == "settings": self.open_settings(); return
         if key == "newqso": self.open_qso(); return
-        if key == "mixer": self.mixer.setVisible(not self.mixer.isVisible()); self._sync_chrome(); return
+        if key == "mixer": self._mixer_user = True; self.mixer.setVisible(not self.mixer.isVisible()); self._sync_chrome(); return
         if key in ("analysis",): self.nav("log"); self.log._analysis(); return
-        if key in ("heard", "rec", "updates", "help"):
+        if key == "updates": self.show_updates(); return
+        if key in ("heard", "rec", "help"):
             msg = {"heard": "Last heard appears in the right column of each network page when a station is received.", "rec": "Recordings: none yet. Recording needs a running receiver (engine step).",
                    "updates": "Updates: open the release page for DigiConnect to check for a newer build.", "help": "Help: see docs/SPEC.md (operating rules) in the source package."}[key]
             self.ctx.toast.emit(msg); return
@@ -113,7 +116,7 @@ class MainWindow(W.QMainWindow):
         net = k[4:] if ws else None
         self.title.setText("My favorites" if k == "favorites" else (f"Radio workspace  {net}" if ws else ""))
         self.title.setTextFormat(Qt.TextFormat.RichText)
-        if ws: self.title.setText(f"Radio workspace <span style='color:{__import__('app.theme', fromlist=['NET_COLOR']).NET_COLOR[net]}'>{net}</span>")
+        if ws: self.title.setText(f"{tr('Radio workspace')} <span style='color:{__import__('app.theme', fromlist=['NET_COLOR']).NET_COLOR[net]}'>{net}</span>")
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
         for t, b in self.tabs.items():
             if t != "favorites": b.setText(t); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
@@ -127,12 +130,24 @@ class MainWindow(W.QMainWindow):
         n = len(getattr(self.ctx.engine, "links", {}))
         self.foot_l.setText("DigiConnect · HELLAS Zone · Public activity depends on information available from each network. Engine: " + self.ctx.engine.name + (f" · {n} link{'s' if n != 1 else ''}" if n else ""))
 
-    def _need_endpoint(self, t):
-        text, ok = W.QInputDialog.getText(self, "Server address", f"Server for {t.net} · {t.id}\nEnter host or host:port (saved for next time):")
-        if not ok: return
-        if not self.ctx.engine.servers.remember(t, text):
-            self.ctx.toast.emit("That address is not valid. Use host or host:port, without spaces."); return
-        self.ctx.select(t); self.ctx.retry_pending()
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        # small window: the mixer would squeeze the pages, so it starts hidden (the headphone button still opens it)
+        if hasattr(self, "mixer") and not getattr(self, "_mixer_user", False): self.mixer.setVisible(self.height() >= 820); self._sync_chrome()
+
+    # ---- updates ---------------------------------------------------------------
+    def bind_updater(self):
+        u = self.updater; self._upd_dlg = None
+        u.changed.connect(self._upd_changed)
+
+    def _upd_changed(self, state, msg):
+        if state == "ready": self.ctx.toast.emit(tr("Update {} is ready. It starts the next time DigiConnect is opened (Updates › Restart now).").format(msg))
+        elif state == "needs_installer": self.ctx.toast.emit(tr("Version {} needs a new full installer (engine change). Download it from the DigiConnect website.").format(msg))
+        if self._upd_dlg is not None: self._upd_dlg.refresh()
+
+    def show_updates(self):
+        from .updates_dialog import UpdatesDialog
+        self._upd_dlg = UpdatesDialog(self.updater, self); self._upd_dlg.exec(); self._upd_dlg = None
 
     def closeEvent(self, e):
         if hasattr(self.ctx.engine, "shutdown"): self.ctx.engine.shutdown()
@@ -148,8 +163,15 @@ class MainWindow(W.QMainWindow):
 
     def apply_settings(self):
         s = self.ctx.store.settings; self.callsign.setText(s.get("callsign") or "—"); self.lang.setText(s["language"])
+        theme.set_theme(s.get("theme", "dark")); i18n.set_language(s.get("language", "English")); i18n.retranslate()
+        self.theme_btn.setText("☀  Light" if theme.current == "dark" else "☾  Dark")
         self.avatar.setText((s.get("callsign") or "DC")[:2].upper()); W.QApplication.instance().setStyleSheet(qss(s["text_size"]))
-        self.favs.rebuild() if hasattr(self, "favs") else None
+        repaint_icons()
+        if hasattr(self, "favs"): self.favs.restyle(); self.favs.rebuild(); self._sync_chrome()
+
+    def toggle_theme(self):
+        s = self.ctx.store.settings; s["theme"] = "light" if theme.current == "dark" else "dark"; self.ctx.store.save_settings()
+        self.apply_settings(); self.settings.sync_theme()
 
     def _clock(self):
         from datetime import timezone; u = datetime.now(timezone.utc); l = datetime.now()
