@@ -91,6 +91,9 @@ jobs:
           grep -q '"ev":"hello"' hello.txt
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
+      - name: Engine loopback (diagnostic, does not stop the build)
+        continue-on-error: true
+        run: python3 engine/tests/check_ysf_loopback.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine"
       - name: Build app
         run: |
           unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR   # the CI Qt must not shadow PySide6's own Qt

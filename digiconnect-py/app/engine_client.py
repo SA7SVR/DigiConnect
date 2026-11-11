@@ -52,7 +52,9 @@ class Link(QtCore.QObject):
         for b in self._queue: self.proc.write(b)
         self._queue.clear()
 
-    def _on_finished(self, *_):
+    def _on_finished(self, code=0, status=None, *_):
+        from . import diag
+        diag.log(f"engine process {self.key if hasattr(self, 'key') else ''} ended: exit code {code}, {'crashed' if status == QtCore.QProcess.ExitStatus.CrashExit else 'normal exit'}, expected={not self._alive}")
         if self._alive: self.finished.emit(self)
 
     def _on_error(self, err):
