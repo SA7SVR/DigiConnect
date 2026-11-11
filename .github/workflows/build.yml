@@ -67,7 +67,7 @@ jobs:
         with:
           version: '6.8.1'
           host: windows
-          arch: win64_msvc2019_64
+          arch: win64_msvc2022_64
           modules: 'qtmultimedia qtserialport'
           cache: true
       - name: Enable MSVC
