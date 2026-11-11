@@ -21,6 +21,7 @@ DEFAULTS = dict(callsign="", locator="", module="D", equipment="", radio_message
 class Store:
     def __init__(self, root: Path | None = None):
         self.root = root or data_dir()
+        from . import diag; diag.start(self.root)
         self.settings_file = self.root / "settings.json"
         self.fav_file = self.root / "favorites.json"
         self.settings = dict(DEFAULTS)

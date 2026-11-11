@@ -134,6 +134,7 @@ class EngineClient(QtCore.QObject, Engine):
         ln = Link(key, t, self.path, self)
         ln.event.connect(self._on_event); ln.finished.connect(self._on_finished)
         self.links[key] = ln
+        from . import diag; diag.log("connect " + key + " " + str({k: v for k, v in params.items() if k != "password"}))
         ln.send("connect", **params)
         return ln, ""
 
@@ -180,6 +181,8 @@ class EngineClient(QtCore.QObject, Engine):
     # ---- events ---------------------------------------------------------------
     def _on_event(self, ln: Link, e: dict):
         ev = e.get("ev")
+        if ev in ("status", "error"):
+            from . import diag; diag.log(f"engine {ln.key}: {ev} {e.get('state', '')} {e.get('msg', '')}")
         if ev == "status":
             ln.state = e.get("state", ln.state)
             if ln.state == "connected": self.__dict__.pop("_resend", None); self.volume_refresh.emit()

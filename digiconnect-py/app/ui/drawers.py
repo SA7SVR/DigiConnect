@@ -166,8 +166,12 @@ class SettingsDrawer(W.QFrame):
         fn, _ = W.QFileDialog.getSaveFileName(self, tr("Export diagnostics"), "digiconnect-diagnostics.json")
         if not fn: return
         r = self.ctx.rules; d = dict(product="DigiConnect", utc=dt.datetime.now(dt.timezone.utc).isoformat(), os=platform.platform(), engine=self.ctx.engine.name,
-                                    mode=r.mode.value, receivers=[(x.target.net, x.target.id) for x in r.rx], tx_connected=r.tx_connected)
-        open(fn, "w").write(json.dumps(d, indent=1)); self.ctx.toast.emit("Diagnostics exported (no passwords, no log contents)")
+                                    mode=r.mode.value, receivers=[(x.target.net, x.target.id) for x in r.rx], tx_connected=r.tx_connected,
+                                    hostlists=self.ctx.hosts.status, log=diag.tail(300).splitlines())
+        open(fn, "w").write(json.dumps(d, indent=1)); self.ctx.toast.emit("Diagnostics exported (no passwords)")
+
+
+from .. import diag
 
 
 class QsoDrawer(W.QFrame):

@@ -32,6 +32,7 @@ class Ctx(QtCore.QObject):
         if hasattr(self.engine, "status"):
             self.engine.status.connect(self._on_status); self.engine.heard.connect(self._on_heard)
             self.engine.volume_refresh.connect(lambda: self.__dict__.pop("_vol_cache", None))
+        from . import diag; self.toast.connect(lambda m: diag.log("toast: " + m)); diag.log(f"engine={self.engine.name}")
         self._timer = QtCore.QTimer(self); self._timer.setInterval(250); self._timer.timeout.connect(self._tick)
         self._timer.start()
 
@@ -52,6 +53,7 @@ class Ctx(QtCore.QObject):
 
     def _on_hosts_done(self, n, problems):
         self._hosts_busy = False
+        from . import diag; diag.log(f"host lists: {n} entries; problems={problems}; status={self.hosts.status}")
         retry, self._retry = getattr(self, "_retry", None), None
         if problems:
             self.toast.emit(("Server lists: " + "; ".join(problems[:2]) + (" …" if len(problems) > 2 else "")) + (" — using the saved copy." if n else ""))
