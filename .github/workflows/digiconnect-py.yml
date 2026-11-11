@@ -113,7 +113,7 @@ jobs:
           "$QT_ROOT_DIR/bin/macdeployqt" build/dcengine.app
       - name: Engine smoke test
         run: |
-          echo '{"cmd":"hello"}' | timeout 20 build/dcengine.app/Contents/MacOS/dcengine | head -1 | tee hello.txt
+          (echo '{"cmd":"hello"}'; sleep 3; echo '{"cmd":"quit"}') | build/dcengine.app/Contents/MacOS/dcengine | head -1 | tee hello.txt   # macOS has no 'timeout'
           grep -q '"ev":"hello"' hello.txt
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
