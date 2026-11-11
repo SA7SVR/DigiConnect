@@ -17,6 +17,7 @@
 
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 
 Item {
 	id: mainTab
@@ -125,6 +126,8 @@ Item {
 			}
 		}
 	}
+	// --- legacy DroidStar controls, kept intact and hidden; the workspace below drives them ---
+	Item { id: _legacy; anchors.fill: parent; visible: false
 	ComboBox {
 		id: _comboMode
 		property bool loaded: false
@@ -921,6 +924,375 @@ Item {
 			if(!settingsTab.toggleTX.checked){
 				tx = false;
 				droidstar.release_tx();
+			}
+		}
+	}
+	} // end _legacy (hidden DroidStar controls; the workspace below drives them)
+
+	// ===================== HELLAS ZONE workspace =====================
+	// Original QML UI that drives the (hidden) DroidStar controls above by id.
+	Rectangle {
+		id: ws
+		anchors.fill: parent
+		color: bg
+
+		readonly property color bg:    "#0a0e17"
+		readonly property color bg2:   "#0d1320"
+		readonly property color card:  "#131c2e"
+		readonly property color card2: "#172134"
+		readonly property color line:  "#1e2a3f"
+		readonly property color line2: "#283750"
+		readonly property color text:  "#e9eef6"
+		readonly property color text2: "#aab7c9"
+		readonly property color muted: "#6f7f95"
+		readonly property color acc:   "#4da3ff"
+		readonly property color acc2:  "#7c9bff"
+		readonly property color rxc:   "#37d98a"
+		readonly property color txc:   "#ffab42"
+		readonly property color pink:  "#ff6fae"
+
+		property string curNet: "C4FM"
+		property string selHost: ""
+		property string search: ""
+		property bool   listening: false
+		property bool   connected: (_connectbutton.text === "Disconnect")
+		property bool   connecting: (_connectbutton.text === "Connecting")
+
+		property var nets: [
+			{label:"DMR",      mode:"DMR", col:"#8b7bff"},
+			{label:"D-Star",   mode:"REF", col:"#ffb02e"},
+			{label:"EchoLink", mode:"IAX", col:"#35c6ff"},
+			{label:"C4FM",     mode:"YSF", col:"#ff6fae"}
+		]
+		function netCol(n){ for(var i=0;i<nets.length;i++) if(nets[i].label===n) return nets[i].col; return acc }
+		function netMode(n){ for(var i=0;i<nets.length;i++) if(nets[i].label===n) return nets[i].mode; return "YSF" }
+		function labelForMode(m){ for(var i=0;i<nets.length;i++) if(nets[i].mode===m) return nets[i].label; return m }
+
+		// host list taken from the real (engine-populated) _comboHost model
+		property var filteredHosts: {
+			var _n = _comboHost.count;            // reactive trigger on repopulation
+			var _m = _comboMode.currentText;      // reactive trigger on mode change
+			var q = ws.search.toLowerCase();
+			var src = _comboHost.model;
+			var a = [];
+			if(src){
+				for(var i=0;i<src.length;i++){
+					var t = String(src[i]);
+					if(q==="" || t.toLowerCase().indexOf(q)>=0) a.push(t);
+				}
+			}
+			return a;
+		}
+
+		function selectMode(mode, label){
+			ws.curNet = label;
+			ws.selHost = "";
+			ws.search = "";
+			_comboMode.loaded = true;
+			var ix = _comboMode.find(mode);
+			if(ix>=0) _comboMode.currentIndex = ix;
+		}
+		function selectHost(h){
+			ws.selHost = h;
+			var ix = _comboHost.find(h);
+			if(ix>=0) _comboHost.currentIndex = ix;
+		}
+
+		// live clock
+		property string clockUtc: ""
+		property string clockLocal: ""
+		function pad(n){ return (n<10?"0":"")+n }
+		function tick(){
+			var d = new Date();
+			ws.clockUtc = pad(d.getUTCHours())+":"+pad(d.getUTCMinutes())+":"+pad(d.getUTCSeconds())+" UTC";
+			ws.clockLocal = pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds())+" local";
+		}
+		Timer { interval: 1000; running: true; repeat: true; triggeredOnStart: true; onTriggered: ws.tick() }
+
+		Component.onCompleted: {
+			ws.tick();
+			_comboMode.loaded = true;
+			var ix = _comboMode.find(ws.netMode(ws.curNet));
+			if(ix>=0) _comboMode.currentIndex = ix;
+		}
+
+		RowLayout {
+			anchors.fill: parent
+			spacing: 0
+
+			// ============ LEFT RAIL ============
+			Rectangle {
+				Layout.preferredWidth: 54
+				Layout.fillHeight: true
+				color: ws.bg2
+				ColumnLayout {
+					anchors.fill: parent
+					anchors.topMargin: 10
+					anchors.bottomMargin: 10
+					spacing: 4
+					Rectangle {
+						Layout.alignment: Qt.AlignHCenter
+						width: 34; height: 34; radius: 9
+						gradient: Gradient {
+							GradientStop { position: 0; color: ws.acc }
+							GradientStop { position: 1; color: ws.acc2 }
+						}
+					}
+					Repeater {
+						model: ["▦","✚","☰","▤","◷","🎧"]
+						delegate: Rectangle {
+							required property var modelData
+							required property int index
+							Layout.alignment: Qt.AlignHCenter
+							width: 36; height: 36; radius: 9
+							color: index===0 ? Qt.rgba(0.3,0.64,1,0.14) : "transparent"
+							Text { anchors.centerIn: parent; text: modelData; color: index===0?ws.acc:ws.muted; font.pixelSize: 15 }
+						}
+					}
+					Item { Layout.fillHeight: true }
+					Rectangle {
+						Layout.alignment: Qt.AlignHCenter
+						width: 32; height: 32; radius: 16; color: ws.card2; border.color: ws.line2
+						Text { anchors.centerIn: parent; text: "SA"; color: ws.text; font.pixelSize: 11; font.bold: true }
+					}
+				}
+			}
+
+			// ============ MAIN ============
+			ColumnLayout {
+				Layout.fillWidth: true
+				Layout.fillHeight: true
+				spacing: 0
+
+				// ---- top bar ----
+				Rectangle {
+					Layout.fillWidth: true
+					implicitHeight: 52
+					color: ws.bg2
+					RowLayout {
+						anchors.fill: parent
+						anchors.leftMargin: 16; anchors.rightMargin: 16
+						spacing: 10
+						Image {
+							source: "images/droidstar.png"
+							Layout.alignment: Qt.AlignVCenter
+							sourceSize.height: 34; sourceSize.width: 34
+							fillMode: Image.PreserveAspectFit
+							smooth: true
+						}
+						Column {
+							Layout.alignment: Qt.AlignVCenter
+							Text { text: "HELLAS ZONE"; color: ws.muted; font.pixelSize: 9; font.letterSpacing: 2 }
+							Text { text: "DIGI<font color='"+ws.acc+"'>CONNECT</font>"; textFormat: Text.RichText; color: ws.text; font.pixelSize: 16; font.bold: true }
+						}
+						Item { Layout.fillWidth: true }
+						Column {
+							Layout.alignment: Qt.AlignVCenter
+							Text { text: ws.clockUtc; color: ws.text; font.pixelSize: 13; font.bold: true; horizontalAlignment: Text.AlignRight; width: 96 }
+							Text { text: ws.clockLocal; color: ws.muted; font.pixelSize: 10; horizontalAlignment: Text.AlignRight; width: 96 }
+						}
+						Text { text: (settingsTab.callsignEdit.text==="" ? "NOCALL" : settingsTab.callsignEdit.text); color: ws.acc; font.pixelSize: 13; font.bold: true }
+					}
+				}
+
+				// ---- workspace header ----
+				Item {
+					Layout.fillWidth: true
+					implicitHeight: 62
+					RowLayout {
+						anchors.fill: parent
+						anchors.leftMargin: 18; anchors.rightMargin: 18
+						spacing: 10
+						Column {
+							Layout.alignment: Qt.AlignVCenter
+							Text { text: "Radio workspace <font color='"+ws.netCol(ws.curNet)+"'>"+ws.curNet+"</font>"; textFormat: Text.RichText; color: ws.text; font.pixelSize: 21; font.bold: true }
+							Text { text: "Choose a station, then Connect. PTT transmits once connected."; color: ws.muted; font.pixelSize: 12 }
+						}
+						Item { Layout.fillWidth: true }
+						Rectangle { implicitHeight: 30; implicitWidth: 112; radius: 8; color: ws.card; border.color: ws.line2
+							Text { anchors.centerIn: parent; text: "↻ Refresh hosts"; color: ws.text; font.pixelSize: 12 }
+							MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+								onClicked: { _comboMode.loaded = true; droidstar.process_mode_change(_comboMode.currentText) } } }
+					}
+				}
+
+				// ---- network tabs ----
+				Flow {
+					Layout.fillWidth: true
+					Layout.leftMargin: 18; Layout.rightMargin: 18; Layout.bottomMargin: 10
+					spacing: 7
+					Repeater {
+						model: ws.nets
+						delegate: Rectangle {
+							required property var modelData
+							implicitHeight: 34; implicitWidth: tabRow.implicitWidth+24; radius: 9
+							property bool on: ws.curNet===modelData.label
+							color: on ? Qt.rgba(0.3,0.64,1,0.14) : ws.card
+							border.color: on ? ws.acc : ws.line2
+							Row {
+								id: tabRow; anchors.centerIn: parent; spacing: 8
+								Rectangle { width: 8; height: 8; radius: 4; color: modelData.col; anchors.verticalCenter: parent.verticalCenter }
+								Text { text: modelData.label; color: on ? ws.text : ws.text2; font.pixelSize: 13; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+							}
+							MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; enabled: !ws.connected && !ws.connecting
+								onClicked: ws.selectMode(modelData.mode, modelData.label) }
+						}
+					}
+				}
+				Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: ws.line }
+
+				// ---- 3 columns ----
+				RowLayout {
+					Layout.fillWidth: true
+					Layout.fillHeight: true
+					spacing: 0
+
+					// ===== DIRECTORY =====
+					ColumnLayout {
+						Layout.fillHeight: true
+						Layout.fillWidth: true
+						Layout.preferredWidth: 5
+						spacing: 0
+						RowLayout {
+							Layout.fillWidth: true; Layout.margins: 12; spacing: 8
+							Text { text: "Station directory"; color: ws.text; font.pixelSize: 13; font.bold: true }
+							Item { Layout.fillWidth: true }
+							Rectangle { implicitHeight: 28; implicitWidth: 64; radius: 8; color: ws.card; border.color: ws.line2
+								Text { anchors.centerIn: parent; text: "Refresh"; color: ws.text2; font.pixelSize: 12 }
+								MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+									onClicked: { _comboMode.loaded = true; droidstar.process_mode_change(_comboMode.currentText) } } }
+						}
+						Rectangle {
+							Layout.fillWidth: true; Layout.leftMargin: 12; Layout.rightMargin: 12; implicitHeight: 36; radius: 9; color: ws.card; border.color: ws.line2
+							Row {
+								anchors.fill: parent; anchors.leftMargin: 10; spacing: 8
+								Text { text: "🔍"; color: ws.muted; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+								TextInput {
+									id: searchIn
+									width: parent.width - 40; anchors.verticalCenter: parent.verticalCenter
+									color: ws.text; font.pixelSize: 12; clip: true
+									onTextChanged: ws.search = text
+									Text { visible: searchIn.text===""; text: "Search host, TG or reflector…"; color: ws.muted; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+								}
+							}
+						}
+						Text { Layout.leftMargin: 14; Layout.topMargin: 8; Layout.bottomMargin: 4; text: ws.curNet+" · "+ws.filteredHosts.length+" entries"; color: ws.muted; font.pixelSize: 12 }
+						ListView {
+							id: lv
+							Layout.fillWidth: true; Layout.fillHeight: true; Layout.leftMargin: 8; Layout.rightMargin: 8
+							clip: true; model: ws.filteredHosts; spacing: 4
+							ScrollBar.vertical: ScrollBar { }
+							delegate: Rectangle {
+								required property var modelData
+								required property int index
+								width: lv.width - 4; implicitHeight: 48; radius: 10
+								property bool sel: ws.selHost===modelData
+								color: sel ? Qt.rgba(1,0.44,0.68,0.12) : (hov.hovered ? ws.card : "transparent")
+								border.color: sel ? ws.pink : "transparent"
+								HoverHandler { id: hov }
+								RowLayout {
+									anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10; spacing: 8
+									Column {
+										Layout.fillWidth: true; spacing: 2
+										Text { text: modelData; color: ws.text; font.pixelSize: 13; font.bold: true; elide: Text.ElideRight; width: parent.width }
+										Text { text: ws.curNet+" reflector"; color: ws.muted; font.pixelSize: 11 }
+									}
+									Text { text: sel ? "★" : "☆"; color: sel ? ws.pink : ws.muted; font.pixelSize: 16 }
+								}
+								MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; enabled: !ws.connected
+									onClicked: ws.selectHost(modelData) }
+							}
+						}
+						Text { Layout.leftMargin: 14; Layout.topMargin: 4; Layout.bottomMargin: 8; text: ws.filteredHosts.length+" shown"; color: ws.muted; font.pixelSize: 11 }
+					}
+
+					Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: ws.line }
+
+					// ===== SELECTED =====
+					Rectangle {
+						Layout.fillHeight: true; Layout.preferredWidth: 360; color: ws.bg
+						ColumnLayout {
+							anchors.fill: parent; anchors.margins: 16; spacing: 0
+							Text { text: "SELECTED STATION"; color: ws.muted; font.pixelSize: 11; font.letterSpacing: 1 }
+							Text { text: ws.selHost===""?"Select a station":ws.selHost; color: ws.text; font.pixelSize: 19; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; Layout.topMargin: 2 }
+							Text { text: ws.selHost===""?"Pick an entry in the list on the left.":ws.curNet+" · reflector"; color: ws.muted; font.pixelSize: 12; Layout.bottomMargin: 10 }
+
+							// Module (REF/D-Star) — drives the real _comboModule
+							Text { text: "MODULE"; color: ws.muted; font.pixelSize: 11; font.letterSpacing: 1; Layout.topMargin: 6; visible: _comboModule.visible }
+							Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; implicitHeight: 34; radius: 9; color: ws.card; border.color: ws.line2; visible: _comboModule.visible
+								Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: "Module "+_comboModule.currentText; color: ws.text2; font.pixelSize: 12 }
+								Text { anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: "‹ ›"; color: ws.muted; font.pixelSize: 14 }
+								MouseArea { anchors.fill: parent; enabled: !ws.connected; cursorShape: Qt.PointingHandCursor
+									onClicked: { var n=_comboModule.currentIndex+1; if(n>=_comboModule.count) n=0; _comboModule.currentIndex=n } } }
+
+							// RX volume -> real sliderMicGain stays in Settings; here a visual level
+							Text { text: "AUDIO"; color: ws.muted; font.pixelSize: 11; font.letterSpacing: 1; Layout.topMargin: 10 }
+							Text { text: "Microphone and speaker devices are chosen in Settings."; color: ws.muted; font.pixelSize: 11; Layout.topMargin: 4; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+
+							// Connect / Disconnect -> drives the real connect button
+							Rectangle {
+								Layout.fillWidth: true; Layout.topMargin: 16; implicitHeight: 42; radius: 9
+								color: ws.connected ? "#ff5a6e" : (ws.connecting ? ws.card2 : (ws.selHost!==""?ws.acc:ws.card))
+								border.color: (ws.selHost!=="" || ws.connected) ? "transparent" : ws.line2
+								Text { anchors.centerIn: parent
+									text: ws.connected ? "⏼ Disconnect" : (ws.connecting ? "Connecting…" : "⏼ Connect")
+									color: ws.connected?"#fff":(ws.connecting?ws.text2:(ws.selHost!==""?"#06121f":ws.muted)); font.pixelSize: 14; font.bold: true }
+								MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+									enabled: ws.connected || ws.selHost!==""
+									onClicked: _connectbutton.clicked() }
+							}
+
+							// PTT
+							RowLayout {
+								Layout.fillWidth: true; Layout.topMargin: 8; spacing: 8
+								Rectangle {
+									Layout.fillWidth: true; implicitHeight: 50; radius: 10
+									color: holdMa.pressed ? Qt.rgba(1,0.67,0.26,0.2) : ws.card2
+									border.color: holdMa.pressed ? ws.txc : ws.line2
+									opacity: ws.connected ? 1 : 0.45
+									Text { anchors.centerIn: parent; text: "🎙 Hold to talk"; color: holdMa.pressed?ws.txc:ws.text2; font.pixelSize: 14; font.bold: true }
+									MouseArea { id: holdMa; anchors.fill: parent; enabled: ws.connected
+										onPressed: droidstar.press_tx(); onReleased: droidstar.release_tx(); onCanceled: droidstar.release_tx() }
+								}
+							}
+							Text { text: "Connect opens the reflector link. Hold to talk keys the transmitter while pressed."; color: ws.muted; font.pixelSize: 11; Layout.fillWidth: true; Layout.topMargin: 12; wrapMode: Text.WordWrap }
+							Text { text: _netstatus.text===""?"Not connected":_netstatus.text; color: ws.connected?ws.rxc:ws.muted; font.pixelSize: 12; font.bold: true; Layout.topMargin: 10 }
+							Text { text: _ambestatus.text; color: ws.muted; font.pixelSize: 11; Layout.topMargin: 2; visible: _ambestatus.text!=="" }
+							Item { Layout.fillHeight: true }
+						}
+					}
+
+					Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: ws.line }
+
+					// ===== LAST HEARD =====
+					Rectangle {
+						Layout.fillHeight: true; Layout.preferredWidth: 260; color: ws.bg
+						ColumnLayout {
+							anchors.fill: parent; anchors.margins: 16; spacing: 0
+							Text { text: "Last station heard"; color: ws.text; font.pixelSize: 14; font.bold: true }
+							property bool haveRx: _data1.text!=="" || _data2.text!==""
+							Item {
+								Layout.fillWidth: true; Layout.preferredHeight: 140
+								visible: !parent.haveRx
+								Column {
+									anchors.centerIn: parent; spacing: 10; width: parent.width
+									Text { text: "🎧"; font.pixelSize: 34; color: ws.muted; anchors.horizontalCenter: parent.horizontalCenter }
+									Text { text: "Station details appear here on reception."; color: ws.muted; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; width: 200; wrapMode: Text.WordWrap; anchors.horizontalCenter: parent.horizontalCenter }
+								}
+							}
+							Column {
+								Layout.fillWidth: true; Layout.topMargin: 10; spacing: 6
+								visible: parent.haveRx
+								Text { text: _data1.text; color: ws.rxc; font.pixelSize: 18; font.bold: true }
+								Text { text: _data2.text; color: ws.text2; font.pixelSize: 12 }
+								Text { text: _data3.text; color: ws.muted; font.pixelSize: 11 }
+								Text { text: _data4.text; color: ws.muted; font.pixelSize: 11 }
+								Text { text: _data5.text; color: ws.muted; font.pixelSize: 11 }
+							}
+							Item { Layout.fillHeight: true }
+						}
+					}
+				}
 			}
 		}
 	}
