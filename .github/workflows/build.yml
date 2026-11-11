@@ -1,9 +1,9 @@
 name: Build DigiConnect
 
-# Builds ready-to-run DigiConnect binaries for Linux, Windows and macOS (Intel + Apple Silicon).
-# Runs automatically on every push to main and on version tags (v1.0.0 …), and can be run by hand
-# from the Actions tab (Run workflow). Finished files appear under the run's "Artifacts", and a
-# tag push also creates a Release with the files attached.
+# Builds ready-to-run DigiConnect binaries for Linux, Windows and macOS.
+# Runs on every push to main and on version tags (v1.0.0 …); can also be started by hand
+# from the Actions tab. Finished files appear under the run's "Artifacts"; a tag push
+# also creates a Release with the files attached.
 
 on:
   push:
@@ -29,10 +29,12 @@ jobs:
           modules: 'qtmultimedia qtserialport'
           cache: true
       - name: Build
+        shell: bash
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build --parallel
       - name: Package AppImage
+        shell: bash
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
@@ -42,6 +44,7 @@ jobs:
           cp images/droidstar.png AppDir/usr/share/icons/hicolor/256x256/apps/digiconnect.png || true
           printf '[Desktop Entry]\nType=Application\nName=DigiConnect\nExec=DigiConnect\nIcon=digiconnect\nCategories=AudioVideo;HamRadio;\n' > AppDir/usr/share/applications/digiconnect.desktop
           export QML_SOURCES_PATHS="$PWD"
+          export QMAKE="$QT_ROOT_DIR/bin/qmake"
           ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage \
             --desktop-file AppDir/usr/share/applications/digiconnect.desktop \
             --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/digiconnect.png || true
@@ -70,30 +73,24 @@ jobs:
       - name: Enable MSVC
         uses: ilammy/msvc-dev-cmd@v1
       - name: Build
+        shell: bash
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build --parallel
       - name: Deploy Qt runtime
+        shell: bash
         run: |
-          mkdir dist
-          copy build\DigiConnect.exe dist\
-          windeployqt --release --qmldir . dist\DigiConnect.exe
+          mkdir -p dist
+          cp build/DigiConnect.exe dist/
+          "$QT_ROOT_DIR/bin/windeployqt.exe" --release --qmldir . dist/DigiConnect.exe
       - uses: actions/upload-artifact@v4
         with:
           name: DigiConnect-Windows
           path: dist
 
-  # ---------------- macOS (Intel + Apple Silicon) ----------------
+  # ---------------- macOS (Intel) ----------------
   macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-13   # Intel
-            label: Intel
-          - runner: macos-14   # Apple Silicon
-            label: AppleSilicon
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
       - name: Install Qt
@@ -103,20 +100,22 @@ jobs:
           modules: 'qtmultimedia qtserialport'
           cache: true
       - name: Build
+        shell: bash
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build --parallel
       - name: Bundle + DMG
+        shell: bash
         run: |
-          macdeployqt build/DigiConnect.app -qmldir=. -dmg || macdeployqt build/DigiConnect.app -qmldir=.
-          # ad-hoc sign so it opens with right-click → Open (no "damaged")
+          "$QT_ROOT_DIR/bin/macdeployqt" build/DigiConnect.app -qmldir=. -dmg || "$QT_ROOT_DIR/bin/macdeployqt" build/DigiConnect.app -qmldir=.
           codesign --force --deep --sign - build/DigiConnect.app || true
-          mv build/DigiConnect.dmg DigiConnect-macOS-${{ matrix.label }}.dmg || true
+          mv build/DigiConnect.dmg DigiConnect-macOS-Intel.dmg 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         with:
-          name: DigiConnect-macOS-${{ matrix.label }}
+          name: DigiConnect-macOS-Intel
+          if-no-files-found: warn
           path: |
-            DigiConnect-macOS-${{ matrix.label }}.dmg
+            DigiConnect-macOS-Intel.dmg
             build/DigiConnect.app
 
   # ---------------- RELEASE (on tag) ----------------
