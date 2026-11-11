@@ -6,7 +6,12 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 if(IOS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Multimedia Network Quick QuickControls2)
 else()
-    find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Multimedia Network Quick QuickControls2 SerialPort CorePrivate)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Multimedia Network Quick QuickControls2 SerialPort)
+endif()
+# CorePrivate is only linked on Android (see below); request it only there so desktop
+# builds don't fail when the private module's CMake config isn't shipped with Qt.
+if(ANDROID)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS CorePrivate)
 endif()
 
 qt_standard_project_setup(REQUIRES 6.5)
