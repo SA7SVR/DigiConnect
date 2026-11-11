@@ -58,7 +58,8 @@ QStringList AudioEngine::discover_audio_devices(uint8_t d)
 		devices = QMediaDevices::audioOutputs();
 	}
 	else{
-		devices = QMediaDevices::audioInputs();
+		qDebug() << "audio init: playback done, looking for capture devices";
+	devices = QMediaDevices::audioInputs();
 	}
 
 	for (QList<QAudioDevice>::ConstIterator it = devices.constBegin(); it != devices.constEnd(); ++it ) {
@@ -71,6 +72,7 @@ QStringList AudioEngine::discover_audio_devices(uint8_t d)
 
 void AudioEngine::init()
 {
+	qDebug() << "audio init: start";
 	QAudioFormat format;
     format.setSampleRate(8000);
 	format.setChannelCount(1);
@@ -134,11 +136,15 @@ void AudioEngine::init()
 		// Choose a format the microphone really delivers. 8 kHz mono 16-bit is what the vocoders want, but many Windows
 		// devices only offer their own mix format: then capture in that format and convert here (never stay silent).
 		QAudioFormat use = format;
-		if(MACHAK || !device.isFormatSupported(format)){
-			QAudioFormat pf = device.preferredFormat();
-			QAudioFormat f2 = format; f2.setSampleRate(pf.sampleRate());
-			if(!MACHAK && device.isFormatSupported(f2)){ use = f2; }
-			else { use = pf; }
+		{
+			const QAudioFormat pf = device.preferredFormat();
+			const bool pfok = pf.sampleRate() > 0 && pf.channelCount() > 0 && pf.sampleFormat() != QAudioFormat::Unknown;
+			QAudioFormat f2 = format; if(pf.sampleRate() > 0) f2.setSampleRate(pf.sampleRate());
+			qDebug() << "Capture formats: wanted" << format << "preferred" << pf;
+			if(!MACHAK && device.isFormatSupported(format)){ use = format; }
+			else if(device.isFormatSupported(f2)){ use = f2; }          // mono 16-bit at the device's own rate (what the macOS build always used)
+			else if(pfok){ use = pf; }                                   // the device's mix format; converted in input_data_received()
+			else { use = format; }
 		}
 		m_srm = (float)use.sampleRate() / 8000.0f;
 		m_inchan = use.channelCount() > 0 ? use.channelCount() : 1;
@@ -148,7 +154,7 @@ void AudioEngine::init()
 		m_in = new QAudioSource(device, use, this);
 		{ int bps = (use.sampleFormat() == QAudioFormat::UInt8) ? 1 : ((use.sampleFormat() == QAudioFormat::Int16) ? 2 : 4); m_in->setBufferSize(sr * m_inchan * bps / 10); }   // ~100 ms
 		m_inname = device.description();
-        qDebug() << "Capture device: " <<  device.description() << " SR: " << sr << " ch: " << m_inchan << " fmt: " << (int)m_infmt << " resample factor: " << m_srm;
+        qDebug() << "audio init: capture device ready"; qDebug() << "Capture device: " <<  device.description() << " SR: " << sr << " ch: " << m_inchan << " fmt: " << (int)m_infmt << " resample factor: " << m_srm;
 
 	}
 }
