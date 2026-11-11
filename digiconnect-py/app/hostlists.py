@@ -5,27 +5,28 @@ files Pi-Star / WPSD use) and cached in the data folder, so DigiConnect works of
 last copy. Nothing here is guessed: an entry exists only if a downloaded file contains it.
 The parsers are deliberately tolerant (';', TAB or blanks as separators) because the files
 differ slightly between mirrors; lines they cannot understand are skipped and counted."""
-import json, re, time, threading, urllib.request
+import json, re, time, threading, urllib.request, urllib.error
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-MIRRORS = ["https://hostfiles.w0chp.net/", "https://www.pistar.uk/downloads/", "http://www.pistar.uk/downloads/"]
+UPSTREAM = "http://www.dudetronics.com/ar-dns/"                          # the public host-file site the open-source DV clients use
+PISTAR = ["https://hostfiles.w0chp.net/", "https://www.pistar.uk/downloads/"]   # last resort, Pi-Star / WPSD file names (see `alt` below)
 XLX_API = "https://xlxapi.rlx.lu/api.php?do=GetReflectorList"
 MAX_AGE = 24 * 3600
 MAX_BYTES = 8 * 1024 * 1024
 TIMEOUT = 15
 
-# source key -> (file name, parser, label shown to the user)
+# source key -> (file name on the server / upstream, parser, label shown to the user, Pi-Star file names tried on the Pi-Star mirrors; Pi-Star names its downloads <MODE>_Hosts.txt, e.g. YSF_Hosts.txt, FCS_Hosts.txt)
 SOURCES = {
-    "YSF": ("YSFHosts.txt", "ysf", "YSF reflectors"),
-    "REF": ("DPlus_Hosts.txt", "dstar:REF", "D-Star REF (DPlus)"),
-    "XRF": ("DExtra_Hosts.txt", "dstar:XRF", "D-Star XRF (DExtra)"),
-    "DCS": ("DCS_Hosts.txt", "dstar:DCS", "D-Star DCS"),
-    "XLX": ("XLXHosts.txt", "dstar:XLX", "XLX reflectors"),
-    "DMR": ("DMR_Hosts.txt", "dmr", "DMR masters"),
-    "NXDN": ("NXDNHosts.txt", "num:NXDN", "NXDN talkgroups"),
-    "P25": ("P25Hosts.txt", "num:P25", "P25 talkgroups"),
-    "M17": ("M17Hosts.txt", "m17", "M17 reflectors"),
+    "YSF": ("YSFHosts.txt", "ysf", "YSF reflectors", ["YSF_Hosts.txt"]),
+    "REF": ("dplus.txt", "dstar:REF", "D-Star REF (DPlus)", ["DPlus_Hosts.txt", "DStar_Hosts.json"]),
+    "XRF": ("dextra.txt", "dstar:XRF", "D-Star XRF (DExtra)", ["DExtra_Hosts.txt", "DStar_Hosts.json"]),
+    "DCS": ("dcs.txt", "dstar:DCS", "D-Star DCS", ["DCS_Hosts.txt", "DStar_Hosts.json"]),
+    "XLX": ("XLXHosts.txt", "dstar:XLX", "XLX reflectors", ["XLX_Hosts.txt"]),
+    "DMR": ("DMRHosts.txt", "dmr", "DMR masters", ["DMR_Hosts.txt"]),
+    "NXDN": ("NXDNHosts.txt", "num:NXDN", "NXDN talkgroups", ["NXDN_Hosts.txt"]),
+    "P25": ("P25Hosts.txt", "num:P25", "P25 talkgroups", ["P25_Hosts.txt"]),
+    "M17": ("M17Hosts-full.csv", "m17", "M17 reflectors", ["M17_Hosts.txt"]),
 }
 DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000}
 DEFAULT_MODULE = {"REF": "C", "XRF": "C", "DCS": "A", "XLX": "A", "M17": "A"}
@@ -39,6 +40,7 @@ def _tokens(line: str) -> list[str]:
     if not line or line.startswith("#"): return []
     if ";" in line: parts = line.split(";")
     elif "\t" in line: parts = line.split("\t")
+    elif "," in line: parts = line.split(",")                 # M17Hosts-full.csv
     else: parts = line.split()
     return [p.strip() for p in parts]
 
@@ -74,13 +76,27 @@ def parse_ysf(text: str) -> list[dict]:
     return out
 
 
+def _parse_dstar_json(text: str, proto: str) -> list[dict]:
+    out = []
+    try: items = json.loads(text).get("reflectors", [])
+    except (ValueError, AttributeError): return out
+    for r in items:
+        if not isinstance(r, dict) or str(r.get("reflector_type", "")).upper() != proto: continue
+        ref = str(r.get("name", "")).strip().upper(); host = str(r.get("ipv4") or r.get("host") or "").strip()
+        if not re.match(r"^[A-Z0-9]{3,8}$", ref) or not _HOST.match(host): continue
+        mod = DEFAULT_MODULE[proto]
+        out.append(_entry(proto, f"{ref} {mod}", ref, f"{ref} · module {mod} · {proto}", host, DEFAULT_PORT[proto]))
+    return out
+
+
 def parse_dstar(text: str, proto: str) -> list[dict]:
+    if text.lstrip().startswith("{"): return _parse_dstar_json(text, proto)
     out = []
     for line in text.splitlines():
         tok = _tokens(line)
         if len(tok) < 2: continue
         ref = tok[0].upper()
-        if not re.match(rf"^{proto}[A-Z0-9]{{1,6}}$", ref): continue
+        if not re.match(r"^[A-Z0-9]{3,8}$", ref) or (proto == "XLX" and not ref.startswith("XLX")): continue
         hi = _host_index(tok)
         if hi is None: continue
         mod = DEFAULT_MODULE[proto]
@@ -203,28 +219,43 @@ class HostLists:
         return " · ".join(f"{SOURCES[k][2]} {v}" for k, v in n.items() if v) or "no lists downloaded yet"
 
     # ---- download ---------------------------------------------------------
+    @staticmethod
+    def candidates(key: str, mirrors=None) -> list[str]:
+        fname, _, _, alt = SOURCES[key]
+        if mirrors: return [m + fname for m in mirrors]            # tests / custom mirrors
+        c = [UPSTREAM + fname]
+        for a in alt: c += [m + a for m in PISTAR]
+        return c
+
     def download(self, mirrors=None, xlx_api=XLX_API) -> tuple[int, list[str]]:
-        """Downloads every list (several mirrors per file). Keeps the old copy of any list that fails.
-        Returns (number of entries, problems)."""
-        mirrors = mirrors or MIRRORS
+        """Downloads the worldwide lists: the public host-file site first, then Pi-Star mirrors.
+        A host that cannot be reached at all is skipped for the rest of the run (no waiting 15 s per file when offline).
+        Keeps the old copy of any list that fails. Returns (number of entries, problems)."""
+        from urllib.parse import urlparse
         old: dict[str, list[dict]] = {}
         for e in self.entries: old.setdefault(e["proto"], []).append(e)
         new, status, problems = {}, {}, []
-        for key, (fname, kind, label) in SOURCES.items():
-            got, err = None, ""
-            for m in mirrors:
+        dead: set[str] = set()
+        for key, (fname, kind, label, _alt) in SOURCES.items():
+            got, errs = None, []
+            for url in self.candidates(key, mirrors):
+                host = urlparse(url).netloc
+                if host in dead: errs.append(f"{host}: unreachable"); continue
                 try:
-                    es = parse(kind, fetch(m + fname))
-                    if es: got = es; break
-                    err = f"{fname}: no usable lines"
+                    es = parse(kind, fetch(url))
+                    if es: got = es; status[key] = f"ok {len(es)} · {host}"; break
+                    errs.append(f"{host}: no usable lines")
+                except urllib.error.HTTPError as ex:
+                    errs.append(f"{host}: HTTP {ex.code}")
                 except Exception as ex:
-                    err = f"{fname}: {ex}"
+                    dead.add(host); errs.append(f"{host}: {getattr(ex, 'reason', ex)}")
             if got is None:
-                problems.append(f"{label}: {err or 'not available'}")
+                err = " | ".join(errs) or "not available"
+                problems.append(f"{label}: {err}")
                 status[key] = "failed: " + err
                 if key in old: new[key] = old[key]
             else:
-                new[key] = got; status[key] = f"ok {len(got)}"
+                new[key] = got
         if xlx_api:                       # XLX country/description from the XLX API; hosts file stays the base
             try:
                 api = {e["id"].split()[0]: e for e in parse_xlx_api(fetch(xlx_api))}

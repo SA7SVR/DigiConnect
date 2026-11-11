@@ -96,7 +96,7 @@ def test_download_from_server_end_to_end(tmp_path, server):
     (tmp_path / "data").mkdir(); root = tmp_path / "upd"; st = Store(tmp_path / "data"); u = U.Updater(st, root, base + "/manifest.php"); states = []; u.changed.connect(lambda s, m: states.append((s, m)))
     u.check(); assert _wait(app, lambda: u.state == "ready"), states
     assert u.pending == "2.0.7" and bootstrap.current(root)["version"] == "2.0.7" and ("downloading", "2.0.7") in states
-    q = state["hits"][0]; assert "id=" in q and "v=2.0.0" in q and "shell=2.0.0" in q and "os=" in q
+    q = state["hits"][0]; assert "id=" in q and f"v={bootstrap.BASE_VERSION}" in q and "shell=2.0.0" in q and "os=" in q
     # next check: the same version is not downloaded again
     n = len(state["hits"]); u.check(); assert _wait(app, lambda: u.state == "uptodate") and not any("DigiConnect-2.0.7" in h for h in state["hits"][n:])
     # a package that needs a newer shell is announced, not installed

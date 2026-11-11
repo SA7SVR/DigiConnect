@@ -1,7 +1,9 @@
 ; Inno Setup script — expects the app folder in ..\dist\DigiConnect (with engine\ inside)
 [Setup]
 AppName=DigiConnect
-AppVersion=0.2
+AppVersion=2.0.0
+SetupIconFile=..\assets\DigiConnect.ico
+UninstallDisplayIcon={app}\DigiConnect.exe
 AppPublisher=HELLAS Zone (SA7SVR)
 DefaultDirName={autopf}\DigiConnect
 DefaultGroupName=DigiConnect

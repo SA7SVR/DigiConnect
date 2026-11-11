@@ -21,6 +21,8 @@ XLX = "XLX001;xlx001.example.org;4\nXLXQRZ;xlxqrz.example.gr;\n"
 NXDN = "# nxdn\n65000 nxdn.example.org 41400\n10200;nxdn2.example.org;41401\nbad\n"
 P25 = "10100 p25.example.org 41000\n10200 192.0.2.7\n"
 M17 = "M17-DEU  m17-deu.example.org  17000\nM17-USA  203.0.113.5\nfoo bar\n"
+M17CSV = "# name,?,host,?,port\nM17-DEU,x,m17-deu.example.org,y,17000\nM17-USA,x,203.0.113.5,y,17001\nbad,line\n"
+DSJSON = '{"reflectors":[{"name":"REF001","reflector_type":"REF","ipv4":"1.2.3.4"},{"name":"XRF002","reflector_type":"XRF","ipv4":"5.6.7.8"},{"name":"DCS003","reflector_type":"DCS","ipv4":"x"}]}'
 DMR = ("# name\n"
        "BM_Greece_202\t0\t0\t0\t0\tgreece.master.example.net\tpassw0rd\t62031\n"
        "BM_United_States_3101\t0\t0\t0\t0\t3101.master.example.net\tpassw0rd\t62031\n"
@@ -34,7 +36,7 @@ def test_parsers():
     assert y[0]["host"] == "ysf.example.gr" and y[0]["port"] == 42000
     assert y[1]["host"] == "dx.example.gr" and y[1]["port"] == 42001                          # a dotted word in the description is not the host
     assert y[2]["host"] == "93.184.216.34"
-    d = H.parse_dstar(DPLUS, "REF"); assert [(e["id"], e["host"], e["port"]) for e in d] == [("REF001 C", "1.2.3.4", 20001), ("REF030 C", "ref030.example.org", 20001)]
+    d = H.parse_dstar(DPLUS, "REF"); assert [(e["id"], e["host"], e["port"]) for e in d] == [("REF001 C", "1.2.3.4", 20001), ("REF030 C", "ref030.example.org", 20001), ("XYZ999 C", "9.9.9.9", 20001)]
     x = H.parse_dstar(DEXTRA, "XRF"); assert x[1]["host"] == "5.6.7.8" and x[1]["port"] == 30001   # default port when the file has none
     assert H.parse_dstar(DCS, "DCS")[0]["host"] == "dcs001.example.com"
     assert [e["id"] for e in H.parse_dstar(XLX, "XLX")] == ["XLX001 A", "XLXQRZ A"]
@@ -43,13 +45,16 @@ def test_parsers():
     nx = H.parse_numeric(NXDN, "NXDN"); assert [(e["id"], e["host"], e["port"]) for e in nx] == [("65000", "nxdn.example.org", 41400), ("10200", "nxdn2.example.org", 41401)]
     p = H.parse_numeric(P25, "P25"); assert p[1]["host"] == "192.0.2.7" and p[1]["port"] == 41000 and p[0]["net"] == "P25"
     m7 = H.parse_m17(M17); assert [(e["id"], e["port"]) for e in m7] == [("M17-DEU A", 17000), ("M17-USA A", 17000)]
+    m7c = H.parse_m17(M17CSV); assert [(e["id"], e["host"], e["port"]) for e in m7c] == [("M17-DEU A", "m17-deu.example.org", 17000), ("M17-USA A", "203.0.113.5", 17001)]
+    dj = H.parse_dstar(DSJSON, "REF"); assert [(e["id"], e["host"], e["port"]) for e in dj] == [("REF001 C", "1.2.3.4", 20001)] and H.parse_dstar(DSJSON, "XRF")[0]["host"] == "5.6.7.8"
+    assert [e["id"] for e in H.parse_dstar("XLX307\t9.9.9.9\nPY2KEP\tpy.example.org\n", "REF")] == ["XLX307 C", "PY2KEP C"]   # dplus.txt also lists non-REF names
     a = H.parse_xlx_api(XLXAPI); assert {e["id"] for e in a} == {"XLX001 A", "XLX999 A"} and a[0]["country"] == "Germany"
 
 
 @pytest.fixture
 def web(tmp_path):
     root = tmp_path / "www"; root.mkdir()
-    for n, t in {"YSFHosts.txt": YSF, "DPlus_Hosts.txt": DPLUS, "DExtra_Hosts.txt": DEXTRA, "DCS_Hosts.txt": DCS, "XLXHosts.txt": XLX, "DMR_Hosts.txt": DMR, "NXDNHosts.txt": NXDN, "P25Hosts.txt": P25, "M17Hosts.txt": M17, "xlx.xml": XLXAPI}.items():
+    for n, t in {"YSFHosts.txt": YSF, "dplus.txt": DPLUS, "dextra.txt": DEXTRA, "dcs.txt": DCS, "XLXHosts.txt": XLX, "DMRHosts.txt": DMR, "NXDNHosts.txt": NXDN, "P25Hosts.txt": P25, "M17Hosts-full.csv": M17CSV, "xlx.xml": XLXAPI}.items():
         (root / n).write_text(t, encoding="utf-8")
     h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
     class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -78,7 +83,7 @@ def test_download_cache_and_resolve(tmp_path, web):
     # persisted: a new object (a later start of the program, maybe offline) sees the same data
     again = H.HostLists(store.root); assert len(again.entries) == len(hl.entries) and again.find("XRF", "XRF001")["host"] == "xrf001.example.net"
     # one list disappears from the server: the old copy of it is kept, the problem is reported
-    (root / "DCS_Hosts.txt").unlink()
+    (root / "dcs.txt").unlink()
     n2, problems2 = hl.download(mirrors=[base], xlx_api="")
     assert any("DCS" in p for p in problems2) and hl.find("DCS", "DCS001")["host"] == "dcs001.example.com"
     # everything unreachable: nothing is lost

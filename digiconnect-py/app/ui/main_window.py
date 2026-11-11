@@ -15,7 +15,17 @@ from .controls import Dock, Mixer
 from .drawers import SettingsDrawer, QsoDrawer
 from pathlib import Path
 
-LOGO = Path(__file__).resolve().parents[2] / "assets" / "logo.png"
+def _logo() -> Path:
+    """The logo ships next to the program (PyInstaller: <install>/assets). After an automatic update the code runs from the
+    update folder, which has no assets, so look in every place the program could be installed."""
+    import sys
+    here = Path(__file__).resolve().parents[2]
+    for base in (here, Path(getattr(sys, "_MEIPASS", here)), Path(sys.executable).resolve().parent, Path(sys.executable).resolve().parent / "_internal"):
+        if (base / "assets" / "logo.png").exists(): return base / "assets" / "logo.png"
+    return here / "assets" / "logo.png"
+
+
+LOGO = _logo()
 RAIL = [("favorites", "grid", "My favorites"), ("newqso", "plus", "New QSO"), ("log", "doc", "QSO log"), ("analysis", "bars", "Log analysis"),
         ("heard", "clock", "Last heard"), ("mixer", "headphones", "Audio mixer"), ("rec", "circle", "Recordings")]
 
