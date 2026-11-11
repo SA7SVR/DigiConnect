@@ -103,6 +103,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Use Xcode 16 (Qt 6.8 links the AGL framework, removed from the newest SDK)
+        run: |
+          X=$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1); echo "Using $X"
+          sudo xcode-select -s "$X"
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with: { version: '6.8.1', modules: 'qtmultimedia qtserialport', cache: true }
