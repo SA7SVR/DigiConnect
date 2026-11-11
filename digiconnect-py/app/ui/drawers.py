@@ -47,7 +47,10 @@ class SettingsDrawer(W.QFrame):
         self.slot = W.QComboBox(); self.slot.addItems(["1", "2"]); self.slot.setCurrentText(str(s["slot"])); r.addWidget(field("Time slot", self.slot)); l2.addLayout(r)
         l2.addWidget(field("Color code", le("cc"))); self.dpw = W.QLineEdit(); self.dpw.setEchoMode(W.QLineEdit.EchoMode.Password); l2.addWidget(field("Password", self.dpw))
         l2.addWidget(label("Passwords are kept for the current session only in this build (not written to disk).", muted=True))
-        l2.addWidget(label("These fields are for the DMR master only. Every other station shows its own server and port on its page (Selected station › Server).", muted=True)); l2.addStretch()
+        l2.addWidget(label("These fields are for the DMR master only. Every other station shows its own server and port on its page (Selected station › Server).", muted=True))
+        l2.addWidget(label("SERVER LISTS", section=True)); self.lists = label("", muted=True); self.lists.setWordWrap(True); self.lists.setTextFormat(Qt.TextFormat.RichText); l2.addWidget(self.lists)
+        self.dl = button("Download the server lists now"); l2.addWidget(self.dl, 0, Qt.AlignmentFlag.AlignLeft); self.dl.clicked.connect(lambda: (ctx.refresh_hosts(True), self._lists_text()))
+        ctx.hosts_changed.connect(self._lists_text); self._lists_text(); l2.addStretch()
         # -- Audio
         p3 = W.QWidget(); l3 = vbox(p3, m=(16, 4, 16, 4), s=8)
         self.audio = AudioBlock(ctx); l3.addWidget(self.audio)
@@ -75,6 +78,11 @@ class SettingsDrawer(W.QFrame):
         self.stack.setCurrentIndex(i)
         for k, b in self.tb.items(): b.setChecked(k == i)
     def open_tab(self, i): self._tab(i)
+
+    def _lists_text(self):
+        """What was really downloaded for every mode (or why not): the user can see at a glance which lists are missing."""
+        rows = self.ctx.hosts.status_lines()
+        self.lists.setText("<br>".join(f"{'✓' if ok else '✗'} <b>{tr(lab)}</b> — {txt}" for lab, ok, txt in rows))
 
     def _choose(self):
         d = W.QFileDialog.getExistingDirectory(self, tr("Recordings folder"))

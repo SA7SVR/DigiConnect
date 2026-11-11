@@ -1,0 +1,21 @@
+﻿Installed. What to do now
+=========================
+
+1. Open DigiConnect and enter your callsign in Settings. For DMR enter your
+   DMR ID and the master password; for NXDN enter your NXDN ID.
+2. Choose microphone and speakers (Settings > Audio) and press "Test microphone".
+   If the level is low, raise "Microphone volume".
+3. Choose a network (C4FM, D-STAR, DMR...), pick a station from the list and press Listen.
+
+Updates
+  New versions download by themselves and start at the next launch, without a new
+  installation. The "Updates" window shows the version, what is new and the progress.
+  When a new installer is needed (an engine change) the program tells you.
+
+If something does not work
+  The program writes what it really did into digiconnect.log
+  (inside the DigiConnect data folder under %APPDATA%; type %APPDATA% in Explorer and search for "digiconnect.log"). Send us that file together with your description.
+
+Licences
+  DigiConnect contains open-source parts with their own licences; see the LICENSES
+  folder inside the installation folder.

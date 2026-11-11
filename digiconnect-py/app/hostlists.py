@@ -29,7 +29,7 @@ SOURCES = {
     "M17": ("M17Hosts-full.csv", "m17", "M17 reflectors", ["M17_Hosts.txt"]),
     "TG": ("TalkGroups.json", "tg", "DMR talkgroups", []),          # BrandMeister talkgroup catalogue (public API, see FULL_URL)
 }
-FULL_URL = {"TG": "https://api.brandmeister.network/v2/talkgroup"}
+FULL_URL = {"TG": ["https://api.brandmeister.network/v2/talkgroup", "https://www.pistar.uk/downloads/TGList_BM.txt", "https://hostfiles.w0chp.net/TGList_BM.txt"]}
 DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000, "TG": 0}
 DEFAULT_MODULE = {"REF": "C", "XRF": "C", "DCS": "A", "XLX": "A", "M17": "A"}
 NET_OF = {"YSF": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR", "NXDN": "NXDN", "P25": "P25", "M17": "M17", "TG": "DMR"}
@@ -254,6 +254,16 @@ class HostLists:
         e = self._index.get((proto, ref.strip().upper() if proto != "YSF" else ref.strip()))
         return dict(host=e["host"], port=e["port"]) if e else None
 
+    def status_lines(self) -> list[tuple[str, bool, str]]:
+        """[(label, ok, text)] for every list: how many entries, where from, or why it failed. Shown to the user (Settings › Radio networks)."""
+        out = []
+        for k, (_f, _kind, label, _alt) in SOURCES.items():
+            n = sum(1 for e in self.entries if e["proto"] == k); st = self.status.get(k, "")
+            if st.startswith("failed"): out.append((label, False, (f"{n} entries (saved copy) · " if n else "") + st[len("failed: "):]))
+            elif n: out.append((label, True, f"{n} entries" + (" · " + st.split(" · ", 1)[1] if " · " in st else "")))
+            else: out.append((label, False, "not downloaded yet"))
+        return out
+
     def summary(self) -> str:
         n = {k: sum(1 for e in self.entries if e["proto"] == k) for k in SOURCES}
         return " · ".join(f"{SOURCES[k][2]} {v}" for k, v in n.items() if v) or "no lists downloaded yet"
@@ -263,7 +273,7 @@ class HostLists:
     def candidates(key: str, mirrors=None) -> list[str]:
         fname, _, _, alt = SOURCES[key]
         if mirrors: return [m + fname for m in mirrors]            # tests / custom mirrors
-        if key in FULL_URL: return [FULL_URL[key]]
+        if key in FULL_URL: return list(FULL_URL[key])
         c = [UPSTREAM + fname]
         for a in alt: c += [m + a for m in PISTAR]
         return c

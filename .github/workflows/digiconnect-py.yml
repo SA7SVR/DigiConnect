@@ -50,7 +50,10 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (!(Test-Path $iscc)) { choco install innosetup -y --no-progress }
-          & $iscc packaging\DigiConnect.iss
+          $ver = (Select-String -Path app\version.py -Pattern 'APP_VERSION\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          Write-Host "Installer version $ver"
+          & $iscc "/DAppVer=$ver" packaging\DigiConnect.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
       - uses: actions/upload-artifact@v4
         with: { name: DigiConnect-Windows-Setup, path: digiconnect-py/installer_out/DigiConnect-Setup.exe }
       - uses: actions/upload-artifact@v4

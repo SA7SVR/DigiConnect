@@ -197,11 +197,19 @@ class Ctx(QtCore.QObject):
             for r in self.rules.rx:
                 if r.handle in ln.rx: r.reports_traffic = True
             src = e.get("src") or e.get("callsign") or "?"
-            if st == "new": from . import diag; diag.log(f"heard {src} -> {e.get('dst', '')} via {e.get('gw', '')} on {ln.target.net}:{ln.target.id}")
-            if st == "new" or not self.last_heard or self.last_heard[0].get("stream_src") != src:
-                self.last_heard.insert(0, dict(src=src, dst=e.get("dst", ""), gw=e.get("gw", ""), net=ln.target.net, target=ln.target.id,
-                                              stream_src=src, ts=self.utc_now()))
-                del self.last_heard[30:]
+            dst = (e.get("dst", "") or "").strip()
+            if not dst.strip("*"): dst = ""                      # YSF sends '**********' = 'everyone': show nothing instead of stars
+            now = self.utc_now()
+            cur = next((h for h in self.last_heard[:6] if h["net"] == ln.target.net and h["src"] == src), None)
+            if cur is not None and (now - cur["last"]).total_seconds() < 4:
+                cur["last"] = now                                  # same transmission goes on (the engine reports every frame) -> one row
+                if dst and not cur["dst"]: cur["dst"] = dst
+            else:
+                from . import diag; diag.log(f"heard {src} -> {dst} via {e.get('gw', '')} on {ln.target.net}:{ln.target.id}")
+                mine = (self.store.settings.get("callsign") or "").strip().upper()
+                self.last_heard.insert(0, dict(src=src, dst=dst, gw=(e.get("gw", "") or "").strip(), net=ln.target.net, target=ln.target.id,
+                                              stream_src=src, ts=now, last=now, me=bool(mine) and mine in src.upper().replace(" ", "").split("/")))
+                del self.last_heard[60:]
         elif st in ("end", "lost"):
             for r in self.rules.rx:
                 if r.handle in ln.rx: r.reports_traffic = False

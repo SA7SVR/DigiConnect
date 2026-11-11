@@ -120,3 +120,45 @@ def test_shell_base_version_matches_source_tree():
 def test_run_py_imports_nothing_from_app_before_activate():
     src = (ROOT / "run.py").read_text(); head = src.split("def main")[0]
     assert "import app" not in head and "from app" not in head
+
+
+def test_notes_for_formats():
+    assert U.notes_for({"notes": "- a\n• b\n\nc"}) == ["a", "b", "c"]
+    assert U.notes_for({"notes": ["x", " y "]}) == ["x", "y"]
+    assert U.notes_for({"notes": {"en": "E", "el": "Ελ"}}, "Ελληνικά") == ["Ελ"]
+    assert U.notes_for({"notes": {"en": "E", "el": "Ελ"}}, "English") == ["E"]
+    assert U.notes_for({}) == []
+
+
+def test_progress_and_steps_in_a_real_download(tmp_path, monkeypatch):
+    """A real local HTTP server: the updater reports percent while downloading and passes verifying -> installing -> ready; the dialog shows notes and size."""
+    blob = pkg("2.7.0", extra={"assets/big.bin": "x" * 400000})
+    srv = tmp_path / "srv"; srv.mkdir(); (srv / "p.dcpkg").write_bytes(blob)
+    h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(srv))
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), h); port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    man = {"update": "available", "version": "2.7.0", "min_shell": "2.0.0", "pkg": f"http://127.0.0.1:{port}/p.dcpkg", "size": len(blob), "sha256": hashlib.sha256(blob).hexdigest(), "notes": "- Fix A\n- Fix B"}
+    (srv / "m.json").write_text(json.dumps(man))
+    app = W.QApplication.instance() or W.QApplication([])
+    monkeypatch.setattr(U.net, "context", lambda: None)
+    import urllib.request as ur
+    real = ur.urlopen
+    monkeypatch.setattr(ur, "urlopen", lambda req, timeout=0, context=None: real(req, timeout=timeout))
+    (tmp_path / "data").mkdir(); st = Store(tmp_path / "data")
+    u = U.Updater(st, root=tmp_path / "upd", url=f"http://127.0.0.1:{port}/m.json")
+    states, pcts = [], []
+    u.changed.connect(lambda s, m: states.append(s)); u.progress.connect(pcts.append)
+    u.check()
+    import time
+    t0 = time.time()
+    while u.state not in ("ready", "error") and time.time() - t0 < 20: app.processEvents(); time.sleep(0.02)
+    for _ in range(20): app.processEvents()
+    httpd.shutdown()
+    assert u.state == "ready", (u.state, u.message)
+    assert ["checking", "downloading", "verifying", "installing", "ready"] == [x for i, x in enumerate(states) if i == 0 or states[i - 1] != x]
+    assert pcts and pcts[-1] == 100 and all(0 <= p <= 100 for p in pcts) and pcts == sorted(pcts)
+    assert u.info["version"] == "2.7.0" and u.info["notes"] == ["Fix A", "Fix B"] and u.info["size"] == len(blob)
+    from app.ui.updates_dialog import UpdatesDialog
+    d = UpdatesDialog(u)
+    assert "2.7.0" in d.new.text() and "Fix A" in d.notes.toPlainText() and d.restart.isVisibleTo(d)
+    assert d.steps.text().count("✓") == 4

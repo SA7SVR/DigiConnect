@@ -19,7 +19,10 @@ class _Bus(QtCore.QObject):
 _bus = None
 def bus() -> _Bus:
     global _bus
-    if _bus is None: _bus = _Bus()
+    if _bus is None:
+        # owned by the application object, so Qt deletes it together with the application (a module-level QObject would be
+        # destroyed by Python after QApplication, which crashes the process at exit)
+        _bus = _Bus(W.QApplication.instance())
     return _bus
 
 

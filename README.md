@@ -1,23 +1,17 @@
-# DigiConnect — HELLAS Zone Net
+# DigiConnect — HELLAS Zone
 
-Cross-platform digital-voice client for amateur radio: **DMR, D-Star (REF/XRF/DCS), YSF/C4FM (DN & VW), FCS, P25, NXDN, M17, EchoLink/AllStar**, with a built-in software vocoder (no AMBE dongle required). By **SA7SVR (Panagiotis Tsekouras)**, HELLAS Zone Net.
+Πρόγραμμα για ραδιοερασιτέχνες: ακρόαση (Listen) και ομιλία (Talk) σε δίκτυα ψηφιακής φωνής
+**DMR, D-STAR, C4FM/YSF, NXDN, P25, M17** (EchoLink: προετοιμασμένο, χωρίς σύνδεση ακόμη).
+Συνδέεται σε διακομιστές από δημόσιες λίστες (δεν είναι δεμένο με συγκεκριμένο διακομιστή).
+Συγγραφέας: SA7SVR (Panagiotis Tsekouras), HELLAS Zone Net.
 
-Server/host lists are pulled from **https://hellaszone.com/digiconnect/hosts/pub/**, with the HELLAS Zone reflectors listed first and auto-updated.
+Όλος ο κώδικας είναι στον φάκελο [`digiconnect-py/`](digiconnect-py) (περιγραφή, build και δοκιμές στο README εκεί).
 
-## Ready-made downloads
-Every push to `main` builds binaries for **Linux, Windows and macOS (Intel + Apple Silicon)** automatically.
-- Builds appear under the **Actions** tab → open the latest run → **Artifacts**.
-- Tag a version (e.g. `v1.0.0`) and a **Release** with attached files is created automatically.
+## Λήψη
+GitHub → **Actions** → τελευταίο πράσινο τρέξιμο του «Build DigiConnect» → **Artifacts**:
+`DigiConnect-Windows-Setup` (installer), `DigiConnect-Windows-portable`, `DigiConnect-Linux`,
+`DigiConnect-macOS-Intel`, `DigiConnect-macOS-AppleSilicon`, `DigiConnect-update-package-dcpkg` (αυτόματη ενημέρωση).
 
-To start a build by hand: **Actions → Build DigiConnect → Run workflow**.
-
-## Building locally
-Requires **Qt ≥ 6.5** (Core, Gui, Multimedia, Network, Quick, QuickControls2, SerialPort). No other external dependencies.
-
-```
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-```
-
-## Credits & licence
-DigiConnect is built on the **DroidStar** engine by Doug McLain (AD8DP) — https://github.com/nostar/DroidStar — and is released under the **GNU General Public License v3** (see `LICENSE`). All original DroidStar copyright notices are retained in the source files. The DigiConnect name, branding and default server configuration are by SA7SVR / HELLAS Zone Net.
+## Άδεια
+GNU GPL v3 (βλ. `LICENSE`). Η μηχανή πρωτοκόλλων περιέχει κώδικα του DroidStar (Doug McLain, AD8DP) και άλλων· οι σημειώσεις
+πνευματικών δικαιωμάτων είναι στα αρχεία του κώδικα και στο `digiconnect-py/LICENSES`.

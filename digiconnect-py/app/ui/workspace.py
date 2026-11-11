@@ -230,7 +230,8 @@ class Workspace(W.QWidget):
         heard = list(self.ctx.last_heard)                    # every network, newest first (a station heard on C4FM also shows on the DMR page)
         self.lh_empty.setVisible(not heard)
         if heard:
-            self.lh_list.setText("<br>".join(f"<b>{x['src']}</b> → {x['dst'] or x['target']} <span style='color:{C['muted']}'>{x['net']} · {x['ts']:%H:%M:%S} UTC</span>" for x in heard[:12]))
+            from .heardpage import html_rows
+            self.lh_list.setText(html_rows(heard, C['muted']))
             self.lh_list.setTextFormat(Qt.TextFormat.RichText)
         else:
             self.lh_list.setText("Waiting for data")

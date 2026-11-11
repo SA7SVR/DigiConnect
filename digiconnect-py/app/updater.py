@@ -23,6 +23,11 @@ MAX_PKG = 64 * 1024 * 1024
 class UpdateError(Exception): pass
 
 
+def store_lang(store) -> str:
+    try: return str(store.settings.get("language") or "")
+    except Exception: return ""
+
+
 def running_version(root: Path) -> str:
     """The version of the code that is executing now: the unpacked update when this process was started from it, else the shell's own."""
     f = (sys.modules.get("app").__file__ or "") if "app" in sys.modules else ""
@@ -30,8 +35,20 @@ def running_version(root: Path) -> str:
     return c["version"] if c and str(root / c["dir"]) in f and bootstrap.newer(c["version"], APP_VERSION) else APP_VERSION
 
 
-def install_package(blob: bytes, root: Path, expect_sha: str = "", expect_size: int = 0) -> dict:
-    """Validates and unpacks a .dcpkg. Returns {'version','dir','min_shell'} (also written to current.json). Raises UpdateError."""
+def notes_for(m: dict, lang: str = "") -> list:
+    """The release notes of a manifest as a list of lines. 'notes' may be a string, a list, or {language: string|list}; nothing is invented."""
+    n = m.get("notes")
+    if isinstance(n, dict):
+        k = next((k for k in n if lang and str(k).lower() in (lang.lower(), lang[:2].lower(), "el" if lang.lower().startswith(("ελ", "gr")) else "")), None)
+        n = n.get(k) if k is not None else (n.get("en") or n.get("English") or next(iter(n.values()), ""))
+    if isinstance(n, str): n = [x.strip(" -•\t") for x in n.replace("\r", "").split("\n")]
+    return [str(x).strip() for x in (n or []) if str(x).strip()]
+
+
+def install_package(blob: bytes, root: Path, expect_sha: str = "", expect_size: int = 0, on_step=None) -> dict:
+    """Validates and unpacks a .dcpkg. Returns {'version','dir','min_shell'} (also written to current.json). Raises UpdateError.
+    on_step('verifying' | 'installing') is called before each phase."""
+    if on_step: on_step("verifying")
     if expect_size and len(blob) != expect_size: raise UpdateError("size does not match the manifest")
     if expect_sha and hashlib.sha256(blob).hexdigest().lower() != expect_sha.lower(): raise UpdateError("SHA-256 does not match the manifest")
     try: pkg = json.loads(gzip.decompress(blob).decode("utf-8"))
@@ -40,6 +57,7 @@ def install_package(blob: bytes, root: Path, expect_sha: str = "", expect_size: 
     ver = str(pkg.get("version") or ""); files = pkg.get("files")
     if not ver or not all(c.isdigit() or c == "." for c in ver) or not isinstance(files, dict) or "app/__init__.py" not in files:
         raise UpdateError("package is incomplete")
+    if on_step: on_step("installing")
     out = {}
     for name, b64 in files.items():
         parts = Path(name).parts
@@ -63,13 +81,18 @@ def install_package(blob: bytes, root: Path, expect_sha: str = "", expect_size: 
 
 class Updater(QtCore.QObject):
     changed = Signal(str, str)           # state, message
+    progress = Signal(int)               # download percent 0..100 (-1 = size unknown)
     _done = Signal(str, str)
+    _pct = Signal(int)
 
     def __init__(self, store, root: Path | None = None, url: str | None = None):
         super().__init__()
         self.store, self.root = store, root or bootstrap.updates_root()
         self.url = url or store.settings.get("update_url") or DEFAULT_URL
         self.state, self.message, self.pending = "idle", "", None     # pending = version waiting for a restart
+        self.info = {}                    # what the server offers: version, size, notes (list of lines), pkg; empty until a check found something
+        self.pct = 0
+        self._pct.connect(self._on_pct)
         self.running = running_version(self.root)
         self._busy = False; self._done.connect(self._finish)
         self._timer = QtCore.QTimer(self); self._timer.timeout.connect(lambda: self.check()); self._every = 6 * 3600
@@ -104,18 +127,24 @@ class Updater(QtCore.QObject):
             if m.get("update") != "available" or not bootstrap.newer(str(m.get("version", "0")), self.running if not self.pending else self.pending):
                 self._done.emit("uptodate", ""); return
             ver = str(m["version"])
+            self.info = {"version": ver, "size": int(m.get("size") or 0), "notes": notes_for(m, store_lang(self.store)), "min_shell": str(m.get("min_shell") or "")}
             if bootstrap.vtuple(m.get("min_shell") or "0") > bootstrap.vtuple(bootstrap.SHELL_VERSION):
                 self._done.emit("needs_installer", ver); return
             self._done.emit("downloading", ver)
-            blob = net.get(m["pkg"], 60, MAX_PKG)
-            cur = install_package(blob, self.root, m.get("sha256", ""), int(m.get("size") or 0))
-            notes = (m.get("notes") or {})
+            blob = net.get(m["pkg"], 60, MAX_PKG, progress=lambda d, t: self._pct.emit(int(d * 100 / t) if t else (int(d * 100 / self.info["size"]) if self.info["size"] else -1)))
+            self._pct.emit(100)
+            cur = install_package(blob, self.root, m.get("sha256", ""), int(m.get("size") or 0), on_step=lambda st: self._done.emit(st, ver))
             self._done.emit("ready", cur["version"])
         except UpdateError as e: self._done.emit("error", f"update rejected: {e}")
         except Exception as e: self._done.emit("error", f"{type(e).__name__}: {e}")
 
+    def _on_pct(self, p):
+        self.pct = p; self.progress.emit(p)
+
     def _finish(self, state, msg):
-        if state == "downloading": self._set(state, msg); return
+        if state in ("downloading", "verifying", "installing"):
+            if state == "downloading": self.pct = 0
+            self._set(state, msg); return
         self._busy = False
         if state == "ready": self.pending = msg
         self._set(state, msg)

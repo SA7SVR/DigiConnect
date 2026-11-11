@@ -1,0 +1,25 @@
+﻿DigiConnect 2.0.2 — HELLAS Zone (SA7SVR)
+=====================================
+
+What it is
+  A program for radio amateurs that connects to digital-voice networks
+  (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
+  You connect to any server in the world from the public lists.
+
+What is new in this version (2.0.2)
+  • Microphone: the very low level on C4FM is fixed. New "Microphone volume"
+    setting (0-300%) and real detection of the microphone's sample format.
+  • "Refresh devices", "Test microphone", "Test speakers" work and show a result
+    (signal level or a test tone).
+  • Listen volume and mute now really change the sound you hear.
+  • Every station shows the host and port of its server, read from its list;
+    you can change them and go back to the list value.
+  • Lists: DMR talkgroups by number, a country selector, and the download status of
+    each list in Settings. No entry is invented - everything comes from a real list.
+  • "Last heard": a structured list with UTC time, station, destination, network, duration.
+  • Greek in more places in the program.
+  • Updates window with version, what is new, size and download progress.
+
+Before you continue
+  If DigiConnect is open, Setup will close it. Your settings, favorites and
+  history are NOT deleted.

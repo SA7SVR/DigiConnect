@@ -65,6 +65,7 @@ class MainWindow(W.QMainWindow):
         th.addStretch()
         self.clock = label(""); self.clock.setAlignment(Qt.AlignmentFlag.AlignRight); th.addWidget(self.clock)
         self.callsign = label(""); self.callsign.setProperty("tone", "accent"); th.addWidget(self.callsign)
+        self.upd_btn = button("New version", "primary", "download"); self.upd_btn.setVisible(False); self.upd_btn.clicked.connect(self.show_updates); th.addWidget(self.upd_btn)
         self.theme_btn = button("", ""); th.addWidget(self.theme_btn); self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top); col.addWidget(top)
         # head (page title + tabs) – used by workspace pages
         self.head = W.QWidget(); hv = vbox(self.head, m=(24, 14, 24, 8), s=8)
@@ -153,6 +154,9 @@ class MainWindow(W.QMainWindow):
         u.changed.connect(self._upd_changed)
 
     def _upd_changed(self, state, msg):
+        u = self.updater; self.upd_btn.setVisible(bool(u.pending) or state == "needs_installer")
+        if u.pending: self.upd_btn.setText(tr("New version") + " " + str(u.pending))
+        elif state == "needs_installer": self.upd_btn.setText(tr("New version") + " " + str(msg))
         if state == "ready": self.ctx.toast.emit(tr("Update {} is ready. It starts the next time DigiConnect is opened (Updates › Restart now).").format(msg))
         elif state == "needs_installer": self.ctx.toast.emit(tr("Version {} needs a new full installer (engine change). Download it from the DigiConnect website.").format(msg))
         if self._upd_dlg is not None: self._upd_dlg.refresh()
