@@ -48,7 +48,8 @@ def test_listen_and_tx_through_real_engine(tmp_path, reflector):
     eng.servers.hosts._set([dict(net="C4FM", proto="YSF", id="00006", name="Test", sub="", activity="", host="127.0.0.1", port=PORT, country="")], {}, 1e12)
     ctx.toggle_listen()
     assert ctx.rules.rx, "receiver should be registered"
-    assert pump(app, lambda: reflector["ysfp"] > 0, 30), "engine never contacted the reflector"      # a loaded CI runner starts the engine slowly
+    from app import diag
+    assert pump(app, lambda: reflector["ysfp"] > 0, 30), "engine never contacted the reflector; log:\n" + diag.tail(60)      # a loaded CI runner starts the engine slowly
     assert pump(app, lambda: eng.links and next(iter(eng.links.values())).state == "connected", 20)
     # Connect (TX) on the same destination reuses the same engine process
     ctx.toggle_tx()
