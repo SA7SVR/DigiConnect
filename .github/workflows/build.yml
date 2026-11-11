@@ -62,20 +62,29 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-      - name: Install Qt
+      # Build with MinGW (GCC): the bundled codec2 uses C99 variable-length arrays,
+      # which GCC accepts but MSVC rejects. MinGW avoids patching the third-party DSP code.
+      - name: Install Qt (MinGW)
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.1'
           host: windows
-          arch: win64_msvc2022_64
+          target: desktop
+          arch: win64_mingw
           modules: 'qtmultimedia qtserialport'
+          tools: 'tools_mingw1310'
           cache: true
-      - name: Enable MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Put MinGW on PATH
+        shell: bash
+        run: |
+          GCC=$(find "$IQTA_TOOLS" -name gcc.exe 2>/dev/null | head -1)
+          echo "found gcc: $GCC"
+          echo "$(dirname "$GCC")" >> "$GITHUB_PATH"
       - name: Build
         shell: bash
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
           cmake --build build --parallel
       - name: Deploy Qt runtime
         shell: bash
