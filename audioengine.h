@@ -61,6 +61,9 @@ public:
 	uint16_t level() { return m_maxlevel; }
 signals:
 
+private slots:
+	void input_data_received();   // standard Qt pull-model capture (replaces non-standard callback API)
+
 private:
 	QString m_outputdevice;
 	QString m_inputdevice;
@@ -72,6 +75,7 @@ private:
 	QAudioSource *m_in;
 #endif
 	QIODevice *m_outdev;
+	QIODevice *m_indev = nullptr;
 	QQueue<int16_t> m_audioinq;
 	uint16_t m_maxlevel;
 	bool m_agc;

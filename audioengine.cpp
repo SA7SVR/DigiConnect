@@ -152,22 +152,29 @@ void AudioEngine::start_capture()
     configureiOSAudioSession();
 #endif
     //m_in = new QAudioSource(m_indevice, m_informat, this);
-    m_in->start([this](QSpan<const int16_t> buffer) {
-        if(MACHAK){
-            std::vector<int16_t> samples;
-            for (int16_t sample : buffer) {
-                samples.push_back(sample);
-            }
-            for(float i = 0; i < (float)samples.size(); i += m_srm){
-                m_audioinq.enqueue(samples[i]);
-            }
+    // Standard Qt pull-model capture: start() returns a QIODevice, read samples on readyRead.
+    m_indev = m_in->start();
+    if(m_indev != nullptr){
+        connect(m_indev, &QIODevice::readyRead, this, &AudioEngine::input_data_received);
+    }
+}
+
+void AudioEngine::input_data_received()
+{
+    if(m_indev == nullptr) return;
+    const QByteArray data = m_indev->readAll();
+    const int16_t *samples = reinterpret_cast<const int16_t*>(data.constData());
+    const int n = static_cast<int>(data.size() / sizeof(int16_t));
+    if(MACHAK){
+        for(float i = 0; i < (float)n; i += m_srm){
+            m_audioinq.enqueue(samples[(int)i]);
         }
-        else{
-           for (int16_t sample : buffer) {
-                m_audioinq.enqueue(sample);
-           }
+    }
+    else{
+        for(int i = 0; i < n; ++i){
+            m_audioinq.enqueue(samples[i]);
         }
-    });
+    }
 }
 
 void AudioEngine::stop_capture()
