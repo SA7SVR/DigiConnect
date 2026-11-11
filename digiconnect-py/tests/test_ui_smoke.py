@@ -71,3 +71,10 @@ def test_qso_save_validation_export_import(win, tmp_path):
 def test_settings_save_and_text_size(win):
     w, ctx, app = win; w.open_settings(); d = w.settings; d.f["callsign"].setText("sa7svr"); d.size.setValue(16); d._save()
     assert ctx.store.settings["callsign"] == "SA7SVR" and ctx.store.settings["text_size"] == 16 and w.callsign.text() == "SA7SVR"
+
+
+def test_listen_and_connect_buttons_are_visible(win):
+    """Regression: a transparent-background stylesheet on the scroll area made these buttons dark-on-dark (text invisible)."""
+    w, ctx, app = win; ws = pick(w, "C4FM", 0); app.processEvents()
+    for b in (ws.tx.listen, ws.tx.connect):
+        img = b.grab().toImage(); assert img.pixelColor(img.width() - 8, img.height() // 2).lightness() > 110, b.text()

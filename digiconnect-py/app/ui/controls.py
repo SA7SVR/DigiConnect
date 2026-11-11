@@ -36,6 +36,7 @@ class TxControls(W.QWidget, _Sync):
         self.status = label("Listening stopped"); self.status.setStyleSheet(f"color:{C['echo']};")
         self.listen = button("Listen", "primary", "headphones"); self.connect = button("Connect (TX)", "primary", "power")
         self.stopall = button("Stop all", "danger")
+        self.listen.setToolTip("Connect to the selected server and listen (reception only)"); self.connect.setToolTip("Connect your transmit link to the selected server so you can use PTT")
         row = hbox(s=8); row.addWidget(self.listen); row.addWidget(self.connect); row.addWidget(self.stopall); row.addStretch()
         self.hold = button("Hold PTT", "ptt", "mic"); self.latch = button("Latch PTT", "latch", "lock")
         pr = hbox(s=10); pr.addWidget(self.hold, 3); pr.addWidget(self.latch, 2)

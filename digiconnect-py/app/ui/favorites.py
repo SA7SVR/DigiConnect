@@ -48,7 +48,7 @@ class Favorites(W.QWidget):
         for b in (self.single, self.multi, self.display, self.dtmf): tb.addWidget(b)
         tb.addStretch(); v.addLayout(tb)
         self.scroll = W.QScrollArea(); self.scroll.setWidgetResizable(True); self.host = W.QWidget(); self.grid = W.QGridLayout(self.host)
-        self.grid.setSpacing(12); self.grid.setAlignment(Qt.AlignmentFlag.AlignTop); self.host.setStyleSheet('background:transparent;'); self.scroll.setWidget(self.host); v.addWidget(self.scroll, 1)
+        self.grid.setSpacing(12); self.grid.setAlignment(Qt.AlignmentFlag.AlignTop); self.host.setObjectName('scrollinner'); self.host.setStyleSheet('QWidget#scrollinner{background:transparent;}'); self.scroll.setWidget(self.host); v.addWidget(self.scroll, 1)
         self.empty = label("No favorites yet. Use the star in a station directory or press Add favorite.", muted=True); self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         leg = hbox(s=18)
         for col, txt in ((C["green"], "Traffic detected"), (C["border"], "Selection"), (C["pink"], "Listening enabled"), (C["amber"], "Receiving audio"), (C["muted"], "Connections")):

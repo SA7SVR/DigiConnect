@@ -11,7 +11,7 @@ def main():
     app = QtWidgets.QApplication(sys.argv); app.setApplicationName("DigiConnect"); app.setOrganizationName("HELLASZone")
     store = Store(); path = find_engine()
     ctx = Ctx(store, EngineClient(path, store) if path else None); app.setStyleSheet(qss(ctx.store.settings["text_size"]))
-    w = MainWindow(ctx); w.show(); sys.exit(app.exec())
+    w = MainWindow(ctx); w.show(); ctx.refresh_hosts(); sys.exit(app.exec())
 
 
 if __name__ == "__main__":

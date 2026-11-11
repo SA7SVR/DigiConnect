@@ -3,17 +3,24 @@ from .qt import QtCore, Signal
 from .rules import SessionRules, Target, ListenMode
 from .store import Store
 from .engine import NullEngine
+from .hostlists import HostLists
+import threading
 
 
 class Ctx(QtCore.QObject):
     changed = Signal()
     toast = Signal(str)
     need_endpoint = Signal(object)      # Target whose server address is unknown
+    hosts_changed = Signal()            # the worldwide server lists were (re)loaded
+    _hosts_done = Signal(int, object)
 
     def __init__(self, store: Store | None = None, engine=None):
         super().__init__()
         self.store = store or Store()
         self.engine = engine or NullEngine()
+        self.hosts = HostLists.for_root(self.store.root)
+        self._hosts_busy = False
+        self._hosts_done.connect(self._on_hosts_done)
         self.rules = SessionRules()
         self.rules.limit = self.store.settings.get("max_ptt", 120)
         self.rules.ducking = bool(self.store.settings.get("duck", True))
@@ -31,6 +38,26 @@ class Ctx(QtCore.QObject):
 
     @property
     def selected(self): return self.rules.selected
+
+    # ---- worldwide server lists ---------------------------------------------
+    def refresh_hosts(self, force=False):
+        """Downloads the YSF / D-Star / DMR lists in the background (only when missing, older than 24 h, or forced)."""
+        if self._hosts_busy or not (force or self.hosts.stale()): return
+        self._hosts_busy = True
+        if force: self.toast.emit("Downloading the worldwide server lists…")
+        def work():
+            try: n, problems = self.hosts.download()
+            except Exception as ex: n, problems = 0, [str(ex)]
+            self._hosts_done.emit(n, problems)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_hosts_done(self, n, problems):
+        self._hosts_busy = False
+        if problems:
+            self.toast.emit(("Server lists: " + "; ".join(problems[:2]) + (" …" if len(problems) > 2 else "")) + (" — using the saved copy." if n else ""))
+        elif n:
+            self.toast.emit(f"Server lists updated: {self.hosts.summary()}")
+        self.hosts_changed.emit()
 
     def _sync_audio(self):
         """Push the effective receive volume (volume slider, mute, ducking, no self-monitoring) to the engine."""

@@ -1,10 +1,10 @@
 """Where each directory entry connects to.
 
-Built-in endpoints are only the ones we know for certain. Everything else is asked from the
-user once (host:port) and remembered in servers.json inside the data folder, so no address
-is ever guessed. Per-mode defaults (ports) are the standard ones for that protocol."""
+Order: addresses the user typed (servers.json) > built-in > the worldwide lists downloaded by
+hostlists.py. Only if none knows the entry is the user asked once (host:port); no address is ever guessed. Per-mode defaults (ports) are the standard ones for that protocol."""
 import json
 from .rules import Target
+from .hostlists import HostLists
 
 # Standard UDP ports per protocol (used when the user types just a host name).
 DEFAULT_PORT = {"YSF": 42000, "DMR": 62031, "REF": 20001, "XRF": 30001, "DCS": 30051,
@@ -42,6 +42,7 @@ class Servers:
         except Exception:
             pass
         self.settings = store.settings
+        self.hosts = HostLists.for_root(store.root)
 
     @staticmethod
     def key(t: Target) -> str:
@@ -54,7 +55,13 @@ class Servers:
             if not host: return None
             return {"host": host, "port": int(self.settings.get("dmr_port") or DEFAULT_PORT["DMR"])}
         k = self.key(t)
-        return self.user.get(k) or BUILTIN.get(k)
+        if self.user.get(k) or BUILTIN.get(k): return self.user.get(k) or BUILTIN.get(k)
+        if t.net == "C4FM": return self.hosts.find("YSF", t.id)                    # worldwide list, downloaded
+        if t.net == "D-Star":
+            ref = split_dstar(t)[0]
+            for proto in ("REF", "XRF", "DCS", "XLX"):
+                if ref.startswith(proto): return self.hosts.find(proto, ref)
+        return None
 
     def remember(self, t: Target, text: str) -> bool:
         """Accepts 'host' or 'host:port'. Returns False when the text is not usable."""

@@ -28,3 +28,11 @@ Verified here: operating rules, UI, engine connect/transmit/receive/disconnect a
 driving the real engine end to end (tests). NOT verified here (no radio/network/audio hardware in the build
 environment): real audio quality, the real servers, DMR master login, D-Star reflectors (DCS/REF/XRF), EchoLink (not
 implemented yet). Server addresses are never guessed: the app asks once for host:port and remembers it (`servers.json`).
+
+
+## Worldwide server lists (0.3)
+DigiConnect downloads the public host files (the same ones Pi-Star / WPSD use) for **YSF reflectors, D-Star REF / XRF / DCS / XLX reflectors and DMR masters**
+(`app/hostlists.py`), keeps a copy in the data folder (`hosts.json`, works offline) and refreshes it every 24 h or with the **Refresh** button.
+The station directory shows them after the HELLAS Zone entries; selecting one and pressing **Listen** / **Connect (TX)** connects without asking for an address.
+Order of address lookup: your own `servers.json` > built-in > downloaded list. DMR masters: **Choose DMR server** in the DMR workspace.
+The parsers accept `;`, TAB or blank separated files; entries they cannot read are skipped. EchoLink needs a validated account (not in this build).

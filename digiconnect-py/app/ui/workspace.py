@@ -13,7 +13,7 @@ PAGE = 100
 class Workspace(W.QWidget):
     def __init__(self, ctx, net, on_new_qso):
         super().__init__(); self.ctx, self.net = ctx, net; self.page = 0; self.show_favs = False
-        self.entries = directory.entries(net)
+        self.entries = directory.entries(net, ctx.hosts)
         root = hbox(self, s=14)
         # --- left: directory
         left = panel(); lv = vbox(left, m=(14, 14, 14, 10), s=10)
@@ -22,15 +22,17 @@ class Workspace(W.QWidget):
         self.b_cat.setChecked(True); self.b_cat.clicked.connect(lambda: self._mode(False)); self.b_fav.clicked.connect(lambda: self._mode(True))
         self.refresh_btn = button("Refresh"); top.addWidget(self.b_cat); top.addWidget(self.b_fav); top.addStretch(); top.addWidget(self.refresh_btn)
         self.search = W.QLineEdit(); self.search.setPlaceholderText("Search TG, name or callsign…" if net == "DMR" else "Search name or callsign…")
-        self.country = W.QComboBox(); self.country.addItems(["All countries", "Greece", "Sweden", "Germany", "Italy", "United Kingdom", "United States"])
-        self.manual = button("Manual entry"); cr = hbox(s=6); cr.addWidget(self.country, 1); cr.addWidget(self.manual)
+        self.country = W.QComboBox(); self.country.addItems(["All countries"])
+        self.module = W.QComboBox(); self.module.addItems(["Default module"] + [chr(c) for c in range(65, 91)]); self.module.setVisible(net == "D-Star")
+        self.module.setToolTip("Reflector module to link to (REF/XRF default C, DCS/XLX default A)")
+        self.manual = button("Manual entry"); cr = hbox(s=6); cr.addWidget(self.country, 1); cr.addWidget(self.module); cr.addWidget(self.manual)
         self.count = label("", muted=True)
         self.list = W.QListWidget(); self.list.setVerticalScrollMode(W.QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.prev = button("Previous"); self.next = button("Next"); self.pager = label("", muted=True)
         pr = hbox(); pr.addWidget(self.pager); pr.addStretch(); pr.addWidget(self.prev); pr.addWidget(self.next)
         lv.addLayout(top); lv.addWidget(self.search); lv.addLayout(cr); lv.addWidget(self.count); lv.addWidget(self.list, 1); lv.addLayout(pr)
         # --- middle: selected station
-        mid = panel(); _mo = vbox(mid, s=0); _sc = W.QScrollArea(); _sc.setWidgetResizable(True); _in = W.QWidget(); _in.setStyleSheet('background:transparent;'); _sc.setWidget(_in); _mo.addWidget(_sc); mv = vbox(_in, m=(16, 16, 16, 12), s=8)
+        mid = panel(); _mo = vbox(mid, s=0); _sc = W.QScrollArea(); _sc.setWidgetResizable(True); _in = W.QWidget(); _in.setObjectName('scrollinner'); _in.setStyleSheet('QWidget#scrollinner{background:transparent;}'); _sc.setWidget(_in); _mo.addWidget(_sc); mv = vbox(_in, m=(16, 16, 16, 12), s=8)
         mv.addWidget(label("Selected station", eyebrow=True)); self.title = label("Select a station"); self.title.setStyleSheet("font-size:20px;font-weight:700;")
         self.sub = label("Select an entry in the list on the left.", muted=True); mv.addWidget(self.title); mv.addWidget(self.sub)
         self.txcard = panel("tx"); tv = vbox(self.txcard, m=(12, 8, 12, 10), s=4)
@@ -71,10 +73,39 @@ class Workspace(W.QWidget):
         self.search.textChanged.connect(lambda: (setattr(self, "page", 0), self.fill())); self.country.currentIndexChanged.connect(lambda: self.fill())
         self.prev.clicked.connect(lambda: self._page(-1)); self.next.clicked.connect(lambda: self._page(1))
         self.list.currentRowChanged.connect(self._picked); self.addfav.clicked.connect(self._togglefav)
-        self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(self.fill)
+        self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: (ctx.refresh_hosts(True), self.fill()))
         self.rxvol.valueChanged.connect(lambda v: ctx.rules.net_volume.__setitem__(net, v / 100))
-        self.choose.clicked.connect(lambda: ctx.toast.emit("Open Settings › Radio networks to choose the DMR master"))
+        self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded)
         ctx.changed.connect(self.refresh); self.fill()
+
+    def _hosts_loaded(self):
+        self.entries = directory.entries(self.net, self.ctx.hosts)
+        cur = self.country.currentText()
+        names = sorted({e.get("country", "") for e in self.entries if e.get("country")})
+        self.country.blockSignals(True); self.country.clear(); self.country.addItems(["All countries"] + names)
+        if cur in names: self.country.setCurrentText(cur)
+        self.country.blockSignals(False); self.fill()
+
+    def _choose_master(self):
+        masters = self.ctx.hosts.dmr_masters()
+        if not masters:
+            self.ctx.toast.emit("The DMR master list is not downloaded yet — press Refresh (needs internet)."); self.ctx.refresh_hosts(True); return
+        dlg = W.QDialog(self); dlg.setWindowTitle("Choose DMR master server"); dlg.resize(560, 520); v = W.QVBoxLayout(dlg)
+        q = W.QLineEdit(); q.setPlaceholderText("Search master name, country or host…"); lst = W.QListWidget(); v.addWidget(q); v.addWidget(lst, 1)
+        cnt = W.QLabel(); v.addWidget(cnt)
+        def fillm():
+            t = q.text().strip().lower(); lst.clear(); n = 0
+            for m in masters:
+                if t and t not in (m["name"] + " " + m["host"] + " " + m.get("country", "")).lower(): continue
+                it = W.QListWidgetItem(f"{m['name']}\n   {m['host']}:{m['port']}"); it.setData(Qt.ItemDataRole.UserRole, m); lst.addItem(it); n += 1
+            cnt.setText(f"{n} of {len(masters)} masters")
+        q.textChanged.connect(fillm); fillm()
+        bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Ok | W.QDialogButtonBox.StandardButton.Cancel); v.addWidget(bb)
+        bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject); lst.itemDoubleClicked.connect(lambda *_: dlg.accept())
+        if dlg.exec() and lst.currentItem():
+            m = lst.currentItem().data(Qt.ItemDataRole.UserRole); st = self.ctx.store
+            st.settings["dmr_server"], st.settings["dmr_port"] = m["host"], int(m["port"]); st.save_settings()
+            self.ctx.toast.emit(f"DMR master set to {m['name']} ({m['host']}:{m['port']})"); self.ctx.changed.emit()
 
     def _devices(self):
         ins, outs, err = list_devices(); st = self.ctx.store.settings
@@ -95,7 +126,9 @@ class Workspace(W.QWidget):
         if self.show_favs: src = [e for e in src if self.ctx.store.is_fav(e["net"], e["id"])]
         manual = [e for e in self.ctx.store.favorites if e["net"] == self.net and not any(x["id"] == e["id"] for x in self.entries)]
         if self.show_favs: src = src + [dict(e, sub=e["id"], activity="Activity unavailable") for e in manual]
-        return [e for e in src if q in (e["name"] + " " + e["id"] + " " + e["sub"]).lower()] if q else src
+        c = self.country.currentText()
+        if c and self.country.currentIndex() > 0: src = [e for e in src if e.get("country") == c]
+        return [e for e in src if q in (e["name"] + " " + e["id"] + " " + e["sub"] + " " + e.get("country", "")).lower()] if q else src
 
     def fill(self):
         ents = self.visible_entries(); total = len(ents)
@@ -108,6 +141,8 @@ class Workspace(W.QWidget):
         self.list.blockSignals(False)
         src = "BrandMeister" if self.net == "DMR" else self.net
         self.count.setText(f"{src} · {total} entries"); a = self.page * PAGE
+        if self.net in ("C4FM", "D-Star") and not self.ctx.hosts.for_net(self.net):
+            self.count.setText(f"{self.net} · worldwide list not downloaded yet — press Refresh (needs internet)")
         self.pager.setText(f"{a + 1 if total else 0}–{min(total, a + PAGE)} / {total}")
         self.prev.setEnabled(self.page > 0); self.next.setEnabled((self.page + 1) * PAGE < total)
         if self.net == "EchoLink" and not total: self.count.setText("EchoLink · 0 entries — the directory appears after signing in")
@@ -117,7 +152,9 @@ class Workspace(W.QWidget):
         it = self.list.item(row)
         if not it: return
         e = it.data(Qt.ItemDataRole.UserRole); self.ctx.last_net = self.net
-        self.ctx.select(Target(e["net"], e["id"], e["name"]))
+        id_ = e["id"]
+        if self.net == "D-Star" and self.module.currentIndex() > 0 and " " in id_ and e.get("proto"): id_ = id_.split()[0] + " " + self.module.currentText()
+        self.ctx.select(Target(e["net"], id_, e["name"]))
 
     def _togglefav(self):
         t = self.ctx.selected

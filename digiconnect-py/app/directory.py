@@ -1,8 +1,14 @@
-"""Station directories. SEED data only: HELLAS Zone entries first, then a few public
-BrandMeister talkgroups. Live fetching (BrandMeister/XLX/YSF/EchoLink lists) replaces
-these providers in a later step; the UI only depends on this function's shape."""
+"""Station directories. HELLAS Zone entries and the public DMR talkgroups come first, then everything from the
+worldwide server lists (hostlists.py: YSF, REF/XRF/DCS/XLX). EchoLink loads after sign-in."""
 
-def entries(net: str) -> list[dict]:
+def entries(net: str, hosts=None) -> list[dict]:
+    seed = _seed(net)
+    if hosts is None: return seed
+    have = {e["id"].split()[0] for e in seed}
+    return seed + [e for e in hosts.for_net(net) if e["id"].split()[0] not in have]
+
+
+def _seed(net: str) -> list[dict]:
     mk = lambda id_, name, sub, act="Activity unavailable": dict(net=net, id=id_, name=name, sub=sub, activity=act)
     if net == "C4FM":
         return [mk("00006", "GR-HELLAS Zone A · (YCS202)", "00006 · YSF"), mk("00010", "GR-HELLAS Zone B · DX Zone", "00010 · YSF"),
