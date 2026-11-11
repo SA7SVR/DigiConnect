@@ -1034,13 +1034,8 @@ Item {
                     Layout.fillWidth: true; implicitHeight: 58; color: ws.rail
                     RowLayout {
                         anchors.fill: parent; anchors.leftMargin: 20; anchors.rightMargin: 20; spacing: 12
-                        Image { Layout.alignment: Qt.AlignVCenter; Layout.preferredWidth: 30; Layout.preferredHeight: 30
-                            source: "images/droidstar.png"; sourceSize.width: 30; sourceSize.height: 30; fillMode: Image.PreserveAspectFit; smooth: true }
-                        Column {
-                            Layout.alignment: Qt.AlignVCenter
-                            Text { text: "HELLAS ZONE +"; color: ws.muted; font.pixelSize: 10; font.letterSpacing: 2 }
-                            Text { text: "DIGI <font color='"+ws.acc2+"'>CONNECT</font>"; textFormat: Text.RichText; color: ws.text; font.pixelSize: 19; font.bold: true }
-                        }
+                        Image { Layout.alignment: Qt.AlignVCenter; Layout.preferredWidth: 44; Layout.preferredHeight: 44
+                            source: "images/droidstar.png"; sourceSize.width: 44; sourceSize.height: 44; fillMode: Image.PreserveAspectFit; smooth: true }
                         Item { Layout.fillWidth: true }
                         Column {
                             Layout.alignment: Qt.AlignVCenter
@@ -1279,7 +1274,8 @@ Item {
                                         Text { anchors.centerIn: parent; text: "120 s ⌄"; color: ws.text2; font.pixelSize: 12 } }
                                     Item { Layout.fillWidth: true }
                                     Text { text: "02:00"; color: ws.text; font.pixelSize: 18; font.bold: true } }
-                                Text { text: ws.connected?("TX · "+ws.curNet+" · 00006 · YSF"):(ws.selHost===""?"No TX destination":"Ready · "+ws.curNet); color: ws.connected?ws.rxc:ws.muted; font.pixelSize: 11; Layout.topMargin: 10 }
+                                Text { text: (_netstatus.text!=="" ? _netstatus.text : (ws.connected?("Connected · "+ws.curNet):(ws.selHost===""?"No TX destination":"Ready · "+ws.curNet))); color: ws.connected?ws.rxc:ws.muted; font.pixelSize: 11; font.bold: true; Layout.topMargin: 10 }
+                                Text { text: _ambestatus.text; color: ws.muted; font.pixelSize: 10; visible: _ambestatus.text!==""; Layout.topMargin: 2 }
                                 Item { Layout.preferredHeight: 6 }
                             }
                         }
@@ -1291,15 +1287,22 @@ Item {
                         radius: 14; color: ws.panel; border.color: ws.line
                         ColumnLayout {
                             anchors.fill: parent; anchors.margins: 18; spacing: 0
+                            property bool haveRx: _data1.text!=="" || _data2.text!==""
                             Text { text: "Last station heard"; color: ws.text; font.pixelSize: 15; font.bold: true }
-                            Item { Layout.fillWidth: true; Layout.preferredHeight: 170
+                            Item { Layout.fillWidth: true; Layout.preferredHeight: 170; visible: !parent.haveRx
                                 Column { anchors.centerIn: parent; spacing: 12; width: parent.width
                                     Text { text: "🎧"; font.pixelSize: 40; color: ws.line2; anchors.horizontalCenter: parent.horizontalCenter }
                                     Text { text: "Station details will appear on reception."; color: ws.muted; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; width: 200; wrapMode: Text.WordWrap; anchors.horizontalCenter: parent.horizontalCenter } } }
+                            Column { Layout.fillWidth: true; Layout.topMargin: 12; spacing: 6; visible: parent.haveRx
+                                Text { text: _data1.text; color: ws.rxc; font.pixelSize: 20; font.bold: true; elide: Text.ElideRight; width: parent.width }
+                                Text { text: _data2.text; color: ws.text2; font.pixelSize: 12 }
+                                Text { text: _data3.text; color: ws.muted; font.pixelSize: 11; visible: _data3.text!=="" }
+                                Text { text: _data4.text; color: ws.muted; font.pixelSize: 11; visible: _data4.text!=="" }
+                                Text { text: _data5.text; color: ws.muted; font.pixelSize: 11; visible: _data5.text!=="" } }
+                            Item { Layout.fillHeight: true }
                             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: ws.line }
                             Text { text: "LAST HEARD"; color: ws.muted; font.pixelSize: 10; font.letterSpacing: 1; Layout.topMargin: 14 }
-                            Text { text: "Waiting for data"; color: ws.muted; font.pixelSize: 12; Layout.topMargin: 6 }
-                            Item { Layout.fillHeight: true }
+                            Text { text: (_data1.text!==""?_data1.text:"Waiting for data"); color: _data1.text!==""?ws.text2:ws.muted; font.pixelSize: 12; Layout.topMargin: 6 }
                         }
                     }
                 }
