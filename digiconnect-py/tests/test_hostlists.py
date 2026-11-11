@@ -51,10 +51,19 @@ def test_parsers():
     a = H.parse_xlx_api(XLXAPI); assert {e["id"] for e in a} == {"XLX001 A", "XLX999 A"} and a[0]["country"] == "Germany"
 
 
+TGJSON = '{"91": "World-wide", "202": "Greece", "20208": {"name": "Hellas Zone"}, "x": "skip", "0": "zero"}'
+
+
+def test_parse_tg():
+    t = H.parse_tg(TGJSON); assert [(e["id"], e["net"]) for e in t] == [("91", "DMR"), ("202", "DMR"), ("20208", "DMR")] and "Hellas Zone" in t[2]["name"]
+    assert [e["id"] for e in H.parse_tg('[{"id": 2, "name": "Cluster"}, {"TG": "9"}]')] == ["2", "9"]
+    assert [e["id"] for e in H.parse_tg("240;Sweden\n# c\nabc;no\n262,Germany\n")] == ["240", "262"]
+
+
 @pytest.fixture
 def web(tmp_path):
     root = tmp_path / "www"; root.mkdir()
-    for n, t in {"YSFHosts.txt": YSF, "dplus.txt": DPLUS, "dextra.txt": DEXTRA, "dcs.txt": DCS, "XLXHosts.txt": XLX, "DMRHosts.txt": DMR, "NXDNHosts.txt": NXDN, "P25Hosts.txt": P25, "M17Hosts-full.csv": M17CSV, "xlx.xml": XLXAPI}.items():
+    for n, t in {"YSFHosts.txt": YSF, "dplus.txt": DPLUS, "dextra.txt": DEXTRA, "dcs.txt": DCS, "XLXHosts.txt": XLX, "DMRHosts.txt": DMR, "TalkGroups.json": TGJSON, "NXDNHosts.txt": NXDN, "P25Hosts.txt": P25, "M17Hosts-full.csv": M17CSV, "xlx.xml": XLXAPI}.items():
         (root / n).write_text(t, encoding="utf-8")
     h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
     class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -78,7 +87,7 @@ def test_download_cache_and_resolve(tmp_path, web):
     assert hl.find("NXDN", "65000")["host"] == "nxdn.example.org" and hl.find("P25", "10100")["port"] == 41000 and hl.find("M17", "M17-DEU")["host"] == "m17-deu.example.org"
     assert hl.find("XLX", "XLX999")["host"] == "xlx999.example.org"                          # added from the API
     assert [e["country"] for e in hl.entries if e["id"] == "XLX001 A"] == ["Germany"]
-    assert len(hl.dmr_masters()) == 3 and len(hl.for_net("C4FM")) == 3 and len(hl.for_net("D-Star")) >= 6
+    assert len(hl.dmr_masters()) == 3 and [e["id"] for e in hl.for_net("DMR")] == ["91", "202", "20208"] and len(hl.for_net("C4FM")) == 3 and len(hl.for_net("D-Star")) >= 6
     assert not hl.stale()
     # persisted: a new object (a later start of the program, maybe offline) sees the same data
     again = H.HostLists(store.root); assert len(again.entries) == len(hl.entries) and again.find("XRF", "XRF001")["host"] == "xrf001.example.net"
@@ -124,5 +133,16 @@ def test_directory_and_ui(tmp_path, web):
     ws.country.setCurrentText("Germany"); app.processEvents(); assert all("XLX001" in ws.list.item(i).text() for i in range(ws.list.count())) and ws.list.count() == 1
     ws.country.setCurrentIndex(0); ws.search.setText("REF030"); app.processEvents(); assert ws.list.count() == 1
     ws.module.setCurrentText("F"); ws.list.setCurrentRow(0); assert ctx.selected == Target("D-Star", "REF030 F", "REF030")
-    assert w.ws["C4FM"].list.count() == 5                                                     # 4 seed (00006/00010 also in the list, shown once) + 10001
+    # the server card shows the address read from the downloaded list for whatever is selected
+    assert ws.srv_host.text() == "ref030.example.org" and ws.srv_port.text() == "20001" and "worldwide" in ws.srv_src.text()
+    cw = w.ws["C4FM"]; assert cw.list.count() == len(ctx.hosts.for_net("C4FM")) >= 3          # nothing invented: exactly what the list holds
+    cw.search.setText("00006"); app.processEvents(); cw.list.setCurrentRow(0)
+    assert (cw.srv_host.text(), cw.srv_port.text()) == ("ysf.example.gr", "42000")
+    cw.srv_host.setText("mine.example"); cw.srv_port.setText("42001"); cw.srv_save.click(); app.processEvents()
+    assert ctx.servers.resolve(Target("C4FM", "00006")) == {"host": "mine.example", "port": 42001} and "your own" in cw.srv_src.text()
+    cw.srv_reset.click(); app.processEvents(); assert cw.srv_host.text() == "ysf.example.gr" and cw.srv_port.text() == "42000"
+    cw.srv_host.setText("bad host"); cw.srv_save.click(); assert ctx.servers.resolve(Target("C4FM", "00006"))["host"] == "ysf.example.gr"   # invalid input is refused
+    # DMR / NXDN / P25: a typed talkgroup number that is not in the catalogue can still be used
+    dw = w.ws["DMR"]; dw.search.setText("20208"); app.processEvents(); assert dw.list.count() >= 1 and "20208" in dw.list.item(0).text()
+    dw.list.setCurrentRow(0); assert ctx.selected.id == "20208" and ctx.selected.net == "DMR"
     w.close()

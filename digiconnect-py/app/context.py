@@ -18,6 +18,8 @@ class Ctx(QtCore.QObject):
         self.store = store or Store()
         self.engine = engine or NullEngine()
         self.hosts = HostLists.for_root(self.store.root)
+        from .servers import Servers
+        self.servers = getattr(self.engine, "servers", None) or Servers(self.store)      # one address book for the pages and the engine
         self._hosts_busy = False
         self._hosts_done.connect(self._on_hosts_done)
         self.rules = SessionRules()
@@ -32,6 +34,7 @@ class Ctx(QtCore.QObject):
         if hasattr(self.engine, "status"):
             self.engine.status.connect(self._on_status); self.engine.heard.connect(self._on_heard)
             self.engine.volume_refresh.connect(lambda: self.__dict__.pop("_vol_cache", None))
+            if hasattr(self.engine, "notice"): self.engine.notice.connect(self.toast.emit)
         from . import diag; self.toast.connect(lambda m: diag.log("toast: " + m)); diag.log(f"engine={self.engine.name}")
         self._timer = QtCore.QTimer(self); self._timer.setInterval(250); self._timer.timeout.connect(self._tick)
         self._timer.start()
@@ -149,6 +152,10 @@ class Ctx(QtCore.QObject):
         fn, self._retry = getattr(self, "_retry", None), None
         if fn: fn()
 
+    def set_mic_gain(self, pct: int):
+        self.store.settings["mic_gain"] = int(pct); self.store.save_settings()
+        if hasattr(self.engine, "set_mic_gain"): self.engine.set_mic_gain(pct)
+
     def set_dmr_password(self, pw: str):
         self.dmr_password = pw
         if hasattr(self.engine, "dmr_password"): self.engine.dmr_password = pw
@@ -190,6 +197,7 @@ class Ctx(QtCore.QObject):
             for r in self.rules.rx:
                 if r.handle in ln.rx: r.reports_traffic = True
             src = e.get("src") or e.get("callsign") or "?"
+            if st == "new": from . import diag; diag.log(f"heard {src} -> {e.get('dst', '')} via {e.get('gw', '')} on {ln.target.net}:{ln.target.id}")
             if st == "new" or not self.last_heard or self.last_heard[0].get("stream_src") != src:
                 self.last_heard.insert(0, dict(src=src, dst=e.get("dst", ""), gw=e.get("gw", ""), net=ln.target.net, target=ln.target.id,
                                               stream_src=src, ts=self.utc_now()))

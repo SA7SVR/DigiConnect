@@ -5,6 +5,7 @@ from ..theme import C
 from .. import i18n
 from ..i18n import tr
 from .widgets import *
+from .audioblock import AudioBlock
 import json, zipfile, datetime as dt, platform
 
 
@@ -42,15 +43,14 @@ class SettingsDrawer(W.QFrame):
         # -- Radio networks
         p2 = W.QWidget(); l2 = vbox(p2, m=(16, 4, 16, 4), s=8); l2.addWidget(label("DMR", section=True))
         r = hbox(); r.addWidget(field("DMR ID (also used for P25)", le("dmr_id"))); r.addWidget(field("ESSID", le("essid"))); l2.addLayout(r); l2.addWidget(field("NXDN ID", le("nxdn_id")))
-        l2.addWidget(field("Server", le("dmr_server", "hostname"))); r = hbox(); r.addWidget(field("Port", le("dmr_port")))
+        l2.addWidget(field("DMR master server (host)", le("dmr_server", "hostname"))); r = hbox(); r.addWidget(field("DMR master port", le("dmr_port")))
         self.slot = W.QComboBox(); self.slot.addItems(["1", "2"]); self.slot.setCurrentText(str(s["slot"])); r.addWidget(field("Time slot", self.slot)); l2.addLayout(r)
         l2.addWidget(field("Color code", le("cc"))); self.dpw = W.QLineEdit(); self.dpw.setEchoMode(W.QLineEdit.EchoMode.Password); l2.addWidget(field("Password", self.dpw))
-        l2.addWidget(label("Passwords are kept for the current session only in this build (not written to disk).", muted=True)); l2.addStretch()
+        l2.addWidget(label("Passwords are kept for the current session only in this build (not written to disk).", muted=True))
+        l2.addWidget(label("These fields are for the DMR master only. Every other station shows its own server and port on its page (Selected station › Server).", muted=True)); l2.addStretch()
         # -- Audio
         p3 = W.QWidget(); l3 = vbox(p3, m=(16, 4, 16, 4), s=8)
-        self.mic = W.QComboBox(); self.spk = W.QComboBox(); l3.addWidget(field("Microphone", self.mic)); l3.addWidget(field("Speakers", self.spk))
-        r = hbox(); self.tm = button("Test microphone"); self.ts = button("Test speakers"); self.rd = button("Refresh devices"); [r.addWidget(b) for b in (self.tm, self.ts, self.rd)]; l3.addLayout(r)
-        self.devinfo = label("", muted=True); l3.addWidget(self.devinfo)
+        self.audio = AudioBlock(ctx); l3.addWidget(self.audio)
         self.duck = checkbox("Lower other channels while transmitting"); self.duck.setChecked(s["duck"]); l3.addWidget(self.duck)
         l3.addWidget(label("RECORDINGS", section=True)); self.recp = label(s.get("rec_path") or str(ctx.store.root / "Recordings"), muted=True); self.recp.setWordWrap(True); l3.addWidget(self.recp)
         self.choose = button("Choose"); l3.addWidget(self.choose, 0, Qt.AlignmentFlag.AlignLeft); l3.addStretch()
@@ -65,9 +65,8 @@ class SettingsDrawer(W.QFrame):
         v.addWidget(self.stack, 1)
         foot = hbox(m=(16, 8, 16, 14), s=8); self.save = button("Save", "primary"); cl = button("Close"); foot.addWidget(self.save); foot.addWidget(cl); foot.addStretch(); v.addLayout(foot)
         cl.clicked.connect(self.closed.emit); self.save.clicked.connect(self._save); self.saveprof.clicked.connect(self._saveprof); self.load.clicked.connect(self._load)
-        self.rd.clicked.connect(self.refresh_devices); self.tm.clicked.connect(self._testmic); self.ts.clicked.connect(self._testspk)
         self.bk.clicked.connect(self._backup); self.rs.clicked.connect(self._restore); self.dg.clicked.connect(self._diag); self.choose.clicked.connect(self._choose)
-        self._tab(0); self.refresh_devices()
+        self._tab(0)
 
     def sync_theme(self):
         self.theme.setCurrentIndex(max(0, self.theme.findData(self.ctx.store.settings.get("theme", "dark"))))
@@ -76,31 +75,6 @@ class SettingsDrawer(W.QFrame):
         self.stack.setCurrentIndex(i)
         for k, b in self.tb.items(): b.setChecked(k == i)
     def open_tab(self, i): self._tab(i)
-
-    # devices (sounddevice; absent → honest message)
-    def refresh_devices(self):
-        s = self.ctx.store.settings; self.mic.clear(); self.spk.clear()
-        from ..audio_devices import list_devices
-        ins, outs, err = list_devices()
-        if err: self.devinfo.setText(err)
-        self.mic.addItems(ins or [tr("(none found)")]); self.spk.addItems(outs or [tr("(none found)")])
-        if s.get("mic") in ins: self.mic.setCurrentText(s["mic"])
-        if s.get("speakers") in outs: self.spk.setCurrentText(s["speakers"])
-        if ins: self.devinfo.setText(f"{len(ins)} available microphone{'s' if len(ins) != 1 else ''}")
-
-    def _testspk(self):
-        try:
-            import sounddevice as sd, numpy as np
-            t = np.linspace(0, .4, int(48000 * .4), False); sd.play((0.25 * np.sin(2 * np.pi * 880 * t)).astype("float32"), 48000)
-            self.devinfo.setText("Speaker test played. It confirms local output only, not that a radio stream arrives.")
-        except Exception as e: self.devinfo.setText(f"Speaker test failed: {e}")
-
-    def _testmic(self):
-        try:
-            import sounddevice as sd, numpy as np
-            a = sd.rec(int(48000 * .6), samplerate=48000, channels=1, dtype="float32"); sd.wait()
-            self.devinfo.setText(f"Microphone test: peak level {float(abs(a).max()) * 100:.0f}%  (does not key a transmitter)")
-        except Exception as e: self.devinfo.setText(f"Microphone test failed: {e}")
 
     def _choose(self):
         d = W.QFileDialog.getExistingDirectory(self, tr("Recordings folder"))
@@ -118,7 +92,7 @@ class SettingsDrawer(W.QFrame):
             else:
                 s[k] = val
         s.update(language=self.lang.currentText(), theme=self.theme.currentData() or "dark", text_size=self.size.value(), max_ptt=int(self.ptt.currentText().split()[0]), fav_view=self.favview.currentData() or "Full cards",
-                 slot=int(self.slot.currentText()), duck=self.duck.isChecked(), mic=self.mic.currentText(), speakers=self.spk.currentText())
+                 slot=int(self.slot.currentText()), duck=self.duck.isChecked())
 
     def _save(self):
         self._collect(); s = self.ctx.store.settings

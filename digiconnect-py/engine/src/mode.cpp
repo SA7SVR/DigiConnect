@@ -165,7 +165,7 @@ void Mode::mmdvm_connect_status(bool s)
 void Mode::in_audio_vol_changed(qreal v)
 {
 	if (m_audio) {
-		m_audio->set_input_volume(v / m_attenuation);
+		m_audio->set_input_volume(v);      // the volume is set by the user (DigiConnect setting); no per-mode attenuation, it made the microphone far too quiet
 	}
 }
 

@@ -27,10 +27,12 @@ SOURCES = {
     "NXDN": ("NXDNHosts.txt", "num:NXDN", "NXDN talkgroups", ["NXDN_Hosts.txt"]),
     "P25": ("P25Hosts.txt", "num:P25", "P25 talkgroups", ["P25_Hosts.txt"]),
     "M17": ("M17Hosts-full.csv", "m17", "M17 reflectors", ["M17_Hosts.txt"]),
+    "TG": ("TalkGroups.json", "tg", "DMR talkgroups", []),          # BrandMeister talkgroup catalogue (public API, see FULL_URL)
 }
-DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000}
+FULL_URL = {"TG": "https://api.brandmeister.network/v2/talkgroup"}
+DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000, "TG": 0}
 DEFAULT_MODULE = {"REF": "C", "XRF": "C", "DCS": "A", "XLX": "A", "M17": "A"}
-NET_OF = {"YSF": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR", "NXDN": "NXDN", "P25": "P25", "M17": "M17"}
+NET_OF = {"YSF": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR", "NXDN": "NXDN", "P25": "P25", "M17": "M17", "TG": "DMR"}
 
 _HOST = re.compile(r"^(?:\d{1,3}(?:\.\d{1,3}){3}|(?=.*[A-Za-z])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)$")
 
@@ -160,7 +162,36 @@ def parse_xlx_api(text: str) -> list[dict]:
     return out
 
 
+def parse_tg(text: str) -> list[dict]:
+    """DMR talkgroup catalogue. Accepts the BrandMeister API answer (JSON object {id: name} or {id: {Name: ..}}, or a list of
+    objects) and plain text lines 'id;name'. Entries without a numeric id in 1..16777215 are skipped."""
+    out, seen = [], set()
+    def add(id_, name):
+        id_ = str(id_).strip()
+        if not id_.isdigit() or not 0 < int(id_) <= 16777215 or id_ in seen: return
+        seen.add(id_); name = (name or "").strip()
+        out.append(_entry("TG", id_, f"TG {id_}" + (f" · {name}" if name else ""), f"TG {id_} · {name or 'DMR talkgroup'}", "", 0))
+    t = text.lstrip()
+    if t[:1] in "{[":
+        try: data = json.loads(t)
+        except ValueError: data = None
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if isinstance(v, dict): v = v.get("Name") or v.get("name") or v.get("Description") or ""
+                add(k, v if isinstance(v, str) else "")
+        elif isinstance(data, list):
+            for r in data:
+                if not isinstance(r, dict): continue
+                add(r.get("id") or r.get("TG") or r.get("tg") or r.get("talkgroup") or "", r.get("name") or r.get("Name") or "")
+        return out
+    for line in text.splitlines():
+        tok = _tokens(line)
+        if len(tok) >= 1 and tok[0].isdigit(): add(tok[0], " ".join(x for x in tok[1:] if x))
+    return out
+
+
 def parse(kind: str, text: str) -> list[dict]:
+    if kind == "tg": return parse_tg(text)
     if kind == "ysf": return parse_ysf(text)
     if kind == "dmr": return parse_dmr(text)
     if kind == "m17": return parse_m17(text)
@@ -197,6 +228,14 @@ class HostLists:
 
     # ---- access -----------------------------------------------------------
     def _set(self, entries, status, fetched):
+        from . import countries
+        for e in entries:                                   # the host files have no country column: work it out from the name / talkgroup number
+            if e.get("country"): continue
+            try:
+                if e["proto"] == "TG": e["country"] = countries.of_talkgroup(e["id"])
+                elif e["proto"] in ("YSF", "XLX", "NXDN", "P25"): e["country"] = countries.guess(e.get("name", "").split(" · ")[0], e.get("name", ""))
+            except Exception:
+                e["country"] = ""
         idx = {}
         for e in entries: idx[(e["proto"], e["id"].split()[0] if e["proto"] in DEFAULT_MODULE else e["id"])] = e
         with self._lock:
@@ -205,7 +244,8 @@ class HostLists:
     def stale(self) -> bool: return not self.entries or time.time() - self.fetched > MAX_AGE
 
     def for_net(self, net: str) -> list[dict]:
-        return sorted((e for e in self.entries if e["net"] == net and e["proto"] != "DMR"), key=lambda e: (e["proto"], e["id"]))
+        return sorted((e for e in self.entries if e["net"] == net and e["proto"] != "DMR"),
+                      key=lambda e: (e["proto"], 0, int(e["id"]), "") if e["id"].isdigit() else (e["proto"], 1, 0, e["id"]))
 
     def dmr_masters(self) -> list[dict]: return sorted((e for e in self.entries if e["proto"] == "DMR"), key=lambda e: e["name"].lower())
 
@@ -223,6 +263,7 @@ class HostLists:
     def candidates(key: str, mirrors=None) -> list[str]:
         fname, _, _, alt = SOURCES[key]
         if mirrors: return [m + fname for m in mirrors]            # tests / custom mirrors
+        if key in FULL_URL: return [FULL_URL[key]]
         c = [UPSTREAM + fname]
         for a in alt: c += [m + a for m in PISTAR]
         return c

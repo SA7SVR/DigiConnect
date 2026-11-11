@@ -17,6 +17,7 @@
 
 #include "audioengine.h"
 #include <QDebug>
+#include <QTimer>
 #include <cmath>
 
 #if defined (Q_OS_MACOS) || defined(Q_OS_IOS)
@@ -130,18 +131,24 @@ void AudioEngine::init()
 				device = *it;
 			}
 		}
-		if (!device.isFormatSupported(format)) {
-            qWarning() << "Current audio format not supported by capture device";
-        }
-
-		int sr = 8000;
-		if(MACHAK){
-            sr = device.preferredFormat().sampleRate();
-			m_srm = (float)sr / 8000.0;
+		// Choose a format the microphone really delivers. 8 kHz mono 16-bit is what the vocoders want, but many Windows
+		// devices only offer their own mix format: then capture in that format and convert here (never stay silent).
+		QAudioFormat use = format;
+		if(MACHAK || !device.isFormatSupported(format)){
+			QAudioFormat pf = device.preferredFormat();
+			QAudioFormat f2 = format; f2.setSampleRate(pf.sampleRate());
+			if(!MACHAK && device.isFormatSupported(f2)){ use = f2; }
+			else { use = pf; }
 		}
-		format.setSampleRate(sr);
-        m_in = new QAudioSource(device, format, this);
-        qDebug() << "Capture device: " <<  device.description() << " SR: " << sr << " resample factor: " << m_srm;
+		m_srm = (float)use.sampleRate() / 8000.0f;
+		m_inchan = use.channelCount() > 0 ? use.channelCount() : 1;
+		m_infmt = use.sampleFormat();
+		m_rs_acc = 0; m_rs_pos = 0; m_rs_n = 0;
+		int sr = use.sampleRate();
+		m_in = new QAudioSource(device, use, this);
+		{ int bps = (use.sampleFormat() == QAudioFormat::UInt8) ? 1 : ((use.sampleFormat() == QAudioFormat::Int16) ? 2 : 4); m_in->setBufferSize(sr * m_inchan * bps / 10); }   // ~100 ms
+		m_inname = device.description();
+        qDebug() << "Capture device: " <<  device.description() << " SR: " << sr << " ch: " << m_inchan << " fmt: " << (int)m_infmt << " resample factor: " << m_srm;
 
 	}
 }
@@ -151,33 +158,66 @@ void AudioEngine::start_capture()
 #if defined(Q_OS_IOS)
     configureiOSAudioSession();
 #endif
-    //m_in = new QAudioSource(m_indevice, m_informat, this);
     // Standard Qt pull-model capture: start() returns a QIODevice, read samples on readyRead.
     if(m_in == nullptr){
-        return;   // no capture hardware: run without microphone
+        qWarning() << "DCWARN: no microphone found - nothing can be transmitted";
+        return;
     }
+    m_inbytes = 0; m_rs_acc = 0; m_rs_pos = 0; m_rs_n = 0;
+    if(m_indev != nullptr){ disconnect(m_indev, nullptr, this, nullptr); m_indev = nullptr; }
     m_indev = m_in->start();
     if(m_indev != nullptr){
         connect(m_indev, &QIODevice::readyRead, this, &AudioEngine::input_data_received);
     }
+    else{
+        qWarning() << "DCWARN: the microphone could not be opened (" << m_inname << ") error" << (int)m_in->error();
+    }
+    // If no sound arrives, say so (instead of staying silent for the whole transmission).
+    QTimer::singleShot(1500, this, [this]{
+        if(m_in != nullptr && m_in->state() != QAudio::StoppedState && m_inbytes == 0){
+            qWarning() << "DCWARN: the microphone" << m_inname << "delivers no sound (state" << (int)m_in->state() << "error" << (int)m_in->error()
+                       << ") - choose another microphone, or allow microphone access in Windows Settings > Privacy > Microphone";
+        }
+    });
 }
 
 void AudioEngine::input_data_received()
 {
     if(m_indev == nullptr) return;
     const QByteArray data = m_indev->readAll();
-    const int16_t *samples = reinterpret_cast<const int16_t*>(data.constData());
-    const int n = static_cast<int>(data.size() / sizeof(int16_t));
-    if(MACHAK){
-        for(float i = 0; i < (float)n; i += m_srm){
-            m_audioinq.enqueue(samples[(int)i]);
+    if(data.isEmpty()) return;
+    m_inbytes += data.size();
+    const char *p = data.constData();
+    int bps = 2;
+    switch(m_infmt){ case QAudioFormat::UInt8: bps = 1; break; case QAudioFormat::Int16: bps = 2; break; case QAudioFormat::Int32: case QAudioFormat::Float: bps = 4; break; default: bps = 2; }
+    const int ch = m_inchan > 0 ? m_inchan : 1;
+    const int frames = static_cast<int>(data.size() / (bps * ch));
+    for(int f = 0; f < frames; ++f){
+        float acc = 0;
+        for(int c = 0; c < ch; ++c){                     // average the channels to mono
+            const char *s = p + (static_cast<qsizetype>(f) * ch + c) * bps;
+            float v = 0;
+            switch(m_infmt){
+            case QAudioFormat::UInt8: v = ((float)(uint8_t)s[0] - 128.0f) * 256.0f; break;
+            case QAudioFormat::Int32: { int32_t x; memcpy(&x, s, 4); v = (float)(x / 65536); break; }
+            case QAudioFormat::Float: { float x; memcpy(&x, s, 4); v = x * 32767.0f; break; }
+            default: { int16_t x; memcpy(&x, s, 2); v = (float)x; break; }
+            }
+            acc += v;
+        }
+        acc /= (float)ch;
+        // resample to 8 kHz by averaging (m_srm = 1: pass through)
+        m_rs_acc += acc; m_rs_n++; m_rs_pos += 1.0f;
+        if(m_rs_pos >= m_srm - 0.0001f){
+            m_rs_pos -= m_srm;
+            if(m_rs_pos < 0) m_rs_pos = 0;
+            float o = (m_rs_acc / (float)m_rs_n) * m_ingain;
+            m_rs_acc = 0; m_rs_n = 0;
+            if(o > 32767.0f) o = 32767.0f; else if(o < -32768.0f) o = -32768.0f;
+            m_audioinq.enqueue(static_cast<int16_t>(o));
         }
     }
-    else{
-        for(int i = 0; i < n; ++i){
-            m_audioinq.enqueue(samples[i]);
-        }
-    }
+    while(m_audioinq.size() > 8000) m_audioinq.dequeue();    // never let a stalled consumer build up seconds of delay
 }
 
 void AudioEngine::stop_capture()
@@ -233,6 +273,12 @@ void AudioEngine::write(int16_t *pcm, size_t s, float fade_from, float fade_to)
 		for(size_t i = 0; i < s; ++i){
 			const float g = fade_from + (fade_to - fade_from) * (float)(i + 1) / (float)s;
 			pcm[i] = static_cast<int16_t>(pcm[i] * g);
+		}
+	}
+
+	if(m_outvol != 1.0f){
+		for(size_t i = 0; i < s; ++i){
+			pcm[i] = static_cast<int16_t>(pcm[i] * m_outvol);
 		}
 	}
 

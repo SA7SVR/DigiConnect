@@ -25,6 +25,8 @@ signals:
     void dtmf(QByteArray);
 private:
     void connect_to(const QJsonObject &c);
+    void test_mic(const QString &name, int ms);
+    void test_spk(const QString &name);
     void teardown(const QString &state, const QString &msg);
     void emit_ev(const QJsonObject &o);
     Mode *m_mode = nullptr;
@@ -32,4 +34,5 @@ private:
     int m_status = Mode::DISCONNECTED;
     QString m_proto;
     qint64 m_lastLevel = 0;
+    double m_inVol = 1.0;      // microphone level (1 = full device level; above 1 = software gain)
 };

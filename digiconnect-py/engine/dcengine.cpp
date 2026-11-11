@@ -8,6 +8,11 @@
 #include <QAudioDevice>
 #include <QJsonArray>
 #include <QTimer>
+#include <QAudioSource>
+#include <QAudioSink>
+#include <QBuffer>
+#include <memory>
+#include <cmath>
 #include <cstdio>
 #ifdef Q_OS_WIN
 #include <io.h>
@@ -29,10 +34,16 @@ void Engine::handle(const QJsonObject &c) {
     if (cmd == "hello") {
         emit_ev({{"ev", "hello"}, {"engine", "dcengine"}, {"version", "1"}});
     } else if (cmd == "devices") {
+        // Names exactly as the audio code matches them (Qt descriptions), so a choice made in the UI always finds its device.
         QJsonArray in, out;
         for (const auto &d : QMediaDevices::audioInputs()) in.append(d.description());
         for (const auto &d : QMediaDevices::audioOutputs()) out.append(d.description());
-        emit_ev({{"ev", "devices"}, {"inputs", in}, {"outputs", out}});
+        emit_ev({{"ev", "devices"}, {"inputs", in}, {"outputs", out},
+                 {"default_in", QMediaDevices::defaultAudioInput().description()}, {"default_out", QMediaDevices::defaultAudioOutput().description()}});
+    } else if (cmd == "test_mic") {
+        test_mic(c.value("device").toString(), c.value("ms").toInt(1500));
+    } else if (cmd == "test_spk") {
+        test_spk(c.value("device").toString());
     } else if (cmd == "connect") {
         connect_to(c);
     } else if (cmd == "disconnect") {
@@ -42,7 +53,7 @@ void Engine::handle(const QJsonObject &c) {
             if (c.value("on").toBool()) emit tx_pressed(); else emit tx_released();
         }
     } else if (cmd == "volume") {
-        emit in_vol(c.value("in").toDouble(0.5));
+        m_inVol = c.value("in").toDouble(1.0); emit in_vol(m_inVol);
     } else if (cmd == "out_volume") {
         emit out_vol(c.value("out").toDouble(1.0));
     } else if (cmd == "agc") {
@@ -55,6 +66,69 @@ void Engine::handle(const QJsonObject &c) {
         teardown("disconnected", "");
         QCoreApplication::quit();
     }
+}
+
+static double peak_of(const QByteArray &b, QAudioFormat::SampleFormat f) {
+    double pk = 0;
+    const char *p = b.constData();
+    switch (f) {
+    case QAudioFormat::UInt8:   for (int i = 0; i < b.size(); ++i) pk = std::max(pk, std::fabs(((uint8_t)p[i] - 128) / 128.0)); break;
+    case QAudioFormat::Int32:   for (int i = 0; i + 3 < b.size(); i += 4) { int32_t x; memcpy(&x, p + i, 4); pk = std::max(pk, std::fabs(x / 2147483648.0)); } break;
+    case QAudioFormat::Float:   for (int i = 0; i + 3 < b.size(); i += 4) { float x; memcpy(&x, p + i, 4); pk = std::max(pk, (double)std::fabs(x)); } break;
+    default:                    for (int i = 0; i + 1 < b.size(); i += 2) { int16_t x; memcpy(&x, p + i, 2); pk = std::max(pk, std::fabs(x / 32768.0)); }
+    }
+    return pk;
+}
+
+// Microphone test: records for `ms` with the same Qt audio code the transmitter uses and reports the peak level.
+void Engine::test_mic(const QString &name, int ms) {
+    QAudioDevice dev = QMediaDevices::defaultAudioInput();
+    for (const auto &d : QMediaDevices::audioInputs()) if (d.description() == name) dev = d;
+    if (dev.isNull()) { emit_ev({{"ev", "test_mic"}, {"ok", false}, {"msg", "No microphone found"}}); return; }
+    QAudioFormat f = dev.preferredFormat();
+    auto *src = new QAudioSource(dev, f, this);
+    QIODevice *io = src->start();
+    if (!io) { emit_ev({{"ev", "test_mic"}, {"ok", false}, {"msg", "The microphone could not be opened"}, {"device", dev.description()}, {"error", (int)src->error()}}); src->deleteLater(); return; }
+    auto peak = std::make_shared<double>(0.0); auto bytes = std::make_shared<qint64>(0);
+    connect(io, &QIODevice::readyRead, this, [=] { QByteArray b = io->readAll(); *bytes += b.size(); *peak = std::max(*peak, peak_of(b, f.sampleFormat())); });
+    QTimer::singleShot(ms, this, [=] {
+        const int err = (int)src->error();
+        src->stop();
+        emit_ev({{"ev", "test_mic"}, {"ok", *bytes > 0}, {"peak", *peak}, {"bytes", (double)*bytes}, {"device", dev.description()}, {"rate", f.sampleRate()}, {"channels", f.channelCount()}, {"error", err}});
+        src->deleteLater();
+    });
+}
+
+// Speaker test: plays a short 880 Hz tone through the chosen output with the same Qt audio code the receiver uses.
+void Engine::test_spk(const QString &name) {
+    QAudioDevice dev = QMediaDevices::defaultAudioOutput();
+    for (const auto &d : QMediaDevices::audioOutputs()) if (d.description() == name) dev = d;
+    if (dev.isNull()) { emit_ev({{"ev", "test_spk"}, {"ok", false}, {"msg", "No speakers found"}}); return; }
+    QAudioFormat f = dev.preferredFormat();
+    const int rate = f.sampleRate() > 0 ? f.sampleRate() : 48000, ch = f.channelCount() > 0 ? f.channelCount() : 2;
+    const int n = rate * 6 / 10;
+    QByteArray data;
+    for (int i = 0; i < n; ++i) {
+        const double env = std::min(1.0, std::min(i, n - i) / (rate * 0.03));
+        const double v = 0.3 * env * std::sin(2 * M_PI * 880.0 * i / rate);
+        for (int c = 0; c < ch; ++c) {
+            switch (f.sampleFormat()) {
+            case QAudioFormat::UInt8: { uint8_t x = (uint8_t)(128 + v * 127); data.append((char)x); break; }
+            case QAudioFormat::Int32: { int32_t x = (int32_t)(v * 2147483647.0); data.append((const char *)&x, 4); break; }
+            case QAudioFormat::Float: { float x = (float)v; data.append((const char *)&x, 4); break; }
+            default: { int16_t x = (int16_t)(v * 32767.0); data.append((const char *)&x, 2); }
+            }
+        }
+    }
+    auto *buf = new QBuffer(this); buf->setData(data); buf->open(QIODevice::ReadOnly);
+    auto *sink = new QAudioSink(dev, f, this);
+    sink->start(buf);
+    QTimer::singleShot(900, this, [=] {
+        const int err = (int)sink->error();
+        sink->stop();
+        emit_ev({{"ev", "test_spk"}, {"ok", err == 0}, {"device", dev.description()}, {"rate", rate}, {"channels", ch}, {"error", err}});
+        sink->deleteLater(); buf->deleteLater();
+    });
 }
 
 void Engine::connect_to(const QJsonObject &c) {
@@ -131,7 +205,7 @@ void Engine::on_update(Mode::MODEINFO i) {
     if (m_status == Mode::CONNECTING && i.status == Mode::DISCONNECTED) { teardown("error", "Connection refused or no answer from the server"); return; }
     if (m_status == Mode::CONNECTING && (i.status == Mode::CONNECTED_RW || i.status == Mode::CONNECTED_RO)) {
         m_status = i.status;
-        emit swrx(1); emit swtx(1); emit in_vol(0.5);
+        emit swrx(1); emit swtx(1); emit in_vol(m_inVol);
         emit_ev({{"ev", "status"}, {"state", "connected"}, {"rw", i.status == Mode::CONNECTED_RW}, {"vocoder", i.sw_vocoder_loaded}});
         return;
     }

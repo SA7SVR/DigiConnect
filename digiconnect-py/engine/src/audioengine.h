@@ -51,9 +51,12 @@ public:
 	void write(int16_t *, size_t, float fade_from = 1.0f, float fade_to = 1.0f);
 	bool playback_drained();
 	void set_output_buffer_size(uint32_t b) { if(m_out != nullptr) m_out->setBufferSize(b); }
-	void set_input_buffer_size(uint32_t b) { if(m_in != nullptr) m_in->setBufferSize(b); }
-	void set_output_volume(qreal v){ if(m_out != nullptr) m_out->setVolume(v); }
-	void set_input_volume(qreal v){ if(m_in != nullptr) m_in->setVolume(v); }
+	void set_input_buffer_size(uint32_t) { /* kept for compatibility: the capture buffer is sized from the device format in init() */ }
+	// Playback level (0..1) is applied to the samples here, not through the audio backend: the backend's own volume was ignored on some systems
+	// (and lost again after the stream was restarted), so the slider and mute did nothing.
+	void set_output_volume(qreal v){ m_outvol = (float)(v < 0 ? 0 : (v > 1 ? 1 : v)); if(m_out != nullptr) m_out->setVolume(1.0); }
+	// Microphone level: 0..1 goes to the device (session) volume; above 1 is applied as software gain (clipped), so a quiet microphone can be raised.
+	void set_input_volume(qreal v){ if(v < 0) v = 0; m_ingain = (float)(v > 1.0 ? v : 1.0); if(m_in != nullptr) m_in->setVolume(v > 1.0 ? 1.0 : v); }
 	void set_agc(bool agc) { m_agc = agc; }
 	bool frame_available() { return (m_audioinq.size() >= 320) ? true : false; }
 	uint16_t read(int16_t *, int);
@@ -79,7 +82,14 @@ private:
 	QQueue<int16_t> m_audioinq;
 	uint16_t m_maxlevel;
 	bool m_agc;
-	float m_srm; // sample rate multiplier for macOS HACK
+	float m_srm; // capture sample rate / 8000 (1 = device runs at 8 kHz; otherwise the microphone is resampled here)
+	float m_outvol = 1.0f;                                  // playback level set by the user (slider / mute / ducking)
+	float m_ingain = 1.0f;                                  // software gain applied to the microphone
+	int m_inchan = 1;                                       // channels delivered by the capture device
+	QAudioFormat::SampleFormat m_infmt = QAudioFormat::Int16; // sample format delivered by the capture device
+	float m_rs_acc = 0, m_rs_pos = 0; int m_rs_n = 0;       // resampler state (box average)
+	QString m_inname;
+	qint64 m_inbytes = 0;                                   // bytes received from the microphone (diagnostics)
 
 	float m_audio_out_temp_buf[320];   //!< output of decoder
 	float *m_audio_out_temp_buf_p;

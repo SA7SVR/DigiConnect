@@ -7,7 +7,7 @@ from ..theme import NET_COLOR, C
 from .. import directory
 from .widgets import *
 from .controls import TxControls
-from ..audio_devices import list_devices
+from .audioblock import AudioBlock
 
 PAGE = 100
 
@@ -37,10 +37,16 @@ class Workspace(W.QWidget):
         mid = panel(); _mo = vbox(mid, s=0); _sc = W.QScrollArea(); _sc.setWidgetResizable(True); _sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); _in = W.QWidget(); _in.setObjectName('scrollinner'); _in.setStyleSheet('QWidget#scrollinner{background:transparent;}'); _sc.setWidget(_in); _mo.addWidget(_sc); mv = vbox(_in, m=(16, 16, 16, 12), s=8)
         mv.addWidget(label("Selected station", eyebrow=True)); self.title = label("Select a station"); self.title.setStyleSheet("font-size:20px;font-weight:700;")
         self.sub = label("Select an entry in the list on the left.", muted=True); mv.addWidget(self.title); mv.addWidget(self.sub)
-        self.txcard = panel("tx"); tv = vbox(self.txcard, m=(12, 8, 12, 10), s=4)
-        tv.addWidget(label("Transmit server (TX)", muted=True)); self.txname = label("No server configured"); self.txname.setStyleSheet("font-weight:700;")
-        self.choose = button("Choose DMR server"); tv.addWidget(self.txname); tv.addWidget(self.choose, 0, Qt.AlignmentFlag.AlignLeft)
-        self.txcard.setVisible(net == "DMR"); mv.addWidget(self.txcard)
+        self.srvcard = panel("tx"); sv = vbox(self.srvcard, m=(12, 8, 12, 10), s=4)
+        sv.addWidget(label("Server used for this station", muted=True))
+        self.srv_host = W.QLineEdit(); self.srv_port = W.QLineEdit(); self.srv_port.setMaximumWidth(110)
+        self.srv_host.setPlaceholderText("host name or IP address"); self.srv_port.setPlaceholderText("port")
+        hr = hbox(s=6); hr.addWidget(field("Server (host / IP)", self.srv_host), 1); hr.addWidget(field("Port", self.srv_port)); sv.addLayout(hr)
+        self.srv_src = label("", muted=True); self.srv_src.setWordWrap(True); sv.addWidget(self.srv_src)
+        br = FlowLayout(hspace=6, vspace=6); self.srv_save = button("Use this address"); self.srv_reset = button("Back to the list value"); br.addWidget(self.srv_save); br.addWidget(self.srv_reset)
+        self.choose = button("Choose DMR server"); self.choose.setVisible(net == "DMR"); br.addWidget(self.choose); sv.addLayout(br)
+        self.txname = label(""); self.txname.setVisible(False)
+        mv.addWidget(self.srvcard)
         self.addfav = button("☆  Add favorite"); mv.addWidget(self.addfav, 0, Qt.AlignmentFlag.AlignLeft)
         self.tx = TxControls(ctx, on_new_qso); mv.addWidget(self.tx)
         mv.addWidget(label("AUDIO", section=True))
@@ -53,12 +59,7 @@ class Workspace(W.QWidget):
             self.el_rem = checkbox("Remember password"); self.el_rem.setChecked(True); mv.addWidget(self.el_rem)
             self.el_sign = button("Sign in to account", "primary"); mv.addWidget(self.el_sign, 0, Qt.AlignmentFlag.AlignLeft)
             self.el_sign.clicked.connect(lambda: ctx.toast.emit("EchoLink sign-in needs the EchoLink engine (not connected in this build)"))
-        self.mic = W.QComboBox(); self.spk = W.QComboBox(); self._devices()
-        mv.addWidget(field("Microphone", self.mic)); mv.addWidget(field("Speakers", self.spk))
-        self.dev_info = label("", muted=True)
-        ar = FlowLayout(hspace=6, vspace=6); self.b_ref = button("Refresh devices"); self.b_tm = button("Test microphone"); self.b_ts = button("Test speakers")
-        for b in (self.b_ref, self.b_tm, self.b_ts): ar.addWidget(b)
-        mv.addLayout(ar); mv.addWidget(self.dev_info); self.b_ref.clicked.connect(self._devices); self._devices()
+        self.audio = AudioBlock(ctx); mv.addWidget(self.audio)
         self.rxvol = W.QSlider(Qt.Orientation.Horizontal); self.rxvol.setRange(0, 100); self.rxvol.setValue(int(ctx.rules.net_volume[net] * 100))
         vr = hbox(); vr.addWidget(label("RX volume", muted=True)); vr.addWidget(self.rxvol, 1); mv.addLayout(vr)
         self.hint = label({"DMR": "Connects to the DMR master set in Settings › Radio networks (DMR ID required). Listen and Connect (TX) are separate.",
@@ -79,7 +80,8 @@ class Workspace(W.QWidget):
         self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: (ctx.refresh_hosts(True), self.fill()))
         self.rxvol.valueChanged.connect(lambda v: ctx.rules.net_volume.__setitem__(net, v / 100))
         self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded)
-        ctx.changed.connect(self.refresh); self.fill()
+        self.srv_save.clicked.connect(self._srv_save); self.srv_reset.clicked.connect(self._srv_reset); self._srv_key = None
+        ctx.changed.connect(self.refresh); self._hosts_loaded()
 
     def _hosts_loaded(self):
         self.entries = directory.entries(self.net, self.ctx.hosts)
@@ -107,19 +109,56 @@ class Workspace(W.QWidget):
         bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject); lst.itemDoubleClicked.connect(lambda *_: dlg.accept())
         if dlg.exec() and lst.currentItem():
             m = lst.currentItem().data(Qt.ItemDataRole.UserRole); st = self.ctx.store
-            st.settings["dmr_server"], st.settings["dmr_port"] = m["host"], int(m["port"]); st.save_settings()
+            st.settings["dmr_server"], st.settings["dmr_port"] = m["host"], int(m["port"]); st.save_settings(); self._srv_show(None, True)
             self.ctx.toast.emit(f"DMR master set to {m['name']} ({m['host']}:{m['port']})"); self.ctx.changed.emit()
+
+    # ---- server address of the selected station (shown from the list, editable, and really used by the engine) ----------
+    def _srv_target(self):
+        t = self.ctx.selected
+        return t if (t is not None and t.net == self.net) else (Target("DMR", "0", "") if self.net == "DMR" else None)
+
+    def _srv_show(self, t, force=False):
+        t = t or self._srv_target()
+        key = (t.net, t.id) if t else None
+        stamp = (key, self.ctx.store.settings.get("dmr_server"), self.ctx.store.settings.get("dmr_port"), len(self.ctx.hosts.entries), len(self.ctx.servers.user))
+        if not force and stamp == getattr(self, "_srv_stamp", None): return          # do not overwrite what the user is typing
+        self._srv_stamp = stamp
+        if t is None:
+            self.srv_host.clear(); self.srv_port.clear(); self.srv_src.setText("Select a station to see its server address."); self._srv_en(False); return
+        ep, src = self.ctx.servers.info(t)
+        self.srv_host.setText(ep["host"] if ep else ""); self.srv_port.setText(str(ep["port"]) if ep else "")
+        self.srv_src.setText({"your address": "Source: your own address (used instead of the list).", "built in": "Source: built into DigiConnect.",
+                              "DMR master (Settings)": "Source: the DMR master you chose. Press «Choose DMR server» to change it.",
+                              "worldwide list": "Source: the downloaded worldwide server list."}.get(src, "Not in the downloaded lists yet — press Refresh, or type the address here."))
+        self._srv_en(True)
+        self.srv_reset.setEnabled(src == "your address")
+
+    def _srv_en(self, on):
+        for w in (self.srv_host, self.srv_port, self.srv_save): w.setEnabled(on)
+        if not on: self.srv_reset.setEnabled(False)
+
+    def _srv_save(self):
+        t = self._srv_target()
+        if t is None: return
+        host, port = self.srv_host.text().strip(), self.srv_port.text().strip()
+        if not host or " " in host or (port and not (port.isdigit() and 0 < int(port) < 65536)):
+            self.ctx.toast.emit("Enter a host name or IP address, and a port between 1 and 65535."); return
+        if t.net == "DMR":
+            st = self.ctx.store; st.settings["dmr_server"] = host; st.settings["dmr_port"] = int(port or 62031); st.save_settings()
+        elif not self.ctx.servers.remember(t, host + (":" + port if port else "")):
+            self.ctx.toast.emit("Enter a host name or IP address, and a port between 1 and 65535."); return
+        from .. import diag; diag.log(f"server address set by user for {t.net}:{t.id} -> {host}:{port}")
+        self.ctx.toast.emit(f"Server address saved: {host}:{port or 'default port'}. It is used the next time you connect.")
+        self._srv_show(t if self.ctx.selected is not None and self.ctx.selected.net == self.net else None, True)
+
+    def _srv_reset(self):
+        t = self._srv_target()
+        if t is not None and self.ctx.servers.clear(t): self.ctx.toast.emit("The list value is used again.")
+        self._srv_show(t, True)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._right.setVisible(self.width() >= 960)      # narrow window / drawer open: the "last heard" column steps aside instead of squeezing the others
-
-    def _devices(self):
-        ins, outs, err = list_devices(); st = self.ctx.store.settings
-        self.mic.clear(); self.spk.clear(); self.mic.addItems(ins or [tr("(none found)")]); self.spk.addItems(outs or [tr("(none found)")])
-        if st.get("mic") in ins: self.mic.setCurrentText(st["mic"])
-        if st.get("speakers") in outs: self.spk.setCurrentText(st["speakers"])
-        if hasattr(self, "dev_info"): self.dev_info.setText(err or f"{len(ins)} available microphone{'s' if len(ins) != 1 else ''}")
 
     # ---- directory --------------------------------------------------------
     def _mode(self, favs):
@@ -135,7 +174,11 @@ class Workspace(W.QWidget):
         if self.show_favs: src = src + [dict(e, sub=e["id"], activity="Activity unavailable") for e in manual]
         c = self.country.currentText()
         if c and self.country.currentIndex() > 0: src = [e for e in src if e.get("country") == c]
-        return [e for e in src if q in (e["name"] + " " + e["id"] + " " + e["sub"] + " " + e.get("country", "")).lower()] if q else src
+        res = [e for e in src if q in (e["name"] + " " + e["id"] + " " + e["sub"] + " " + e.get("country", "")).lower()] if q else src
+        if q and not self.show_favs and self.net in ("DMR", "NXDN", "P25") and valid_dmr_tg(q) and not any(e["id"] == q for e in res):
+            # the catalogue never holds every talkgroup: a typed number can always be used
+            res = [dict(net=self.net, id=q, name=f"{self.net} TG {q}", sub=f"TG {q} · typed number", activity="Typed talkgroup number")] + res
+        return res
 
     def fill(self):
         ents = self.visible_entries(); total = len(ents)
@@ -144,7 +187,7 @@ class Workspace(W.QWidget):
         self.list.blockSignals(True); self.list.clear()
         for e in chunk:
             it = W.QListWidgetItem(); it.setData(Qt.ItemDataRole.UserRole, e)
-            it.setText(f"{'★ ' if self.ctx.store.is_fav(e['net'], e['id']) else '☆ '}{e['name']}\n   {e['sub']}\n   {e['activity']}"); self.list.addItem(it)
+            it.setText(f"{'★ ' if self.ctx.store.is_fav(e['net'], e['id']) else '☆ '}{tr(e['name'])}\n   {tr(e['sub'])}\n   {tr(e['activity'])}"); self.list.addItem(it)
         self.list.blockSignals(False)
         src = "BrandMeister" if self.net == "DMR" else self.net
         self.count.setText(f"{src} · {total} entries"); a = self.page * PAGE
@@ -183,12 +226,11 @@ class Workspace(W.QWidget):
         self.sub.setText(f"{t.net} · {t.id}" if mine else "Select an entry in the list on the left.")
         self.addfav.setEnabled(mine)
         self.addfav.setText("★  Remove favorite" if mine and self.ctx.store.is_fav(t.net, t.id) else "☆  Add favorite")
-        self.txname.setText(self.ctx.store.settings.get("dmr_server") or "No server configured")
-        heard = [h for h in self.ctx.last_heard if h["net"] == self.net]
+        self._srv_show(t if mine else None)
+        heard = list(self.ctx.last_heard)                    # every network, newest first (a station heard on C4FM also shows on the DMR page)
         self.lh_empty.setVisible(not heard)
         if heard:
-            h = heard[0]
-            self.lh_list.setText("<br>".join(f"<b>{x['src']}</b> → {x['dst'] or x['target']} <span style='color:{C['muted']}'>{x['ts']:%H:%M:%S} UTC</span>" for x in heard[:12]))
+            self.lh_list.setText("<br>".join(f"<b>{x['src']}</b> → {x['dst'] or x['target']} <span style='color:{C['muted']}'>{x['net']} · {x['ts']:%H:%M:%S} UTC</span>" for x in heard[:12]))
             self.lh_list.setTextFormat(Qt.TextFormat.RichText)
         else:
             self.lh_list.setText("Waiting for data")

@@ -8,6 +8,7 @@ from ..context import Ctx
 from .widgets import *
 from .icons import icon, dot
 from ..theme import NET_COLOR
+from .heardpage import HeardPage
 from .workspace import Workspace
 from .favorites import Favorites
 from .qsolog import QsoLog
@@ -80,7 +81,7 @@ class MainWindow(W.QMainWindow):
         self.settings = SettingsDrawer(self.ctx); self.qdrawer = QsoDrawer(self.ctx); self.settings.hide(); self.qdrawer.hide(); mid.addWidget(self.settings); mid.addWidget(self.qdrawer)
         self.favs = Favorites(self.ctx, self.open_qso); self.log = QsoLog(self.ctx, self.open_qso)
         self.ws = {n: Workspace(self.ctx, n, self.open_qso) for n in NETS}
-        self.pages.addWidget(self.favs); self.pages.addWidget(self.log)
+        self.heard = HeardPage(self.ctx); self.pages.addWidget(self.favs); self.pages.addWidget(self.log); self.pages.addWidget(self.heard)
         for n in NETS: self.pages.addWidget(self.ws[n])
         self.mixer = Mixer(self.ctx); self.dock = Dock(self.ctx, lambda: None)
         col.addWidget(self.mixer); col.addWidget(self._pad(self.dock))
@@ -109,13 +110,14 @@ class MainWindow(W.QMainWindow):
         if key == "mixer": self._mixer_user = True; self.mixer.setVisible(not self.mixer.isVisible()); self._sync_chrome(); return
         if key in ("analysis",): self.nav("log"); self.log._analysis(); return
         if key == "updates": self.show_updates(); return
-        if key in ("heard", "rec", "help"):
-            msg = {"heard": "Last heard appears in the right column of each network page when a station is received.", "rec": "Recordings: none yet. Recording needs a running receiver (engine step).",
+        if key in ("rec", "help"):
+            msg = {"rec": "Recordings: none yet. Recording needs a running receiver (engine step).",
                    "updates": "Updates: open the release page for DigiConnect to check for a newer build.", "help": "Help: see docs/SPEC.md (operating rules) in the source package."}[key]
             self.ctx.toast.emit(msg); return
         self.current = key
         if key == "favorites": self.pages.setCurrentWidget(self.favs); self.favs.rebuild()
         elif key == "log": self.pages.setCurrentWidget(self.log); self.log.reload()
+        elif key == "heard": self.pages.setCurrentWidget(self.heard); self.heard.reload()
         elif key.startswith("net:"):
             n = key[4:]; self.pages.setCurrentWidget(self.ws[n]); self.ctx.last_net = n
         self._sync_chrome()
@@ -174,6 +176,8 @@ class MainWindow(W.QMainWindow):
     def apply_settings(self):
         s = self.ctx.store.settings; self.callsign.setText(s.get("callsign") or "—"); self.lang.setText(s["language"])
         theme.set_theme(s.get("theme", "dark")); i18n.set_language(s.get("language", "English")); i18n.retranslate()
+        self.heard.retranslate()
+        for _w in self.ws.values(): _w.fill()          # list rows are built from text, so they are rebuilt in the new language
         self.theme_btn.setText("☀  Light" if theme.current == "dark" else "☾  Dark")
         self.avatar.setText((s.get("callsign") or "DC")[:2].upper()); W.QApplication.instance().setStyleSheet(qss(s["text_size"]))
         repaint_icons()

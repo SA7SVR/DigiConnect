@@ -75,6 +75,6 @@ def test_settings_save_and_text_size(win):
 
 def test_listen_and_connect_buttons_are_visible(win):
     """Regression: a transparent-background stylesheet on the scroll area made these buttons dark-on-dark (text invisible)."""
-    w, ctx, app = win; ws = pick(w, "C4FM", 0); app.processEvents()
+    w, ctx, app = win; ws = pick(w, "DMR", 4); app.processEvents()
     for b in (ws.tx.listen, ws.tx.connect):
         img = b.grab().toImage(); assert img.pixelColor(img.width() - 8, img.height() // 2).lightness() > 110, b.text()

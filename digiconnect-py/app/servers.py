@@ -65,6 +65,22 @@ class Servers:
                 if ref.startswith(proto): return self.hosts.find(proto, ref)
         return None
 
+    def info(self, t: Target) -> tuple[dict | None, str]:
+        """(endpoint, where it comes from): 'your address', 'built in', 'DMR master (Settings)', 'worldwide list' or ''."""
+        if t.net == "DMR":
+            ep = self.resolve(t); return ep, ("DMR master (Settings)" if ep else "")
+        k = self.key(t)
+        if self.user.get(k): return self.user[k], "your address"
+        if BUILTIN.get(k): return BUILTIN[k], "built in"
+        ep = self.resolve(t)
+        return ep, ("worldwide list" if ep else "")
+
+    def clear(self, t: Target) -> bool:
+        """Removes the user's own address for this entry (the list value is used again)."""
+        k = self.key(t)
+        if k not in self.user: return False
+        del self.user[k]; self.file.write_text(json.dumps(self.user, indent=1), encoding="utf-8"); return True
+
     def remember(self, t: Target, text: str) -> bool:
         """Accepts 'host' or 'host:port'. Returns False when the text is not usable."""
         text = text.strip()

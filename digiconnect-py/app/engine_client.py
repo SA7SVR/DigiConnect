@@ -38,9 +38,11 @@ class Link(QtCore.QObject):
         self._buf = b""
         self._queue: list[bytes] = []           # commands sent before the process finished starting
         self._alive = True
+        self._errn = 0
         self.proc = QtCore.QProcess(self)
         self.proc.setProgram(path)
         self.proc.readyReadStandardOutput.connect(self._read)
+        self.proc.readyReadStandardError.connect(self._read_err)
         self.proc.started.connect(self._flush)
         self.proc.finished.connect(self._on_finished)
         self.proc.errorOccurred.connect(self._on_error)
@@ -72,6 +74,15 @@ class Link(QtCore.QObject):
                 try: self.event.emit(self, json.loads(line))
                 except ValueError: pass
 
+    def _read_err(self):
+        """The engine's own diagnostics (stderr): into digiconnect.log; 'DCWARN:' lines are also shown to the user."""
+        from . import diag
+        for raw in bytes(self.proc.readAllStandardError()).decode("utf-8", "replace").splitlines():
+            line = raw.strip()
+            if not line: continue
+            if self._errn < 400: diag.log("engine stderr: " + line); self._errn += 1
+            if "DCWARN:" in line: self.event.emit(self, {"ev": "warn", "msg": line.split("DCWARN:", 1)[1].strip()})
+
     def close(self):
         self._alive = False            # we asked for this: no 'stopped unexpectedly' report
         self.send("quit")
@@ -88,6 +99,7 @@ class EngineClient(QtCore.QObject, Engine):
     name = "dcengine"
     status = Signal(object, str, str)     # (link, state, message)
     heard = Signal(object, dict)          # (link, rx event)
+    notice = Signal(str)                  # an engine warning for the user (e.g. the microphone delivers no sound)
     volume_refresh = Signal()             # a link just connected: re-send the receive volumes
 
     def __init__(self, path: str, store, parent=None):
@@ -168,6 +180,15 @@ class EngineClient(QtCore.QObject, Engine):
         for ln in self.links.values():
             if ln.tx and ln.state == "connected": ln.send("ptt", on=bool(on))
 
+    def mic_gain(self) -> float:
+        """Microphone level from the settings (percent; 100 = device level, above 100 = software gain)."""
+        try: return max(0.0, min(4.0, float(self.store.settings.get("mic_gain", 100)) / 100.0))
+        except (TypeError, ValueError): return 1.0
+
+    def set_mic_gain(self, pct: float):
+        self.store.settings["mic_gain"] = int(pct)
+        for ln in self.links.values(): ln.send("volume", **{"in": self.mic_gain()})
+
     def mic_level(self): return min(1.0, self._level / 20000.0)
 
     def set_rx_volume(self, handle, vol: float):
@@ -181,11 +202,13 @@ class EngineClient(QtCore.QObject, Engine):
     # ---- events ---------------------------------------------------------------
     def _on_event(self, ln: Link, e: dict):
         ev = e.get("ev")
+        if ev == "warn":
+            self.notice.emit(e.get("msg", "")); return
         if ev in ("status", "error"):
             from . import diag; diag.log(f"engine {ln.key}: {ev} {e.get('state', '')} {e.get('msg', '')}")
         if ev == "status":
             ln.state = e.get("state", ln.state)
-            if ln.state == "connected": self.__dict__.pop("_resend", None); self.volume_refresh.emit()
+            if ln.state == "connected": self.__dict__.pop("_resend", None); ln.send("volume", **{"in": self.mic_gain()}); self.volume_refresh.emit()
             self.status.emit(ln, ln.state, e.get("msg", ""))
             if ln.state in ("error", "timeout", "disconnected"):
                 ln.rx.clear(); ln.tx = False; self._release(ln)
