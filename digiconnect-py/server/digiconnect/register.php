@@ -26,12 +26,12 @@ $now = time(); $cfg = dc_cfg();
 $cur = dc_one('SELECT id FROM dc_installs WHERE id=?', [$id]);
 if (!$cur) {
   dc_q('INSERT INTO dc_installs(id,first_seen,last_seen,version,shell,os,arch,checks,state,demo_until,ip) VALUES(?,?,?,?,?,?,?,0,?,?,?)',
-    [$id, $now, $now, $v, $shell, $os, $arch, 'demo', $now + 86400 * (int)dc_opt('demo_days', $cfg['demo_days']), dc_ip()]);
+    [$id, $now, $now, $v, $shell, $os, $arch, '', 0, dc_ip()]);
   dc_event('install', "$id|$v|$os|$arch");
   // reinstall by the same person: take over the earlier state, so a new installation id does not restart the demo
-  $old = dc_one("SELECT state, demo_until, enabled, note, lic_by, lic_set FROM dc_installs WHERE call=? AND lower(mail)=? AND id<>? ORDER BY first_seen ASC LIMIT 1", [$call, $mail, $id]);
-  if ($old) dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=? WHERE id=?',
-    [$old['state'], $old['demo_until'], $old['enabled'], $old['note'], $old['lic_by'], $old['lic_set'], $id]);
+  $old = dc_one("SELECT state, demo_until, enabled, note, lic_by, lic_set, owner, lic_code, lic_since FROM dc_installs WHERE call=? AND lower(mail)=? AND id<>? ORDER BY first_seen ASC LIMIT 1", [$call, $mail, $id]);
+  if ($old) dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=?, owner=?, lic_code=?, lic_since=? WHERE id=?',
+    [$old['state'], $old['demo_until'], $old['enabled'], $old['note'], $old['lic_by'], $old['lic_set'], $old['owner'], $old['lic_code'], $old['lic_since'], $id]);
 }
 dc_q('UPDATE dc_installs SET name=?, call=?, dmr_id=?, mail=?, lang=?, consent_at=COALESCE(consent_at,?), last_seen=?, ip=? WHERE id=?',
   [$name, $call, $dmr, $mail, $lang, $now, $now, dc_ip(), $id]);
@@ -39,4 +39,4 @@ dc_event('register', "$id|$call");
 
 $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
 list($state, $left, $msg) = dc_state($in);
-echo json_encode(['ok' => true, 'state' => $state, 'left' => $left, 'msg' => $msg, 'offline' => dc_offline()['offline'], 'offline_days' => dc_offline()['offline_days'], 'donate' => (string)dc_opt('donate_url', $cfg['donate_url'] ?? '')]);
+echo json_encode(['ok' => true, 'state' => $state, 'left' => $left, 'msg' => $msg, 'offline' => dc_offline()['offline'], 'offline_days' => dc_offline()['offline_days']] + dc_lic_public());

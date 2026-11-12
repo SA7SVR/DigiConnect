@@ -13,7 +13,7 @@ function L($el, $en = '', $sv = '') { global $LANG; return $LANG === 'en' ? ($en
 function h($s) { return dc_h($s); }
 
 /* ---- extra table for broadcast messages (safe, additive) ---- */
-dc_db()->exec("CREATE TABLE IF NOT EXISTS dc_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, scope TEXT, target TEXT, title TEXT, body TEXT, active INT DEFAULT 1)");
+dc_db();                                                       // creates / upgrades the tables (dc_messages included)
 
 /* ---- auth (+ "remember me": 180 days on this browser, stored as a hash, cancelled by Log out) ---- */
 const DC_REMEMBER_DAYS = 180;
@@ -54,9 +54,9 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   $a = $_POST['a'] ?? $_POST['act'] ?? '';
   $iid = $_POST['iid'] ?? '';
   // install state
-  if ($a === 'demo')     { $d = max(1, (int)($_POST['days'] ?? 7)); dc_q("UPDATE dc_installs SET state='demo', demo_until=?, enabled=1 WHERE id=?", [time() + 86400 * $d, $iid]); dc_event('demo', "$iid|$d"); flash('ok', L("Demo $d ημέρες", "Demo $d days")); }
-  if ($a === 'activate') { dc_q("UPDATE dc_installs SET state='full', enabled=1, lic_by='admin', lic_set=? WHERE id=?", [time(), $iid]); dc_event('activate', $iid); flash('ok', L('Ενεργοποιήθηκε (full)', 'Activated (full)')); }
-  if ($a === 'lock')     { dc_q("UPDATE dc_installs SET state='locked' WHERE id=?", [$iid]); dc_event('lock', $iid); flash('ok', L('Κλειδώθηκε', 'Locked')); }
+  if ($a === 'demo')     { $d = max(1, (int)($_POST['days'] ?? 7)); dc_lic_set($iid, 'demo', dc_lic_add(time(), $d, 'd'), 'panel'); flash('ok', L("Demo $d ημέρες", "Demo $d days")); }
+  if ($a === 'activate') { dc_lic_set($iid, 'full', 0, 'panel'); flash('ok', L('Ενεργοποιήθηκε (full)', 'Activated (full)')); }
+  if ($a === 'lock')     { dc_lic_set($iid, 'locked', 0, 'panel'); flash('ok', L('Κλειδώθηκε', 'Locked')); }
   if ($a === 'enable')   { dc_q("UPDATE dc_installs SET enabled=1 WHERE id=?", [$iid]); dc_event('enable', $iid); flash('ok', L('Ενεργό', 'Enabled')); }
   if ($a === 'disable')  { dc_q("UPDATE dc_installs SET enabled=0, state='disabled' WHERE id=?", [$iid]); dc_event('disable', $iid); flash('ok', L('Απενεργοποιήθηκε', 'Disabled')); }
   if ($a === 'note')     { dc_q("UPDATE dc_installs SET note=? WHERE id=?", [$_POST['note'] ?? '', $iid]); flash('ok', L('Σημείωση αποθηκεύτηκε', 'Note saved')); }
@@ -89,27 +89,25 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       } else flash('bad', L('Αποτυχία ανεβάσματος', 'Upload failed'));
     }
   }
-  // codes
-  if ($a === 'codes_make') {
-    $kind = ($_POST['kind'] ?? '') === 'full' ? 'full' : 'demo';
-    $n = max(1, min(200, (int)($_POST['count'] ?? 1)));
-    $made = [];
-    for ($i = 0; $i < $n; $i++) {
-      $code = strtoupper(bin2hex(random_bytes(2)) . '-' . bin2hex(random_bytes(2)) . '-' . bin2hex(random_bytes(2)));
-      dc_q("INSERT INTO dc_codes(code,kind,dur,unit,uses,used,created,note) VALUES(?,?,?,?,?,0,?,?)",
-        [$code, $kind, (int)($_POST['dur'] ?? 0), $_POST['unit'] ?? 'days', max(1, (int)($_POST['uses'] ?? 1)), time(), $_POST['note'] ?? '']);
-      $made[] = $code;
-    }
-    dc_event('codes_make', "$kind x$n"); flash('ok', L('Δημιουργήθηκαν κωδικοί: ', 'Codes created: ') . implode(', ', $made));
-  }
+  // codes (created with code_new below)
   if ($a === 'code_del') { dc_q("DELETE FROM dc_codes WHERE code=?", [$_POST['code']]); flash('ok', L('Κωδικός διαγράφηκε', 'Code deleted')); }
-  // messages
-  if ($a === 'msg_send') {
-    dc_q("INSERT INTO dc_messages(t,scope,target,title,body,active) VALUES(?,?,?,?,?,1)",
-      [time(), ($_POST['scope'] ?? 'all'), trim($_POST['target'] ?? ''), trim($_POST['title'] ?? ''), trim($_POST['body'] ?? '')]);
-    dc_event('msg_send', $_POST['title'] ?? ''); flash('ok', L('Το μήνυμα στάλθηκε', 'Message sent'));
+  // messages (same as HAM Digi)
+  if ($a === 'msg_new') {
+    $target = ''; $t = trim($_POST['target'] ?? ''); $ok = true;
+    if ($t !== '') { $r0 = dc_one('SELECT id FROM dc_installs WHERE rowid=?', [(int)preg_replace('/\D/', '', $t)]); $target = $r0 ? $r0['id'] : ''; if (!$target) { flash('bad', L('Δεν βρέθηκε η εγκατάσταση.', 'Installation not found.')); $ok = false; } }
+    $el = trim($_POST['body_el'] ?? ''); $en = trim($_POST['body_en'] ?? '');
+    if ($ok && $el === '' && $en === '') { flash('bad', L('Γράψε το μήνυμα.', 'Write the message.')); $ok = false; }
+    if ($ok) {
+      $days = max(0, (int)($_POST['days'] ?? 30)); $link = trim($_POST['link'] ?? ''); if ($link !== '' && !preg_match('#^https://[^\s"<>]+$#', $link)) $link = '';
+      $te = substr(trim($_POST['title_el'] ?? ''), 0, 200); $tn = substr(trim($_POST['title_en'] ?? ''), 0, 200);
+      dc_q("INSERT INTO dc_messages(t,scope,target,title,body,title_el,title_en,body_el,body_en,link,until,active) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)", [time(), $target ? 'one' : 'all', $target, $te ?: $tn, substr($el ?: $en, 0, 4000), $te, $tn, substr($el, 0, 4000), substr($en, 0, 4000), $link, $days ? time() + $days * 86400 : 0]);
+      dc_event('msg_send', ($target ? dc_inst_no($target) : 'all') . '|' . substr($el ?: $en, 0, 60));
+      flash('ok', L('Το μήνυμα στάλθηκε. Ο server το προσφέρει σε κάθε έλεγχο· το πρόγραμμα δεν το εμφανίζει ακόμη.', 'Message sent. The server offers it at every check; the program does not show it yet.'));
+    }
   }
-  if ($a === 'msg_off') { dc_q("UPDATE dc_messages SET active=0 WHERE id=?", [(int)$_POST['mid']]); flash('ok', L('Το μήνυμα απενεργοποιήθηκε', 'Message deactivated')); }
+  if ($a === 'msg_send') { dc_q("INSERT INTO dc_messages(t,scope,target,title,body,active) VALUES(?,?,?,?,?,1)", [time(), ($_POST['scope'] ?? 'all'), trim($_POST['target'] ?? ''), trim($_POST['title'] ?? ''), trim($_POST['body'] ?? '')]); dc_event('msg_send', $_POST['title'] ?? ''); flash('ok', L('Το μήνυμα στάλθηκε', 'Message sent')); }
+  if ($a === 'msg_off') { dc_q("UPDATE dc_messages SET active=0 WHERE id=?", [(int)$_POST['mid']]); flash('ok', L('Το μήνυμα σταμάτησε.', 'Message stopped.')); }
+  if ($a === 'msg_del') { dc_q("DELETE FROM dc_messages WHERE id=?", [(int)$_POST['mid']]); flash('ok', L('Το μήνυμα διαγράφηκε.', 'Message deleted.')); }
   // host lists — run the refresh now (fetches full lists for all modes)
   if ($a === 'hosts_refresh') {
     $rep = is_file(__DIR__ . '/../hosts/refresh.php') ? (require __DIR__ . '/../hosts/refresh.php') : [];
@@ -125,11 +123,86 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   if ($a === 'set_lic') {
     $off = in_array($_POST['offline'] ?? '', ['require', 'grace', 'allow'], true) ? $_POST['offline'] : 'require';
     dc_kv_set('offline', $off); dc_kv_set('offline_days', max(1, (int)($_POST['offline_days'] ?? 7)));
-    dc_kv_set('demo_days', max(1, (int)($_POST['demo_days'] ?? 14)));
-    $du = trim((string)($_POST['donate_url'] ?? '')); dc_kv_set('donate_url', preg_match('~^https://~i', $du) ? $du : '');
+    // the demo length and the Donate address are set on the Licences page (default settings, as in HAM Digi)
     flash('ok', L('Ρυθμίσεις άδειας αποθηκεύτηκαν', 'Licence settings saved'));
   }
   if ($a === 'set_pause') { dc_kv_set('paused', ($_POST['paused'] ?? '') === '1' ? '1' : '0'); flash('ok', L('Κατάσταση ενημερώσεων ενημερώθηκε', 'Update pause updated')); }
+
+  $ceNow = (int)round(((int)dc_kv('check_every', $cfg['check_every'])) / 60);
+  // ---------- licences, activation codes, payments (same actions as the HAM Digi panel) ----------
+  $UN = ['h', 'd', 'm', 'y'];
+  if ($a === 'lic_default') {
+    $mode = in_array($_POST['mode'] ?? '', ['free', 'demo', 'locked'], true) ? $_POST['mode'] : 'demo';
+    dc_kv_set('lic_default', json_encode(['mode' => $mode, 'n' => max(1, (int)($_POST['n'] ?? 14)), 'unit' => in_array($_POST['unit'] ?? '', $UN, true) ? $_POST['unit'] : 'd',
+      'msg_el' => substr(trim($_POST['msg_el'] ?? ''), 0, 300), 'msg_en' => substr(trim($_POST['msg_en'] ?? ''), 0, 300),
+      'offer' => in_array($_POST['offer'] ?? '', ['none', 'donate', 'buy'], true) ? $_POST['offer'] : 'donate', 'amount' => substr(trim($_POST['amount'] ?? ''), 0, 30),
+      'link' => preg_match('#^https://[^\s"<>]+$#', trim($_POST['link'] ?? '')) ? trim($_POST['link']) : ''], JSON_UNESCAPED_UNICODE));
+    dc_event('licence', 'default|' . $mode); flash('ok', L('Η προεπιλογή για τις νέες εγκαταστάσεις αποθηκεύτηκε.', 'The default for new installations was saved.'));
+  }
+  if ($a === 'lic_reset_all') {
+    $n = dc_q("UPDATE dc_installs SET state='', demo_until=0, lic_by='' WHERE (lic_by='default' OR lic_by IS NULL OR lic_by='') AND enabled=1 AND state<>'disabled'")->rowCount();
+    dc_event('licence', "reset|$n to default"); flash('ok', L("$n εγκαταστάσεις ακολουθούν πάλι την προεπιλογή.", "$n installations follow the default again."));
+  }
+  if ($a === 'lic_one') {
+    $id = $_POST['id'] ?? ''; $do = $_POST['do'] ?? ''; $n = max(1, (int)($_POST['n'] ?? 1)); $u = in_array($_POST['unit'] ?? '', $UN, true) ? $_POST['unit'] : 'd';
+    $cur = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
+    if (!$cur) flash('bad', L('Δεν βρέθηκε η εγκατάσταση.', 'Installation not found.'));
+    else {
+      $base = max(time(), (int)$cur['demo_until']);
+      if ($do === 'demo') dc_lic_set($id, 'demo', dc_lic_add(time(), $n, $u), 'panel');
+      elseif ($do === 'extend') dc_lic_set($id, $cur['state'] === 'full' ? 'full' : 'demo', dc_lic_add($base, $n, $u), 'panel');
+      elseif ($do === 'full') dc_lic_set($id, 'full', 0, 'panel');
+      elseif ($do === 'full_until') dc_lic_set($id, 'full', dc_lic_add(time(), $n, $u), 'panel');
+      elseif ($do === 'lock') dc_lic_set($id, 'locked', 0, 'panel');
+      elseif ($do === 'free') dc_lic_set($id, 'free', 0, 'panel');
+      elseif ($do === 'default') { dc_q("UPDATE dc_installs SET state='', demo_until=0, lic_by='', enabled=1 WHERE id=?", [$id]); dc_event('licence', "$id|default"); }
+      flash('ok', L('Η άδεια άλλαξε. Το πρόγραμμα την παίρνει στον επόμενο έλεγχο (το πολύ ' . $ceNow . ' λεπτά) ή στην επόμενη εκκίνηση.', 'Licence changed. The program picks it up at its next check (at most ' . $ceNow . ' minutes) or at its next start.'));
+    }
+  }
+  if ($a === 'code_new') {
+    $kind = ($_POST['kind'] ?? '') === 'full' ? 'full' : 'demo'; $perm = !empty($_POST['perm']) && $kind === 'full';
+    $n = $perm ? 0 : max(1, (int)($_POST['n'] ?? 6)); $u = in_array($_POST['unit'] ?? '', $UN, true) ? $_POST['unit'] : 'd';
+    $uses = max(0, (int)($_POST['uses'] ?? 1)); $vd = max(0, (int)($_POST['valid_days'] ?? 0)); $cnt = max(1, min(200, (int)($_POST['count'] ?? 1))); $made = [];
+    for ($i = 0; $i < $cnt; $i++) {
+      $code = dc_new_code();
+      dc_q('INSERT INTO dc_codes(code,kind,dur,unit,uses,used,created,valid_until,note) VALUES(?,?,?,?,?,0,?,?,?)', [$code, $kind, $n, $u, $uses, time(), $vd ? time() + $vd * 86400 : 0, substr(trim($_POST['note'] ?? ''), 0, 120)]);
+      $made[] = $code;
+    }
+    dc_event('codes_make', ($kind) . ' x' . $cnt . ' ' . implode(',', $made)); flash('ok', L('Νέοι κωδικοί: ', 'New codes: ') . implode('  ', $made));
+  }
+  if ($a === 'code_more') { dc_q('UPDATE dc_codes SET uses=uses+1 WHERE code=? AND uses>0', [$_POST['code'] ?? '']); flash('ok', L('Ο κωδικός δέχεται έναν υπολογιστή ακόμη.', 'The code accepts one more computer.')); }
+  if ($a === 'alerts_seen') { dc_kv_set('alerts_seen', time()); }
+  if ($a === 'pay_settings') {
+    dc_kv_set('pay_auto', !empty($_POST['auto']) ? '1' : '0'); dc_kv_set('pay_min', (string)max(0, (float)str_replace(',', '.', $_POST['min'] ?? '0')));
+    dc_kv_set('pay_receiver', strtolower(trim($_POST['receiver'] ?? ''))); dc_kv_set('pay_sandbox', !empty($_POST['sandbox']) ? '1' : '0'); dc_kv_set('pay_skip_hd', !empty($_POST['skip_hd']) ? '1' : '0');
+    flash('ok', L('Οι ρυθμίσεις πληρωμών αποθηκεύτηκαν.', 'Payment settings saved.'));
+  }
+  if ($a === 'mail_settings') {
+    dc_kv_set('mail_on', !empty($_POST['mail_on']) ? '1' : '0'); dc_kv_set('alert_mail', !empty($_POST['alert_mail']) ? '1' : '0');
+    $am = trim((string)($_POST['admin_mail'] ?? '')); dc_kv_set('admin_mail', filter_var($am, FILTER_VALIDATE_EMAIL) ? $am : '');
+    $mf = trim((string)($_POST['mail_from'] ?? '')); dc_kv_set('mail_from', filter_var($mf, FILTER_VALIDATE_EMAIL) ? $mf : '');
+    flash('ok', L('Οι ρυθμίσεις email αποθηκεύτηκαν.', 'E-mail settings saved.'));
+  }
+  if ($a === 'mail_test') {
+    $ok = dc_mail(trim((string)dc_kv('admin_mail', '')), 'DigiConnect — test', "Δοκιμαστικό email από το DigiConnect panel.\nTest e-mail from the DigiConnect panel.\n" . gmdate('c'));
+    flash($ok ? 'ok' : 'bad', $ok ? L('Το email στάλθηκε — δες τα εισερχόμενα (και τα ανεπιθύμητα).', 'The e-mail was sent — check your inbox (and spam).') : L('Το email δεν στάλθηκε: ενεργοποίησε την αποστολή, γράψε email διαχειριστή ή έλεγξε τη mail() του server.', 'Not sent: switch sending on, enter an admin e-mail or check the server mail().'));
+  }
+  if ($a === 'pay_assign') {
+    $to = dc_one('SELECT id FROM dc_installs WHERE rowid=?', [(int)preg_replace('/\D/', '', $_POST['to'] ?? '')]);
+    if (!$to) flash('bad', L('Δεν βρέθηκε η εγκατάσταση (γράψε π.χ. DC-00012).', 'Installation not found (enter e.g. DC-00012).'));
+    else { $code = dc_pay_activate((int)$_POST['pid'], $to['id'], 'panel'); flash('ok', L('Ενεργοποιήθηκε η ', 'Activated ') . dc_inst_no($to['id']) . ' · ' . $code); }
+  }
+  if ($a === 'pay_add') {
+    $amt = (float)str_replace(',', '.', $_POST['amount'] ?? '0'); $txn = 'MAN-' . strtoupper(bin2hex(random_bytes(4)));
+    dc_q('INSERT INTO dc_payments(t,txn,status,amount,currency,payer_email,payer_name,memo,custom,raw) VALUES(?,?,?,?,?,?,?,?,?,?)', [time(), $txn, 'Completed', $amt, strtoupper(substr(trim($_POST['currency'] ?? 'EUR'), 0, 5)) ?: 'EUR', strtolower(trim($_POST['email'] ?? '')), substr(trim($_POST['name'] ?? ''), 0, 60), substr(trim($_POST['memo'] ?? ''), 0, 300), '', 'manual']);
+    $pid = (int)dc_db()->lastInsertId(); dc_event('payment', "$txn|$amt " . strtoupper(trim($_POST['currency'] ?? 'EUR')) . '|' . trim($_POST['name'] ?? '') . '|' . trim($_POST['email'] ?? ''));
+    $to = dc_one('SELECT id FROM dc_installs WHERE rowid=?', [(int)preg_replace('/\D/', '', $_POST['to'] ?? '')]);
+    if ($to) { $code = dc_pay_activate($pid, $to['id'], 'panel'); flash('ok', L('Καταχωρήθηκε και ενεργοποιήθηκε η ', 'Recorded and activated ') . dc_inst_no($to['id']) . ' · ' . $code); } else flash('ok', L('Η πληρωμή καταχωρήθηκε.', 'Payment recorded.'));
+  }
+  if ($a === 'pay_note') { dc_q('UPDATE dc_payments SET note=? WHERE id=?', [substr(trim($_POST['note'] ?? ''), 0, 200), (int)$_POST['pid']]); }
+  // a payment that is not yours (e.g. a HAM Digi donation without a number) can be set aside: it is left out of the totals; "restore" brings it back
+  if ($a === 'pay_ignore')  { dc_q("UPDATE dc_payments SET status='Ignored' WHERE id=? AND status='Completed' AND (install IS NULL OR install='')", [(int)$_POST['pid']]); flash('ok', L('Η πληρωμή αγνοήθηκε (δεν μετράει στα σύνολα).', 'Payment ignored (not counted in the totals).')); }
+  if ($a === 'pay_restore') { dc_q("UPDATE dc_payments SET status='Completed' WHERE id=? AND status='Ignored'", [(int)$_POST['pid']]); flash('ok', L('Η πληρωμή επανήλθε.', 'Payment restored.')); }
 
   if (!$flash) $flash = ['ok', 'OK'];
   $_SESSION['dc_flash'] = $flash;
@@ -141,7 +214,7 @@ if (!empty($_SESSION['dc_flash'])) { $flash = $_SESSION['dc_flash']; unset($_SES
 $p = $_GET['p'] ?? 'dashboard';
 $PAGES = ['dashboard' => L('Επισκόπηση','Overview','Översikt'), 'stats' => L('Στατιστικά','Statistics','Statistik'), 'releases' => L('Εκδόσεις','Releases','Versioner'),
   'installs' => L('Εγκαταστάσεις','Installations','Installationer'), 'downloads' => L('Λήψεις / Εγγραφές','Downloads / Sign-ups','Nedladdningar'),
-  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Μηνύματα','Messages','Meddelanden'),
+  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Μηνύματα','Messages','Meddelanden'),
   'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
 if (!isset($PAGES[$p])) $p = 'dashboard';
 
@@ -166,11 +239,15 @@ $icons = [
  'installs' => 'M3 5h18v11H3zM8 20h8M12 16v4',
  'downloads' => 'M4 17v3h16v-3M12 3v13M7 11l5 5 5-5',
  'licenses' => 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5zM12 15v2',
+ 'payments' => 'M3 6h18v12H3zM3 10h18M7 15h3',
  'servers' => 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
  'messages' => 'M4 5h16v11H8l-4 4z',
  'activity' => 'M3 12h4l3 7 4-14 3 7h4',
  'settings' => 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z'];
-$BADGE = ['installs' => [$onNow, 'g'], 'downloads' => [(int)dc_one("SELECT COUNT(*) c FROM dc_webdl WHERE t>=?", [time() - 7*86400])['c'], 'o']];
+$seenA = (int)dc_kv('alerts_seen', 0); $phA = implode(',', array_fill(0, count(DC_ALERTS), '?'));
+$BADGE = ['dashboard' => [(int)dc_one("SELECT COUNT(*) c FROM dc_events WHERE kind IN ($phA) AND t>?", array_merge(DC_ALERTS, [$seenA]))['c'], 'o'],
+  'payments' => [(int)dc_one("SELECT COUNT(*) c FROM dc_payments WHERE status='Completed' AND (install IS NULL OR install='')")['c'], 'o'],
+  'installs' => [$onNow, 'g'], 'downloads' => [(int)dc_one("SELECT COUNT(*) c FROM dc_webdl WHERE t>=?", [time() - 7*86400])['c'], 'o']];
 echo '<aside><div class="logo"><b>DigiConnect</b><small>Control Panel · by SA7SVR · v' . DC_SERVER_VERSION . '</small></div><nav>';
 foreach ($PAGES as $k => $t)
   echo "<a href='?p=$k' class='" . ($p === $k ? 'on' : '') . "'><svg viewBox='0 0 24 24'><path d='{$icons[$k]}'/></svg><span>" . h($t) . '</span>'
@@ -190,12 +267,14 @@ $SUB = ['stats' => L('Νέες εγκαταστάσεις και λήψεις α
   'installs' => L('Κάθε εγκατάσταση: demo, ενεργοποίηση, κλείδωμα, ενεργό/ανενεργό.','Every installation: demo, activate, lock, enable/disable.'),
   'downloads' => L('Ποιος κατέβασε το πρόγραμμα από τη σελίδα (callsign, OS, IP).','Who downloaded from the website (callsign, OS, IP).'),
   'licenses' => L('Demo, άδειες και κωδικοί ενεργοποίησης.','Demo, licences and activation codes.'),
+  'payments' => L('Δωρεές PayPal, ποιος πληρώνει και πόσα (€ και SEK ξεχωριστά) και αυτόματη ενεργοποίηση.','PayPal donations, who pays and how much (EUR and SEK separately) and automatic activation.'),
   'messages' => L('Μήνυμα σε όλους ή σε μία εγκατάσταση — εμφανίζεται μέσα στο πρόγραμμα.','A message to everyone or one installation — it shows inside the program.'),
   'activity' => L('Όλα όσα έγιναν, με τη σειρά.','Everything that happened, in order.'),
   'settings' => L('Ενημερώσεις, έλεγχος άδειας και συντήρηση.','Updates, licence gate and maintenance.')];
 echo '<header class="ph"><div><h1>' . h($PAGES[$p]) . '</h1><p class="muted">' . h($SUB[$p] ?? '') . '</p></div><div class="strip">'
   . '<span class="st ' . ($paused ? 'bad' : ($act ? 'ok' : '')) . '"><i></i>' . ($paused ? L('σε παύση','paused') : ($act ? 'v' . h($act['version']) . ' ' . L('ενεργή','active') : L('καμία έκδοση','no release'))) . '</span>'
   . '<span class="st ' . ($onNow ? 'ok' : '') . '"><i></i>' . $onNow . L(' σε σύνδεση',' online') . '</span>'
+  . ($BADGE['payments'][0] ? '<a class="st o" href="?p=payments"><i></i>' . $BADGE['payments'][0] . L(' πληρωμές χωρίς ενεργοποίηση',' payments not activated') . '</a>' : '')
   . '<a class="st" href="../" target="_blank"><i></i>' . L('Δημόσια σελίδα ↗','Public page ↗') . '</a></div></header>';
 
 /* ===================== DASHBOARD ===================== */
@@ -207,6 +286,10 @@ if ($p === 'dashboard') {
   $a7    = (int)dc_one('SELECT COUNT(*) c FROM dc_installs WHERE last_seen>=?', [time()-7*86400])['c'];
   $dl7   = (int)dc_one('SELECT COUNT(*) c FROM dc_webdl WHERE t>=?', [time()-7*86400])['c'];
   $kpi = function ($l,$v,$s='',$c='') { return "<div class='kpi $c'><span>$l</span><b>$v</b><small>$s</small></div>"; };
+  // things that need your attention: new payments, refunds
+  $seen = (int)dc_kv('alerts_seen', 0); $phD = implode(',', array_fill(0, count(DC_ALERTS), '?'));
+  $al = dc_q("SELECT * FROM dc_events WHERE kind IN ($phD) AND t>? ORDER BY t DESC LIMIT 30", array_merge(DC_ALERTS, [$seen]))->fetchAll();
+  if ($al) echo '<section class="card" style="border-color:var(--tx)"><h2>⚠ ' . L('Ειδοποιήσεις','Alerts') . ' <small>(' . count($al) . ')</small></h2>' . activity_rows($al) . '<form method="post" style="margin-top:10px">' . csrf() . '<input type="hidden" name="p" value="dashboard"><input type="hidden" name="a" value="alerts_seen"><button class="btn sm">' . L('Τα είδα','Mark as seen') . '</button></form></section>';
   echo '<div class="kpis">'
     . $kpi(L('Εγκαταστάσεις','Installations'), $total, L('συνολικά','total'))
     . $kpi(L('Σε σύνδεση','Online'), $onNow, L('στέλνουν σήμα τώρα','sending a signal now'), 'g')
@@ -214,6 +297,13 @@ if ($p === 'dashboard') {
     . $kpi(L('Ενεργές','Licensed'), $full, 'full', 'g')
     . $kpi(L('Κλειδωμένες','Locked'), $lock, '', $lock?'r':'')
     . $kpi(L('Λήψεις 7 ημ.','Downloads 7d'), $dl7, L('από τη σελίδα','from website'))
+    . '</div>';
+  $pt = dc_pay_totals(); $pn = (int)dc_one("SELECT COUNT(*) c FROM dc_payments WHERE status='Completed' AND (install IS NULL OR install='')")['c'];
+  echo '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">'
+    . $kpi(L('Πληρωμές αυτόν τον μήνα · EUR','Payments this month · EUR'), number_format($pt['EUR']['month'], 2) . ' €', '<a href="?p=payments">' . L('Πληρωμές →','Payments →') . '</a>', 'g')
+    . $kpi(L('Πληρωμές αυτόν τον μήνα · SEK','Payments this month · SEK'), number_format($pt['SEK']['month'], 2) . ' kr', '<a href="?p=payments">' . L('Πληρωμές →','Payments →') . '</a>', 'g')
+    . $kpi(L('Σύνολο · EUR / SEK','Total · EUR / SEK'), number_format($pt['EUR']['total'], 2) . ' € / ' . number_format($pt['SEK']['total'], 2) . ' kr', $pt['EUR']['n'] + $pt['SEK']['n'] . L(' πληρωμές',' payments'))
+    . $kpi(L('Πληρωμές χωρίς εγκατάσταση','Payments without installation'), $pn, L('ενεργοποίησέ τες στις Πληρωμές','activate them in Payments'), $pn ? 'o' : '')
     . '</div>';
   // version shares
   $vers = dc_q("SELECT version, COUNT(*) c FROM dc_installs WHERE version IS NOT NULL AND version<>'' GROUP BY version ORDER BY c DESC LIMIT 8")->fetchAll();
@@ -298,28 +388,28 @@ elseif ($p === 'installs') {
   $qf = trim($_GET['q'] ?? ''); $sf = $_GET['st'] ?? '';
   $w = []; $args = [];
   if ($qf !== '') { $no = dc_no_filter($qf); $w[] = '(call LIKE ? OR id LIKE ? OR name LIKE ? OR mail LIKE ? OR dmr_id LIKE ?' . ($no !== null ? ' OR rowid=' . $no : '') . ')'; array_push($args, "%$qf%", "%$qf%", "%$qf%", "%$qf%", "%$qf%"); }
-  if (in_array($sf, ['demo','full','locked','disabled'], true)) { $w[] = 'state=?'; $args[] = $sf; }
+  if (in_array($sf, ['demo','full','free','locked','disabled'], true)) { $w[] = 'state=?'; $args[] = $sf; }
   $where = $w ? ('WHERE ' . implode(' AND ', $w)) : '';
   $rows = dc_q("SELECT rowid AS rno, * FROM dc_installs $where ORDER BY MAX(COALESCE(last_ping,0),COALESCE(last_seen,0)) DESC LIMIT 500", $args)->fetchAll();
   echo '<section class="card"><h2>' . L('Εγκαταστάσεις','Installations') . ' <small>(' . count($rows) . ')</small></h2>'
     . '<form class="filters" method="get"><input type="hidden" name="p" value="installs"><input name="q" value="' . h($qf) . '" placeholder="' . L('διακριτικό, DC-…, email…','callsign, DC-…, email…') . '">'
     . '<select name="st"><option value="">' . L('όλες','all') . '</option>'
-    . '<option value="demo"' . ($sf==='demo'?' selected':'') . '>demo</option><option value="full"' . ($sf==='full'?' selected':'') . '>full</option><option value="locked"' . ($sf==='locked'?' selected':'') . '>locked</option><option value="disabled"' . ($sf==='disabled'?' selected':'') . '>disabled</option></select>'
+    . '<option value="demo"' . ($sf==='demo'?' selected':'') . '>demo</option><option value="full"' . ($sf==='full'?' selected':'') . '>full</option><option value="free"' . ($sf==='free'?' selected':'') . '>free</option><option value="locked"' . ($sf==='locked'?' selected':'') . '>locked</option><option value="disabled"' . ($sf==='disabled'?' selected':'') . '>disabled</option></select>'
     . '<button class="btn sm">' . L('Φίλτρο','Filter') . '</button></form>'
     . '<div class="tw"><table class="tbl"><tr><th>' . L('Διακριτικό / Αρ. εγκατάστασης','Callsign / Installation no.') . '</th><th>' . L('Έκδοση','Version') . '</th><th>OS</th><th>' . L('Κατάσταση','State') . '</th><th>' . L('Τελευταία','Last seen') . '</th><th style="width:38%">' . L('Ενέργειες','Actions') . '</th></tr>';
+  $paid = [];                                                      // what each installation has paid, every currency on its own
+  foreach (dc_q("SELECT install, currency c, SUM(amount) s FROM dc_payments WHERE status='Completed' AND install IS NOT NULL AND install<>'' GROUP BY install, currency")->fetchAll() as $x) $paid[$x['install']][] = number_format((float)$x['s'], 2) . ' ' . strtoupper($x['c']);
   foreach ($rows as $r) {
-    list($st, $lf) = dc_state($r);
     $online = dc_online($r);
     echo '<tr><td><b>' . h($r['call'] ?: '—') . '</b><br><span class="muted mono" style="font-size:12px"><b>' . sprintf('DC-%05d', $r['rno']) . '</b></span>'
        . ($r['name'] ? '<br><span class="muted" style="font-size:11px">' . h($r['name']) . '</span>' : '')
        . ($r['mail'] ? '<br><span class="muted" style="font-size:11px">' . h($r['mail']) . '</span>' : '')
-       . ($r['dmr_id'] ? '<br><span class="muted" style="font-size:11px">DMR ID ' . h($r['dmr_id']) . '</span>' : '') . '</td>'
+       . ($r['dmr_id'] ? '<br><span class="muted" style="font-size:11px">DMR ID ' . h($r['dmr_id']) . '</span>' : '')
+       . (!empty($paid[$r['id']]) ? '<br><span class="pill ok" title="' . h(L('Πληρωμές αυτής της εγκατάστασης','Payments of this installation')) . '">♥ ' . h(implode(' · ', $paid[$r['id']])) . '</span>' : '') . '</td>'
        . '<td>' . h($r['version'] ?: '—') . '</td><td>' . h($r['os'] ?: '—') . '</td>'
-       . '<td><span class="pill onl ' . ($online?'ok':'') . '"><i></i>' . h($st) . ($lf ? ' · ' . h($lf) : '') . '</span></td>'
+       . '<td><span class="pill onl ' . ($online?'ok':'') . '"><i></i>' . ($online ? 'online' : 'offline') . '</span><br>' . dc_lic_label($r) . '</td>'
        . '<td class="muted">' . dc_dt(dc_last($r)) . '</td><td><div class="acts">'
-       . '<form method="post" class="ro">' . csrf() . '<input type="hidden" name="p" value="installs"><input type="hidden" name="iid" value="' . h($r['id']) . '"><input type="number" name="days" value="7" title="days"><button class="btn sm" name="a" value="demo">Demo</button></form>'
-       . '<form method="post">' . csrf() . '<input type="hidden" name="p" value="installs"><input type="hidden" name="iid" value="' . h($r['id']) . '"><button class="btn sm" name="a" value="activate">' . L('Ενεργ.','Activate') . '</button></form>'
-       . '<form method="post">' . csrf() . '<input type="hidden" name="p" value="installs"><input type="hidden" name="iid" value="' . h($r['id']) . '"><button class="btn sm" name="a" value="lock">' . L('Κλείδ.','Lock') . '</button></form>'
+       . lic_form($r, 'installs')
        . ((int)$r['enabled'] === 1
           ? '<form method="post">' . csrf() . '<input type="hidden" name="p" value="installs"><input type="hidden" name="iid" value="' . h($r['id']) . '"><button class="btn sm danger" name="a" value="disable">' . L('Απενεργ.','Disable') . '</button></form>'
           : '<form method="post">' . csrf() . '<input type="hidden" name="p" value="installs"><input type="hidden" name="iid" value="' . h($r['id']) . '"><button class="btn sm" name="a" value="enable">' . L('Ενεργό','Enable') . '</button></form>')
@@ -342,24 +432,127 @@ elseif ($p === 'downloads') {
   echo '</section>';
 }
 
-/* ===================== LICENCES / CODES ===================== */
+/* ===================== LICENCES / CODES (same page as HAM Digi) ===================== */
 elseif ($p === 'licenses') {
-  echo '<section class="card"><h2>' . L('Δημιουργία κωδικών','Create codes') . '</h2>'
-    . '<form class="licf" method="post">' . csrf() . '<input type="hidden" name="p" value="licenses"><input type="hidden" name="a" value="codes_make">'
-    . '<label>' . L('Τύπος','Type') . '<select name="kind"><option value="full">full</option><option value="demo">demo</option></select></label>'
-    . '<label>' . L('Διάρκεια','Duration') . '<input type="number" name="dur" value="0" style="width:70px"></label>'
-    . '<label>' . L('Μονάδα','Unit') . '<select name="unit"><option value="days">days</option><option value="months">months</option></select></label>'
-    . '<label>' . L('Χρήσεις','Uses') . '<input type="number" name="uses" value="1" style="width:60px"></label>'
-    . '<label>' . L('Πλήθος','Count') . '<input type="number" name="count" value="1" style="width:60px"></label>'
-    . '<button class="btn pri">' . L('Δημιουργία','Create') . '</button></form></section>';
-  $codes = dc_q("SELECT * FROM dc_codes ORDER BY created DESC LIMIT 500")->fetchAll();
-  echo '<section class="card"><h2>' . L('Κωδικοί','Codes') . ' <small>(' . count($codes) . ')</small></h2><div class="tw"><table class="tbl"><tr><th>' . L('Κωδικός','Code') . '</th><th>' . L('Τύπος','Type') . '</th><th>' . L('Διάρκεια','Duration') . '</th><th>' . L('Χρήσεις','Uses') . '</th><th>' . L('Δημιουργία','Created') . '</th><th></th></tr>';
-  foreach ($codes as $c)
-    echo '<tr><td class="mono"><b>' . h($c['code']) . '</b></td><td><span class="pill ' . ($c['kind']==='full'?'ok':'o') . '">' . h($c['kind']) . '</span></td><td>' . (int)$c['dur'] . ' ' . h($c['unit']) . '</td><td>' . (int)$c['used'] . '/' . (int)$c['uses'] . '</td><td class="muted">' . dc_dt($c['created']) . '</td>'
-       . '<td><form method="post" onsubmit="return confirm(\'Delete?\')">' . csrf() . '<input type="hidden" name="p" value="licenses"><input type="hidden" name="code" value="' . h($c['code']) . '"><button class="btn sm danger" name="a" value="code_del">×</button></form></td></tr>';
-  echo '</table></div>';
-  if (!$codes) echo '<p class="empty">' . L('Κανένας κωδικός ακόμη.','No codes yet.') . '</p>';
-  echo '</section>';
+  $S = dc_lic_settings(); $sel = function ($v, $c) { return $v === $c ? ' selected' : ''; };
+  $hp = '<input type="hidden" name="p" value="licenses">';
+  echo '<section class="card"><h2>' . L('Νέες εγκαταστάσεις (προεπιλογή)', 'New installations (default)') . '</h2><form method="post" class="form">' . csrf() . $hp . '<input type="hidden" name="a" value="lic_default"><div class="g2">'
+    . '<label>' . L('Τι παίρνει κάθε νέα εγκατάσταση', 'What every new installation gets') . '<select name="mode"><option value="free"' . $sel('free', $S['mode']) . '>' . L('Δωρεάν — λειτουργεί χωρίς όριο', 'Free — works without limit') . '</option><option value="demo"' . $sel('demo', $S['mode']) . '>' . L('Demo — λήγει μετά από τη διάρκεια', 'Demo — ends after the duration') . '</option><option value="locked"' . $sel('locked', $S['mode']) . '>' . L('Κλειδωμένη — μέχρι να την ενεργοποιήσω', 'Locked — until I activate it') . '</option></select></label>'
+    . '<label>' . L('Διάρκεια demo', 'Demo duration') . '<span style="display:flex;gap:6px"><input name="n" type="number" min="1" value="' . (int)$S['n'] . '" style="width:90px"><select name="unit"><option value="h"' . $sel('h', $S['unit']) . '>' . L('ώρες', 'hours') . '</option><option value="d"' . $sel('d', $S['unit']) . '>' . L('ημέρες', 'days') . '</option><option value="m"' . $sel('m', $S['unit']) . '>' . L('μήνες', 'months') . '</option><option value="y"' . $sel('y', $S['unit']) . '>' . L('χρόνια', 'years') . '</option></select></span></label>'
+    . '<label>' . L('Μήνυμα στην οθόνη κλειδώματος (Ελληνικά)', 'Message on the lock screen (Greek)') . '<textarea name="msg_el" rows="2" placeholder="' . L('π.χ. Ευχαριστώ που δοκιμάζεις το DigiConnect!', 'e.g. Thank you for trying DigiConnect!') . '">' . h($S['msg_el']) . '</textarea></label><label>' . L('Μήνυμα στην οθόνη κλειδώματος (Αγγλικά)', 'Message on the lock screen (English)') . '<textarea name="msg_en" rows="2">' . h($S['msg_en']) . '</textarea></label>'
+    . '<label>' . L('Κουμπί στο πρόγραμμα (σε όλες τις εγκαταστάσεις)', 'Button in the program (on every installation)') . '<select name="offer"><option value="none"' . $sel('none', $S['offer']) . '>' . L('Τίποτα — χωρίς αναφορά σε αγορά ή δωρεά', 'Nothing — no mention of buying or donating') . '</option><option value="donate"' . $sel('donate', $S['offer']) . '>' . L('Δωρεά (Donate)', 'Donation (Donate)') . '</option><option value="buy"' . $sel('buy', $S['offer']) . '>' . L('Αγορά', 'Buy') . '</option></select></label>'
+    . '<label>' . L('Ποσό που φαίνεται στο κουμπί (π.χ. 5 €, προαιρετικό)', 'Amount shown on the button (e.g. 5 €, optional)') . '<input name="amount" value="' . h($S['amount']) . '" maxlength="30"></label>'
+    . '<label style="grid-column:1/-1">' . L('Σύνδεσμος του κουμπιού (https://…, π.χ. PayPal.me ή σελίδα του hellaszone.com· κενό = το PayPal του προγράμματος)', 'Button link (https://…, e.g. PayPal.me or a hellaszone.com page; empty = the program’s own PayPal)') . '<input name="link" value="' . h($S['link']) . '" placeholder="https://www.paypal.com/donate/?hosted_button_id=…"></label>'
+    . '</div><div class="help">' . L('Το demo μιας νέας εγκατάστασης μετρά από την πρώτη φορά που συνδέθηκε. Ό,τι ορίσεις χωριστά σε μια εγκατάσταση (παρακάτω) υπερισχύει της προεπιλογής. Το «Όταν ο server δεν είναι προσβάσιμος» είναι στις Ρυθμίσεις. Το πρόγραμμα χρησιμοποιεί προς το παρόν μόνο τον σύνδεσμο· το «Κουμπί» και το «Ποσό» στέλνονται στο πρόγραμμα αλλά δεν τα διαβάζει ακόμη.', 'A new installation’s demo counts from its first contact. Whatever you set for one installation (below) overrides the default. “When this server cannot be reached” is in Settings. For now the program only uses the link; “Button” and “Amount” are sent to it but it does not read them yet.') . '</div><button class="btn pri">' . L('Αποθήκευση', 'Save') . '</button></form>'
+    . '<form method="post" style="margin-top:10px" onsubmit="return confirm(\'' . L('Όλες οι εγκαταστάσεις που πήραν την προεπιλογή θα την ξαναπάρουν με τις νέες ρυθμίσεις. Συνέχεια;', 'All installations that got the default will take it again with the new settings. Continue?') . '\')">' . csrf() . $hp . '<input type="hidden" name="a" value="lic_reset_all"><button class="btn sm">' . L('Εφαρμογή της προεπιλογής και στις υπάρχουσες (όσες δεν έχουν δική τους ρύθμιση)', 'Apply the default to existing installations too (those without their own setting)') . '</button></form></section>';
+
+  // activation codes
+  echo '<details class="card codes"' . (isset($_GET['codes']) ? ' open' : '') . '><summary><h2 style="display:inline">' . L('Ειδικές περιπτώσεις: κωδικοί ενεργοποίησης', 'Special cases: activation codes') . '</h2> <small class="muted">' . L('— η ενεργοποίηση μετά από πληρωμή γίνεται αυτόματα (ή με το κουμπί «Ενεργοποίηση» στις Πληρωμές)· οι κωδικοί είναι μόνο για ειδικές περιπτώσεις', '— activation after a payment is automatic (or with the “Activate” button in Payments); codes are only for special cases') . '</small></summary><form method="post" class="form">' . csrf() . $hp . '<input type="hidden" name="a" value="code_new"><div class="g2">'
+    . '<label>' . L('Τύπος', 'Type') . '<select name="kind"><option value="demo">Demo</option><option value="full">' . L('Άδεια', 'Licence') . '</option></select></label>'
+    . '<label>' . L('Διάρκεια', 'Duration') . '<span style="display:flex;gap:6px;align-items:center"><input name="n" type="number" min="1" value="6" style="width:90px"><select name="unit"><option value="h">' . L('ώρες', 'hours') . '</option><option value="d" selected>' . L('ημέρες', 'days') . '</option><option value="m">' . L('μήνες', 'months') . '</option><option value="y">' . L('χρόνια', 'years') . '</option></select><label class="chk" style="display:flex;flex-direction:row;gap:6px;align-items:center"><input type="checkbox" name="perm" value="1"> ' . L('μόνιμη (μόνο για Άδεια)', 'permanent (Licence only)') . '</label></span></label>'
+    . '<label>' . L('Πόσοι υπολογιστές μπορούν να τον χρησιμοποιήσουν (0 = απεριόριστοι)', 'How many computers can use it (0 = unlimited)') . '<input name="uses" type="number" min="0" value="1"></label>'
+    . '<label>' . L('Ο κωδικός ισχύει για (ημέρες, 0 = πάντα)', 'The code itself is valid for (days, 0 = always)') . '<input name="valid_days" type="number" min="0" value="0"></label>'
+    . '<label>' . L('Πόσους κωδικούς να φτιάξω', 'How many codes to make') . '<input name="count" type="number" min="1" max="200" value="1"></label><label>' . L('Σημείωση (π.χ. για ποιον)', 'Note (e.g. who it is for)') . '<input name="note" maxlength="120"></label>'
+    . '</div><div class="help">' . L('Προσοχή: το πρόγραμμα DigiConnect δεν έχει ακόμη πεδίο για να γράψει ο χρήστης κωδικό· ο server τους δέχεται (api.php) και θα χρησιμοποιηθούν όταν προστεθεί. Η διάρκεια μετρά από τη στιγμή που γράφεται ο κωδικός.', 'Note: the DigiConnect program does not have a field for typing a code yet; the server accepts codes (api.php) and they will be usable once it is added. The duration counts from the moment the code is entered.') . '</div><button class="btn pri">' . L('Δημιουργία', 'Create') . '</button></form>';
+  echo '<div class="tw"><table class="tbl"><tr><th>' . L('Κωδικός', 'Code') . '</th><th>' . L('Τύπος', 'Type') . '</th><th>' . L('Διάρκεια', 'Duration') . '</th><th>' . L('Χρήσεις', 'Uses') . '</th><th>' . L('Ισχύει έως', 'Valid until') . '</th><th>' . L('Σημείωση', 'Note') . '</th><th>' . L('Τελευταία χρήση', 'Last used') . '</th><th></th></tr>';
+  foreach (dc_q('SELECT * FROM dc_codes ORDER BY created DESC LIMIT 300')->fetchAll() as $c) { $d = dc_unit_name((string)$c['unit'], $c['dur']);
+    echo '<tr><td class="mono"><b>' . h($c['code']) . '</b></td><td>' . ($c['kind'] === 'full' ? L('Άδεια', 'Licence') : 'Demo') . '</td><td>' . ($c['kind'] === 'full' && !$c['dur'] ? L('μόνιμη', 'permanent') : h(L($d[0], $d[1]))) . '</td><td>' . (int)$c['used'] . ' / ' . ((int)$c['uses'] ? (int)$c['uses'] : '∞') . '</td><td>' . (!empty($c['valid_until']) ? dc_dt($c['valid_until']) : '—') . '</td><td>' . h($c['note']) . '</td><td>' . ($c['last_used'] ? dc_dt($c['last_used']) . ' · <a class="mono" href="?p=installs&q=' . urlencode(dc_inst_no($c['last_install'])) . '">' . h(dc_inst_no($c['last_install']) ?: '—') . '</a>' : '—') . '</td><td><form method="post" onsubmit="return confirm(\'OK?\')" style="display:inline">' . csrf() . $hp . '<input type="hidden" name="a" value="code_del"><input type="hidden" name="code" value="' . h($c['code']) . '"><button class="btn sm">' . L('Διαγραφή', 'Delete') . '</button></form>'
+      . ((int)$c['uses'] > 0 && (int)$c['used'] >= (int)$c['uses'] ? '<form method="post" style="display:inline;margin-left:4px">' . csrf() . $hp . '<input type="hidden" name="a" value="code_more"><input type="hidden" name="code" value="' . h($c['code']) . '"><button class="btn sm" title="' . h(L('Δέχεται έναν υπολογιστή ακόμη', 'Accepts one more computer')) . '">+1</button></form>' : '') . '</td></tr>'; }
+  echo '</table></div></details>';
+
+  // every installation with its licence
+  $fq = trim($_GET['q'] ?? ''); $w = ''; $args = [];
+  if ($fq !== '') { $no = dc_no_filter($fq); $w = ' WHERE (id LIKE ? OR call LIKE ? OR note LIKE ? OR owner LIKE ? OR mail LIKE ?' . ($no !== null ? ' OR rowid=' . $no : '') . ')'; $args = array_fill(0, 5, "%$fq%"); }
+  echo '<section class="card"><h2>' . L('Εγκαταστάσεις και άδειες', 'Installations and licences') . '</h2><form class="filters" method="get"><input type="hidden" name="p" value="licenses"><input name="q" value="' . h($fq) . '" placeholder="' . L('Αναζήτηση: call, αριθμός DC-…, ID, σημείωση', 'Search: call, number DC-…, ID, note') . '"><button class="btn">' . L('Φίλτρο', 'Filter') . '</button></form><div class="tw"><table class="tbl"><tr><th>Call</th><th>' . L('Σύστημα', 'System') . '</th><th>' . L('Κατάσταση', 'Status') . '</th><th>' . L('Ορίστηκε', 'Set by') . '</th><th>' . L('Τελευταίος έλεγχος', 'Last check') . '</th><th>' . L('Αλλαγή', 'Change') . '</th></tr>';
+  foreach (dc_q('SELECT rowid AS rno, * FROM dc_installs' . $w . ' ORDER BY MAX(COALESCE(last_ping,0), COALESCE(last_seen,0)) DESC LIMIT 300', $args)->fetchAll() as $r) {
+    echo '<tr><td><span class="mono muted" style="white-space:nowrap">' . sprintf('DC-%05d', $r['rno']) . '</span><br><b>' . h($r['call'] ?: substr($r['id'], 0, 8)) . '</b>' . ($r['owner'] ? '<br><small>' . h($r['owner']) . '</small>' : '') . ($r['note'] ? '<br><small class="muted">' . h($r['note']) . '</small>' : '') . '</td><td>' . h($r['os'] ?: '—') . '</td><td>' . dc_lic_label($r) . '</td><td><small class="muted">' . h($r['lic_by'] ?: L('προεπιλογή', 'default')) . '</small></td><td class="muted">' . dc_dt(dc_last($r)) . '</td><td>' . lic_form($r, 'licenses') . '</td></tr>';
+  }
+  echo '</table></div></section>';
+}
+
+/* ===================== PAYMENTS (same page as HAM Digi: who pays and how much; EUR and SEK are never added together) ===================== */
+elseif ($p === 'payments') {
+  $P = dc_pay_settings(); $ipn = dc_base_url() . 'ipn.php'; $chk = function ($b) { return $b ? ' checked' : ''; };
+  $tot = dc_pay_totals(); $cur_order = array_merge(['EUR', 'SEK'], array_values(array_diff(array_keys($tot), ['EUR', 'SEK'])));
+  $sym = ['EUR' => '€', 'SEK' => 'kr'];
+  foreach ($cur_order as $c) {
+    $t = $tot[$c];
+    echo '<div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))"><div class="kpi g"><span>' . L('Σύνολο', 'Total') . ' ' . h($c) . '</span><b>' . number_format($t['total'], 2) . ' ' . h($sym[$c] ?? $c) . '</b><small>' . $t['n'] . L(' πληρωμές', ' payments') . '</small></div>'
+      . '<div class="kpi"><span>' . L('Αυτόν τον μήνα', 'This month') . ' · ' . h($c) . '</span><b>' . number_format($t['month'], 2) . ' ' . h($sym[$c] ?? $c) . '</b><small>' . gmdate('Y-m') . '</small></div>'
+      . '<div class="kpi"><span>' . L('Φέτος', 'This year') . ' · ' . h($c) . '</span><b>' . number_format($t['year'], 2) . ' ' . h($sym[$c] ?? $c) . '</b><small>' . gmdate('Y') . '</small></div>'
+      . '<div class="kpi"><span>' . L('Πληρωμές', 'Payments') . ' · ' . h($c) . '</span><b>' . $t['n'] . '</b><small>' . L('ολοκληρωμένες', 'completed') . '</small></div></div>';
+  }
+  $unact = (int)dc_one("SELECT COUNT(*) c FROM dc_payments WHERE status='Completed' AND (install IS NULL OR install='')")['c'];
+  echo '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="kpi o"><span>' . L('Χωρίς ενεργοποίηση', 'Not activated') . '</span><b>' . $unact . '</b><small>' . L('δες παρακάτω', 'see below') . '</small></div>'
+    . '<div class="kpi"><span>' . L('Διαφορετικοί πληρωτές', 'Different payers') . '</span><b>' . (int)dc_one("SELECT COUNT(DISTINCT COALESCE(NULLIF(install,''), payer_email)) c FROM dc_payments WHERE status='Completed'")['c'] . '</b><small>' . L('εγκαταστάσεις ή email', 'installations or e-mails') . '</small></div>'
+    . '<div class="kpi"><span>' . L('Τελευταία πληρωμή', 'Last payment') . '</span><b style="font-size:20px">' . (($lp = dc_one("SELECT t FROM dc_payments WHERE status='Completed' ORDER BY t DESC LIMIT 1")) ? gmdate('Y-m-d', (int)$lp['t']) : '—') . '</b><small></small></div></div>';
+
+  // who pays: one line per installation (or per e-mail when the payment has no installation yet), each currency in its own column
+  $who = []; 
+  foreach (dc_q("SELECT install, payer_email, payer_name, currency, amount, t FROM dc_payments WHERE status='Completed'")->fetchAll() as $x) {
+    $k = $x['install'] ?: ('mail:' . strtolower($x['payer_email'] ?: $x['payer_name']));
+    if (!isset($who[$k])) $who[$k] = ['install' => $x['install'], 'name' => $x['payer_name'], 'email' => $x['payer_email'], 'n' => 0, 'last' => 0, 'cur' => []];
+    $who[$k]['n']++; $who[$k]['last'] = max($who[$k]['last'], (int)$x['t']); if (!$who[$k]['name']) $who[$k]['name'] = $x['payer_name'];
+    $cc = strtoupper($x['currency']) ?: '?'; $who[$k]['cur'][$cc] = ($who[$k]['cur'][$cc] ?? 0) + (float)$x['amount'];
+  }
+  uasort($who, function ($a, $b) { return $b['last'] <=> $a['last']; });
+  echo '<section class="card"><h2>' . L('Ποιος πληρώνει και πόσα', 'Who pays and how much') . ' <small>(' . count($who) . ')</small></h2><div class="tw"><table class="tbl"><tr><th>' . L('Πληρωτής', 'Payer') . '</th><th>' . L('Εγκατάσταση', 'Installation') . '</th><th>' . L('Πληρωμές', 'Payments') . '</th>';
+  foreach ($cur_order as $c) echo '<th>' . h($c) . '</th>';
+  echo '<th>' . L('Τελευταία', 'Last') . '</th></tr>';
+  if (!$who) echo '<tr><td colspan="' . (4 + count($cur_order)) . '" class="muted">' . L('Καμία πληρωμή ακόμη.', 'No payments yet.') . '</td></tr>';
+  foreach ($who as $w) {
+    $ins = $w['install'] ? dc_one('SELECT rowid AS rno, * FROM dc_installs WHERE id=?', [$w['install']]) : null;
+    echo '<tr><td><b>' . h($w['name'] ?: '—') . '</b><br><small class="muted">' . h($w['email']) . '</small></td><td>' . ($ins ? '<a href="?p=installs&q=' . sprintf('DC-%05d', $ins['rno']) . '"><b class="mono">' . sprintf('DC-%05d', $ins['rno']) . '</b></a> ' . h($ins['call']) : '<span class="muted">' . L('χωρίς εγκατάσταση', 'no installation') . '</span>') . '</td><td>' . $w['n'] . '</td>';
+    foreach ($cur_order as $c) echo '<td>' . (isset($w['cur'][$c]) ? '<b>' . number_format($w['cur'][$c], 2) . '</b> ' . h($sym[$c] ?? $c) : '<span class="muted">—</span>') . '</td>';
+    echo '<td class="muted">' . gmdate('Y-m-d', $w['last']) . '</td></tr>';
+  }
+  echo '</table></div></section>';
+
+  // list
+  echo '<section class="card"><h2>' . L('Πληρωμές', 'Payments') . '</h2><div class="tw"><table class="tbl"><tr><th>' . L('Ώρα', 'Time') . '</th><th>' . L('Ποσό', 'Amount') . '</th><th>' . L('Από', 'From') . '</th><th>' . L('Σημείωση', 'Note') . '</th><th>' . L('Εγκατάσταση / κωδικός', 'Installation / code') . '</th></tr>';
+  $rows = dc_q('SELECT * FROM dc_payments ORDER BY t DESC LIMIT 300')->fetchAll(); if (!$rows) echo '<tr><td colspan="5" class="muted">' . L('Καμία πληρωμή ακόμη.', 'No payments yet.') . '</td></tr>';
+  foreach ($rows as $x) {
+    $st = $x['status'] === 'Completed' ? '' : ' <span class="pill ' . (in_array($x['status'], ['Refunded', 'Reversed'], true) ? 'bad' : 'o') . '">' . h($x['status']) . '</span>';
+    list($guess) = $x['install'] ? [null] : dc_pay_match(['custom' => $x['custom'], 'memo' => $x['memo'], 'payer_email' => $x['payer_email']]);
+    if ($x['install']) $act = '<a href="?p=installs&q=' . urlencode(dc_inst_no($x['install'])) . '"><b>' . h(dc_inst_no($x['install'])) . '</b></a> <span class="mono">' . h($x['code']) . '</span><br><small class="muted">' . h($x['matched_by']) . '</small>';
+    elseif ($x['status'] === 'Ignored') $act = '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_restore"><input type="hidden" name="pid" value="' . $x['id'] . '"><button class="btn sm">' . L('Επαναφορά', 'Restore') . '</button></form>';
+    else $act = '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_assign"><input type="hidden" name="pid" value="' . $x['id'] . '"><input name="to" placeholder="DC-00012" value="' . h($guess ? dc_inst_no($guess) : '') . '" style="width:120px"><button class="btn sm pri">' . L('Ενεργοποίηση', 'Activate') . '</button></form>'
+      . ($x['status'] === 'Completed' ? '<form method="post" style="margin-top:4px" onsubmit="return confirm(\'' . L('Να αγνοηθεί αυτή η πληρωμή; Δεν θα μετράει στα σύνολα.', 'Ignore this payment? It will not count in the totals.') . '\')">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_ignore"><input type="hidden" name="pid" value="' . $x['id'] . '"><button class="btn sm">' . L('Αγνόηση', 'Ignore') . '</button></form>' : '');
+    echo '<tr><td>' . dc_dt($x['t']) . '<br><small class="mono muted">' . h($x['txn']) . '</small></td><td><b>' . h(number_format((float)$x['amount'], 2) . ' ' . $x['currency']) . '</b>' . $st . '</td><td>' . h($x['payer_name']) . '<br><small class="muted">' . h($x['payer_email']) . '</small></td><td><small>' . h($x['memo']) . '</small>'
+      . '<form method="post" class="licf" style="margin-top:4px">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_note"><input type="hidden" name="pid" value="' . $x['id'] . '"><input name="note" value="' . h($x['note']) . '" placeholder="' . L('δική σου σημείωση', 'your note') . '" style="width:150px"><button class="btn sm">✓</button></form></td><td>' . $act . '</td></tr>';
+  }
+  echo '</table></div></section>';
+
+  // per month, every currency in its own column
+  $mon = [];
+  foreach (dc_q("SELECT strftime('%Y-%m', t, 'unixepoch') m, currency c, SUM(amount) s, COUNT(*) n FROM dc_payments WHERE status='Completed' GROUP BY m, c ORDER BY m DESC")->fetchAll() as $x) { $c = strtoupper($x['c']) ?: '?'; $mon[$x['m']][$c] = [(float)$x['s'], (int)$x['n']]; }
+  echo '<div class="grid2"><section class="card"><h2>' . L('Ανά μήνα', 'Per month') . '</h2><table class="tbl"><tr><th>' . L('Μήνας', 'Month') . '</th>';
+  foreach ($cur_order as $c) echo '<th>' . h($c) . '</th>';
+  echo '</tr>';
+  foreach (array_slice($mon, 0, 24, true) as $m => $by) { echo '<tr><td>' . h($m) . '</td>'; foreach ($cur_order as $c) echo '<td>' . (isset($by[$c]) ? '<b>' . number_format($by[$c][0], 2) . '</b> ' . h($sym[$c] ?? $c) . ' <small class="muted">(' . $by[$c][1] . ')</small>' : '<span class="muted">—</span>') . '</td>'; echo '</tr>'; }
+  if (!$mon) echo '<tr><td colspan="' . (1 + count($cur_order)) . '" class="muted">—</td></tr>';
+  echo '</table></section><section class="card"><h2>' . L('Καταχώρηση πληρωμής με το χέρι', 'Record a payment by hand') . '</h2><form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_add"><div class="g2">'
+    . '<label>' . L('Ποσό', 'Amount') . '<input name="amount" placeholder="5.00"></label><label>' . L('Νόμισμα', 'Currency') . '<input name="currency" value="EUR" list="curl"><datalist id="curl"><option value="EUR"><option value="SEK"></datalist></label><label>' . L('Όνομα', 'Name') . '<input name="name"></label><label>Email<input name="email" type="email"></label>'
+    . '<label>' . L('Σημείωση (π.χ. τράπεζα, Swish)', 'Note (e.g. bank, Swish)') . '<input name="memo"></label><label>' . L('Ενεργοποίηση εγκατάστασης (προαιρετικό)', 'Activate installation (optional)') . '<input name="to" placeholder="DC-00012"></label></div><button class="btn pri">' . L('Καταχώρηση', 'Record') . '</button></form></section></div>';
+  // settings
+  echo '<section class="card"><h2>' . L('PayPal και αυτόματη ενεργοποίηση', 'PayPal and automatic activation') . '</h2><div class="help">' . L(
+    '<b>Ο λογαριασμός PayPal είναι κοινός με το HAM Digi και το PayPal δέχεται ΜΙΑ διεύθυνση IPN.</b> Γι’ αυτό το HAM Digi (ipn.php) προωθεί ένα αντίγραφο κάθε πληρωμής εδώ: <b class="mono">' . h($ipn) . '</b> (το απόσπασμα είναι στο ΔΙΑΒΑΣΕ-ΜΕ.txt). Το DigiConnect ξαναρωτά το PayPal ότι είναι γνήσια.<br>Αν βρεθεί η εγκατάσταση (αριθμός DC-… στη σημείωση, το email της εγγραφής ή το διακριτικό στη σημείωση), ενεργοποιείται αμέσως — το πρόγραμμα το βλέπει στον επόμενο έλεγχο. Αλλιώς η πληρωμή περιμένει εδώ και πατάς «Ενεργοποίηση». Πληρωμές με αριθμό HD-… (HAM Digi) αγνοούνται.',
+    '<b>The PayPal account is shared with HAM Digi and PayPal accepts ONE IPN address.</b> So HAM Digi (ipn.php) forwards a copy of every payment here: <b class="mono">' . h($ipn) . '</b> (the snippet is in ΔΙΑΒΑΣΕ-ΜΕ.txt). DigiConnect asks PayPal again that it is genuine.<br>If the installation is found (DC-… number in the note, the registration e-mail or the callsign in the note) it is activated at once — the program sees it at its next check. Otherwise the payment waits here and you press “Activate”. Payments carrying an HD-… number (HAM Digi) are ignored.') . '</div>'
+    . '<form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_settings"><div class="g2">'
+    . '<label class="chk"><input type="checkbox" name="auto" value="1"' . $chk($P['auto']) . '> ' . L('Αυτόματη ενεργοποίηση μετά την πληρωμή', 'Activate automatically after payment') . '</label>'
+    . '<label class="chk"><input type="checkbox" name="skip_hd" value="1"' . $chk($P['skip_hd']) . '> ' . L('Αγνόησε πληρωμές με αριθμό HD-… (είναι του HAM Digi)', 'Ignore payments with an HD-… number (they belong to HAM Digi)') . '</label>'
+    . '<label>' . L('Ελάχιστο ποσό για αυτόματη ενεργοποίηση (0 = κάθε ποσό)', 'Minimum amount for automatic activation (0 = any amount)') . '<input name="min" value="' . h(dc_kv('pay_min', '0')) . '"></label>'
+    . '<label>' . L('Το email του PayPal σου (έλεγχος ότι η πληρωμή ήρθε σε σένα — προαιρετικό)', 'Your PayPal e-mail (checks the payment came to you — optional)') . '<input name="receiver" type="email" value="' . h($P['receiver']) . '"></label>'
+    . '<label class="chk"><input type="checkbox" name="sandbox" value="1"' . $chk($P['sandbox']) . '> ' . L('PayPal Sandbox (μόνο για δοκιμές)', 'PayPal Sandbox (tests only)') . '</label>'
+    . '</div><button class="btn pri">' . L('Αποθήκευση', 'Save') . '</button></form></section>';
+  echo '<section class="card"><h2>E-mail</h2><div class="help">' . L('Ο server δεν στέλνει email αν δεν το ενεργοποιήσεις εδώ. Με ενεργή αποστολή: ο πληρωτής παίρνει τον κωδικό ενεργοποίησης και εσύ ειδοποιήσεις για νέες πληρωμές.', 'This server sends no e-mail unless you switch it on here. When on: the payer gets the activation code and you get alerts about new payments.') . '</div>'
+    . '<form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="mail_settings"><div class="g2">'
+    . '<label class="chk"><input type="checkbox" name="mail_on" value="1"' . $chk(dc_kv('mail_on', '0') === '1') . '> ' . L('Ενεργή αποστολή email από αυτόν τον server', 'Sending e-mail from this server is on') . '</label>'
+    . '<label class="chk"><input type="checkbox" name="alert_mail" value="1"' . $chk(dc_kv('alert_mail', '1') === '1') . '> ' . L('Στείλε μου email για νέες πληρωμές', 'E-mail me about new payments') . '</label>'
+    . '<label>' . L('Το email σου (διαχειριστή)', 'Your (admin) e-mail') . '<input name="admin_mail" type="email" value="' . h(dc_kv('admin_mail', '')) . '"></label>'
+    . '<label>' . L('Διεύθυνση αποστολέα (προαιρετικό)', 'Sender address (optional)') . '<input name="mail_from" type="email" value="' . h(dc_kv('mail_from', '')) . '"></label></div>'
+    . '<button class="btn pri">' . L('Αποθήκευση', 'Save') . '</button></form>'
+    . '<form method="post" style="margin-top:8px">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="mail_test"><button class="btn sm">' . L('Δοκιμαστικό email', 'Send a test e-mail') . '</button></form></section>';
 }
 
 /* ===================== SERVERS / HOST LISTS ===================== */
@@ -396,21 +589,20 @@ elseif ($p === 'servers') {
 
 /* ===================== MESSAGES ===================== */
 elseif ($p === 'messages') {
-  echo '<section class="card"><h2>' . L('Νέο μήνυμα','New message') . '</h2>'
-    . '<form class="form" method="post">' . csrf() . '<input type="hidden" name="p" value="messages"><input type="hidden" name="a" value="msg_send">'
-    . '<div class="g2"><label>' . L('Παραλήπτης','Recipient') . '<select name="scope"><option value="all">' . L('Όλοι','Everyone') . '</option><option value="one">' . L('Μία εγκατάσταση','One installation') . '</option></select></label>'
-    . '<label>' . L('ID / Callsign (αν «μία»)','ID / Callsign (if one)') . '<input name="target"></label></div>'
-    . '<label>' . L('Τίτλος','Title') . '<input name="title" required></label>'
-    . '<label>' . L('Κείμενο','Body') . '<textarea name="body" rows="3" required></textarea></label>'
-    . '<button class="btn pri">' . L('Αποστολή','Send') . '</button></form></section>';
-  $msgs = dc_q("SELECT * FROM dc_messages ORDER BY t DESC LIMIT 100")->fetchAll();
-  echo '<section class="card"><h2>' . L('Σταλμένα','Sent') . ' <small>(' . count($msgs) . ')</small></h2><div class="tw"><table class="tbl"><tr><th>' . L('Πότε','When') . '</th><th>' . L('Προς','To') . '</th><th>' . L('Τίτλος','Title') . '</th><th></th><th></th></tr>';
-  foreach ($msgs as $m)
-    echo '<tr><td class="muted">' . dc_dt($m['t']) . '</td><td>' . ($m['scope']==='all'?L('Όλοι','Everyone'):h($m['target'])) . '</td><td><b>' . h($m['title']) . '</b><br><span class="muted">' . h(mb_substr($m['body'],0,80)) . '</span></td><td>' . ((int)$m['active']?'<span class="pill ok">' . L('ενεργό','active') . '</span>':'<span class="pill dim">off</span>') . '</td>'
-       . '<td>' . ((int)$m['active'] ? '<form method="post">' . csrf() . '<input type="hidden" name="p" value="messages"><input type="hidden" name="mid" value="' . (int)$m['id'] . '"><button class="btn sm" name="a" value="msg_off">' . L('Απόσυρση','Retire') . '</button></form>' : '') . '</td></tr>';
-  echo '</table></div>';
-  if (!$msgs) echo '<p class="empty">' . L('Κανένα μήνυμα ακόμη.','No messages yet.') . '</p>';
-  echo '</section>';
+  echo '<section class="card"><h2>' . L('Νέο μήνυμα', 'New message') . '</h2><form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="messages"><input type="hidden" name="a" value="msg_new"><div class="g2">'
+    . '<label>' . L('Προς (κενό = όλοι, ή αριθμός DC-…)', 'To (empty = everyone, or a DC-… number)') . '<input name="target" placeholder="' . L('όλοι', 'everyone') . '"></label><label>' . L('Εμφανίζεται για (ημέρες, 0 = πάντα)', 'Shown for (days, 0 = always)') . '<input name="days" type="number" min="0" value="30"></label>'
+    . '<label>' . L('Τίτλος (Ελληνικά)', 'Title (Greek)') . '<input name="title_el" maxlength="200"></label><label>' . L('Τίτλος (Αγγλικά)', 'Title (English)') . '<input name="title_en" maxlength="200"></label>'
+    . '<label>' . L('Κείμενο (Ελληνικά)', 'Text (Greek)') . '<textarea name="body_el" rows="5"></textarea></label><label>' . L('Κείμενο (Αγγλικά)', 'Text (English)') . '<textarea name="body_en" rows="5"></textarea></label>'
+    . '<label style="grid-column:1/-1">' . L('Σύνδεσμος (προαιρετικό, https://…)', 'Link (optional, https://…)') . '<input name="link"></label></div>'
+    . '<div class="help">' . L('Ο server προσφέρει το μήνυμα σε κάθε έλεγχο (όλοι ή μία εγκατάσταση). Προσοχή: το πρόγραμμα DigiConnect δεν το εμφανίζει ακόμη — χρειάζεται αλλαγή στο πρόγραμμα.', 'The server offers the message at every check (everyone or one installation). Note: the DigiConnect program does not show it yet — that needs a change in the program.') . '</div><button class="btn pri">' . L('Αποστολή', 'Send') . '</button></form></section>';
+  echo '<section class="card"><h2>' . L('Μηνύματα', 'Messages') . '</h2><div class="tw"><table class="tbl"><tr><th>' . L('Ώρα', 'Time') . '</th><th>' . L('Προς', 'To') . '</th><th>' . L('Μήνυμα', 'Message') . '</th><th>' . L('Κατάσταση', 'State') . '</th><th></th></tr>';
+  foreach (dc_q('SELECT * FROM dc_messages ORDER BY t DESC LIMIT 200')->fetchAll() as $m) {
+    $live = $m['active'] && (!(int)$m['until'] || (int)$m['until'] > time()); $ttl = $m['title_el'] ?: ($m['title_en'] ?: $m['title']); $bd = $m['body_el'] ?: ($m['body_en'] ?: $m['body']);
+    echo '<tr><td>' . dc_dt($m['t']) . '</td><td>' . ($m['target'] ? '<a href="?p=installs&q=' . urlencode(dc_inst_no($m['target'])) . '">' . h(dc_inst_no($m['target']) ?: $m['target']) . '</a>' : L('όλοι', 'everyone')) . '</td><td><b>' . h($ttl) . '</b><br><small>' . nl2br(h(mb_substr((string)$bd, 0, 300))) . '</small></td><td>' . ($live ? '<span class="pill ok">' . L('ενεργό', 'active') . '</span>' . ((int)$m['until'] ? '<br><small class="muted">' . L('έως ', 'until ') . dc_dt($m['until']) . '</small>' : '') : '<span class="pill">' . L('τέλος', 'ended') . '</span>') . '</td><td>'
+      . ($live ? '<form method="post" style="display:inline">' . csrf() . '<input type="hidden" name="p" value="messages"><input type="hidden" name="a" value="msg_off"><input type="hidden" name="mid" value="' . (int)$m['id'] . '"><button class="btn sm">' . L('Σταμάτημα', 'Stop') . '</button></form> ' : '')
+      . '<form method="post" style="display:inline" onsubmit="return confirm(\'' . L('Διαγραφή;', 'Delete?') . '\')">' . csrf() . '<input type="hidden" name="p" value="messages"><input type="hidden" name="a" value="msg_del"><input type="hidden" name="mid" value="' . (int)$m['id'] . '"><button class="btn sm danger">' . L('Διαγραφή', 'Delete') . '</button></form></td></tr>';
+  }
+  echo '</table></div></section>';
 }
 
 /* ===================== ACTIVITY ===================== */
@@ -433,13 +625,12 @@ elseif ($p === 'settings') {
     . '<p class="help">' . L('Αν το ξεκλειδώσεις, το πρόγραμμα είναι δωρεάν για όλους χωρίς demo.','If unchecked, the app is free for everyone with no demo.') . '</p>'
     . '<button class="btn pri">' . L('Αποθήκευση','Save') . '</button></form>'
     . '<form class="form" method="post" style="margin-top:14px">' . csrf() . '<input type="hidden" name="p" value="settings"><input type="hidden" name="a" value="set_lic">'
-    . '<label>' . L('Ημέρες demo για νέες εγκαταστάσεις','Demo days for new installations') . '<input type="number" name="demo_days" min="1" value="' . (int)dc_opt('demo_days', $cfg['demo_days']) . '"></label>'
     . '<label>' . L('Όταν ο server δεν είναι προσβάσιμος','When this server cannot be reached') . '<select name="offline">'
     . '<option value="require"' . ($off['offline']==='require'?' selected':'') . '>' . L('Να απαιτεί πάντα σύνδεση (δεν ξεκινά χωρίς απάντηση)','Always require a connection (does not start without an answer)') . '</option>'
     . '<option value="grace"' . ($off['offline']==='grace'?' selected':'') . '>' . L('Να δουλεύει για Ν ημέρες από τον τελευταίο έλεγχο','Keep working for N days after the last check') . '</option>'
     . '<option value="allow"' . ($off['offline']==='allow'?' selected':'') . '>' . L('Να δουλεύει πάντα· η απενεργοποίηση ισχύει μόλις συνδεθεί','Always keep working; a block applies as soon as it is online again') . '</option></select></label>'
     . '<label>' . L('Ημέρες ανοχής (για την επιλογή «Ν ημέρες»)','Grace days (for the «N days» option)') . '<input type="number" name="offline_days" min="1" value="' . (int)$off['offline_days'] . '"></label>'
-    . '<label>' . L('Διεύθυνση του κουμπιού Donate (https)','Address of the Donate button (https)') . '<input type="url" name="donate_url" value="' . h((string)dc_opt('donate_url', $cfg['donate_url'] ?? '')) . '" placeholder="https://www.paypal.com/donate/?hosted_button_id=…"></label>'
+    . '<p class="help">' . L('Το demo για νέες εγκαταστάσεις και το κουμπί Donate ορίζονται στις Άδειες / Κωδικοί.','The demo for new installations and the Donate button are set under Licences / Codes.') . '</p>'
     . '<button class="btn pri">' . L('Αποθήκευση','Save') . '</button></form></section></div>';
 }
 
@@ -519,6 +710,20 @@ function rail_html() {
   return $o;
 }
 
+/* ---- licence helpers shared by Installations and Licences (same as HAM Digi) ---- */
+function dc_lic_label(array $r): string {
+  if ((int)($r['enabled'] ?? 1) === 0 || ($r['state'] ?? '') === 'disabled') return '<span class="pill bad">' . L('Απενεργοποιημένη', 'Disabled') . '</span>';
+  list($st, $exp) = dc_lic_effective($r); $x = $exp ? ' → ' . gmdate('Y-m-d H:i', $exp) . ' UTC' : '';
+  $m = ['free' => ['ok', L('Δωρεάν', 'Free')], 'full' => ['ok', L('Μόνιμη άδεια', 'Licensed')], 'demo' => ['o', 'Demo'], 'locked' => ['bad', L('Κλειδωμένο', 'Locked')], 'expired' => ['bad', L('Έληξε', 'Expired')]][$st] ?? ['', $st];
+  return '<span class="pill ' . $m[0] . '">' . h($m[1]) . '</span>' . ($exp && $st !== 'free' ? ' <small class="muted">' . h($x) . '</small>' : '');
+}
+function lic_form(array $r, string $back): string {
+  $u = function ($sel) { return '<select name="unit"><option value="h">' . L('ώρες', 'hours') . '</option><option value="d"' . ($sel === 'd' ? ' selected' : '') . '>' . L('ημέρες', 'days') . '</option><option value="m">' . L('μήνες', 'months') . '</option><option value="y">' . L('χρόνια', 'years') . '</option></select>'; };
+  return '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="' . h($back) . '"><input type="hidden" name="a" value="lic_one"><input type="hidden" name="id" value="' . h($r['id']) . '">'
+    . '<select name="do"><option value="demo">' . L('Demo για', 'Demo for') . '</option><option value="extend">' . L('Παράταση κατά', 'Extend by') . '</option><option value="full_until">' . L('Άδεια για', 'Licence for') . '</option><option value="full">' . L('Μόνιμη άδεια', 'Permanent licence') . '</option><option value="free">' . L('Δωρεάν (χωρίς όριο)', 'Free (no limit)') . '</option><option value="lock">' . L('Κλείδωμα', 'Lock') . '</option><option value="default">' . L('Όπως η προεπιλογή', 'As the default') . '</option></select>'
+    . '<input name="n" type="number" min="1" value="6" style="width:70px">' . $u('d') . '<button class="btn sm pri">' . L('Εφαρμογή', 'Apply') . '</button></form>';
+}
+
 function activity_rows($rows) {
   if (!$rows) return '<p class="muted">' . L('Τίποτα ακόμη.','Nothing yet.') . '</p>';
   $osn = function ($o, $a = '') { $n = ['windows' => 'Windows', 'macos' => 'macOS', 'linux' => 'Linux'][$o] ?? $o; return trim($n . ' ' . $a); };
@@ -535,6 +740,15 @@ function activity_rows($rows) {
     switch ($k) {
       case 'install':   $txt = L('Νέα εγκατάσταση ', 'New installation ') . $who($d[0]) . ' · v' . h($d[1] ?? '') . ' · ' . h($osn($d[2] ?? '', $d[3] ?? '')); $c = 'g'; break;
       case 'demo':      $txt = L('Demo ', 'Demo ') . h($d[1] ?? '') . L(' ημέρες · ', ' days · ') . $who($d[0]); $c = 'b'; break;
+      case 'licence':   $txt = L('Άδεια ', 'Licence ') . ($d[0] === 'default' || $d[0] === 'reset' ? '<b>' . h($d[0] === 'reset' ? L('προεπιλογή σε υπάρχουσες', 'default applied to existing') : L('νέα προεπιλογή', 'new default')) . '</b> · ' . h($d[1] ?? '') : $who($d[0]) . ' → <b>' . h($d[1] ?? '') . '</b>' . (!empty($d[2]) ? ' → ' . h($d[2]) : '') . (!empty($d[3]) ? ' · <span class="muted">' . h($d[3]) . '</span>' : '')); $c = 'b'; break;
+      case 'payment':   $txt = L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? ''); $c = 'g'; break;
+      case 'pay_auto':  $txt = '♥ ' . L('Αυτόματη ενεργοποίηση ', 'Automatic activation ') . $who($d[0]) . ' · ' . h($d[2] ?? '') . ' · <span class="mono">' . h($d[3] ?? '') . '</span>'; $c = 'g'; break;
+      case 'pay_unmatched': $txt = '♥ ' . L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> ' . L('από ', 'from ') . h($d[2] ?? '') . ' — <a href="?p=payments">' . L('χρειάζεται ενεργοποίηση', 'needs activation') . '</a>'; $c = 'o'; break;
+      case 'pay_refund': $txt = '⚠ PayPal ' . h($d[1] ?? '') . ' · ' . h($d[0] ?? '') . (!empty($d[2]) ? ' · ' . $who($d[2]) : ''); $c = 'r'; break;
+      case 'pay_invalid': $txt = '⚠ ' . L('Μη έγκυρο μήνυμα PayPal ', 'Invalid PayPal message ') . h($e['detail']); $c = 'r'; break;
+      case 'pay_skipped': $txt = L('Πληρωμή του HAM Digi αγνοήθηκε ', 'HAM Digi payment ignored ') . h(implode(' · ', array_slice($d, 0, 2))); break;
+      case 'mail':      $txt = 'E-mail ' . h($d[0] ?? '') . ' · ' . h($d[1] ?? '') . ' · ' . h($d[2] ?? ''); $c = ($d[0] ?? '') === 'ok' ? '' : 'r'; break;
+      case 'code_reuse': $txt = '⚠ ' . L('Ο κωδικός ', 'Code ') . '<b class="mono">' . h($d[1] ?? '') . '</b>' . L(' (της ', ' (of ') . h(dc_inst_no($d[2] ?? '')) . L(') δοκιμάστηκε σε άλλη εγκατάσταση ', ') was tried on another installation ') . $who($d[0]); $c = 'r'; break;
       case 'activate':  $txt = L('Ενεργοποίηση (full) · ', 'Activated (full) · ') . $who($d[0]); $c = 'g'; break;
       case 'lock':      $txt = L('Κλείδωμα · ', 'Locked · ') . $who($d[0]); $c = 'o'; break;
       case 'enable':    $txt = L('Ενεργοποιήθηκε · ', 'Enabled · ') . $who($d[0]); $c = 'g'; break;
