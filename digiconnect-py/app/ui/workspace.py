@@ -47,10 +47,10 @@ class Workspace(W.QWidget):
             nv.addWidget(label("Sign in with your own AllStarLink portal account, then pick a node. Experimental: only nodes that accept AllStarLink app connections can be reached.")); note.findChildren(W.QLabel)[0].setWordWrap(True)
             mv.addWidget(note)
             g = W.QGridLayout(); self.asl_user = W.QLineEdit(ctx.store.settings.get("asl_user") or ctx.store.settings.get("callsign", ""))
-            self.asl_pw = W.QLineEdit(); self.asl_pw.setEchoMode(W.QLineEdit.EchoMode.Password); self.asl_pw.setText(ctx.asl_password)
+            self.asl_pw = W.QLineEdit(); self.asl_pw.setEchoMode(W.QLineEdit.EchoMode.Password); self.asl_pw.setText(ctx.asl_password); self.asl_rem = checkbox("Remember on this computer (enter it only once)"); self.asl_rem.setChecked(bool(ctx.store.settings.get("asl_remember", True)))
             g.addWidget(field("AllStarLink username (callsign)", self.asl_user), 0, 0); g.addWidget(field("AllStarLink password", self.asl_pw), 0, 1); mv.addLayout(g)
-            self.asl_note = label("The password stays in memory for this session only and is never saved on disk.", muted=True); self.asl_note.setWordWrap(True); mv.addWidget(self.asl_note)
-            self.asl_user.textChanged.connect(self._asl_login); self.asl_pw.textChanged.connect(self._asl_login)
+            mv.addWidget(self.asl_rem); self.asl_note = label("When ticked, the password is kept in this program's settings file on this computer (not encrypted). Untick it to keep it only in memory.", muted=True); self.asl_note.setWordWrap(True); mv.addWidget(self.asl_note)
+            self.asl_user.textChanged.connect(self._asl_login); self.asl_pw.textChanged.connect(self._asl_login); self.asl_rem.toggled.connect(self._asl_login)
         self.srvcard = panel("tx"); sv = vbox(self.srvcard, m=(12, 8, 12, 10), s=4)
         sv.addWidget(label("Server used for this station", muted=True))
         self.srv_host = W.QLineEdit(); self.srv_port = W.QLineEdit(); self.srv_port.setMaximumWidth(110)
@@ -99,8 +99,7 @@ class Workspace(W.QWidget):
         ctx.changed.connect(self.refresh); self._hosts_loaded()
 
     def _asl_login(self):
-        self.ctx.set_asl_login(self.asl_user.text(), self.asl_pw.text(), remember_user=False)
-        if self.asl_user.text().strip() and valid_user_text(self.asl_user.text()): self.ctx.store.settings["asl_user"] = self.asl_user.text().strip(); self.ctx.store.save_settings()
+        self.ctx.set_asl_login(self.asl_user.text(), self.asl_pw.text(), self.asl_rem.isChecked())
 
     def _hosts_loaded(self):
         self.entries = directory.entries(self.net, self.ctx.hosts, self.ctx.asl_nodes)

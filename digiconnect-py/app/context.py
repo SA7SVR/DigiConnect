@@ -36,7 +36,8 @@ class Ctx(QtCore.QObject):
         self.engine_msg = ""
         self.last_heard: list[dict] = []        # newest first
         self.dmr_password = ""                   # session only, never written to disk
-        self.asl_password = ""                   # AllStarLink portal password: session only, never written to disk
+        self.asl_password = (self.store.settings.get("asl_pw") or "") if self.store.settings.get("asl_remember", True) else ""    # AllStarLink portal password: kept in the settings file only when "Remember" is ticked
+        if hasattr(self.engine, "asl_password"): self.engine.asl_password = self.asl_password
         if hasattr(self.engine, "status"):
             self.engine.status.connect(self._on_status); self.engine.heard.connect(self._on_heard)
             self.engine.volume_refresh.connect(lambda: self.__dict__.pop("_vol_cache", None))
@@ -183,11 +184,14 @@ class Ctx(QtCore.QObject):
         self.store.settings["mic_gain"] = int(pct); self.store.save_settings()
         if hasattr(self.engine, "set_mic_gain"): self.engine.set_mic_gain(pct)
 
-    def set_asl_login(self, user: str, pw: str, remember_user=True):
-        """AllStarLink portal account. The password is kept in memory for this session only, never written to disk."""
-        user = (user or "").strip()
-        if remember_user and user != self.store.settings.get("asl_user", ""):
-            self.store.settings["asl_user"] = user; self.store.save_settings()
+    def set_asl_login(self, user: str, pw: str, remember=None):
+        """AllStarLink portal account, entered once. The password is saved on this computer (settings file) only while "Remember" is on."""
+        s = self.store.settings
+        if remember is None: remember = bool(s.get("asl_remember", True))
+        user = (user or "").strip(); changed = False
+        for k, v in (("asl_user", user), ("asl_remember", bool(remember)), ("asl_pw", pw if remember else "")):
+            if s.get(k) != v: s[k] = v; changed = True
+        if changed: self.store.save_settings()
         self.asl_password = pw
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = pw
 

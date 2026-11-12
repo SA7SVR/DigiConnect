@@ -124,6 +124,8 @@ def test_workspace_and_directory(tmp_path):
     ws.search.setText("2000"); assert ws.list.count() == 1
     ws.search.setText("12345"); assert ws.list.count() == 1 and "12345" in ws.list.item(0).text()          # a typed node number can always be used
     ws.search.setText("")
-    ws.asl_pw.setText("secret"); assert ctx.asl_password == "secret" and "secret" not in json.dumps(st.settings)
+    ws.asl_pw.setText("secret"); assert ctx.asl_password == "secret" and st.settings["asl_pw"] == "secret"          # entered once, kept
+    assert Ctx(Store(tmp_path)).asl_password == "secret"                                                           # ...and still there after a restart
+    ws.asl_rem.setChecked(False); assert st.settings["asl_pw"] == "" and ctx.asl_password == "secret" and Ctx(Store(tmp_path)).asl_password == ""    # not remembered: memory only
     ws.list.setCurrentRow(0); assert ctx.selected.net == "AllStar" and ctx.selected.id == "1999"
     assert ctx.servers.info(ctx.selected)[0]["host"] == "1999.nodes.allstarlink.org"
