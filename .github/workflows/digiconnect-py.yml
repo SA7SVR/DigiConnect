@@ -152,6 +152,14 @@ jobs:
             DC_ENGINE_STDERR=1 DC_SAMPLE_AFTER=12 python3 engine/tests/check_ysf_loopback.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 2>&1 | grep -E "PASS|FAIL|ALL OK|FAILED|Call graph|Thread_|  [0-9]+ |QHost|Mode::host|audio init" | head -60
             echo "--- engine processes left: ---"; pgrep -fl dcengine || echo none
           done
+      - name: DMR login test 5 times (diagnostic - why does the engine die after a refused login?)
+        continue-on-error: true
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "=== run $i ==="
+            python3 engine/tests/check_dmr_login.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 2>&1 | tail -25
+          done
+          ls -la ~/Library/Logs/DiagnosticReports 2>/dev/null | head; for f in ~/Library/Logs/DiagnosticReports/dcengine*; do [ -f "$f" ] && { echo "--- $f"; head -c 6000 "$f"; }; done; true
       - name: Tests
         # Apple Silicon: the standalone engine loopback above passes, one end-to-end test does not yet (under investigation);
         # it is reported but must not keep the Apple Silicon program from being built. Intel runs the same tests and must pass.

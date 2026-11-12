@@ -37,13 +37,20 @@ def scenario(port, dmrid, essid, password, master_id, master_password):
                 sock.sendto(b"MSTPONG" + data[7:11], addr)
     mt = threading.Thread(target=master, daemon=True); mt.start()
     events = queue.Queue()
-    p = subprocess.Popen([engine_bin], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    p = subprocess.Popen([engine_bin], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          env=dict(os.environ, QT_QPA_PLATFORM="offscreen"), text=True, bufsize=1)
+    errlines = []
+    threading.Thread(target=lambda: [errlines.append(l) for l in p.stderr], daemon=True).start()   # kept: shown if the engine dies on its own
     def reader():
         for line in p.stdout:
             if line.strip().startswith("{"): events.put(json.loads(line))
     threading.Thread(target=reader, daemon=True).start()
-    def send(cmd, **kw): p.stdin.write(json.dumps(dict(cmd=cmd, **kw)) + "\n"); p.stdin.flush()
+    def send(cmd, **kw):
+        try: p.stdin.write(json.dumps(dict(cmd=cmd, **kw)) + "\n"); p.stdin.flush()
+        except (BrokenPipeError, OSError):
+            time.sleep(0.5)
+            print("ENGINE DIED BY ITSELF before '%s': exit code %s (negative = killed by that signal); engine stderr:\n%s" % (cmd, p.poll(), "".join(errlines[-40:])))
+            raise
     send("hello"); end = time.time() + 5; last = None
     while time.time() < end and not last:
         try:
