@@ -22,6 +22,8 @@ class Ctx(QtCore.QObject):
     hosts_changed = Signal()            # the worldwide server lists were (re)loaded
     _hosts_done = Signal(int, object)
     _asl_done = Signal(int, str)
+    asl_links_changed = Signal()        # the list of stations connected to an AllStar node was updated
+    _asl_links_done = Signal(str, object)
 
     def __init__(self, store: Store | None = None, engine=None):
         super().__init__()
@@ -33,6 +35,8 @@ class Ctx(QtCore.QObject):
         self.closing = False                  # set when the program quits: background threads then stop emitting Qt signals
         self._asl_busy = False
         self._asl_done.connect(self._on_asl_done)
+        self.asl_links: dict[str, dict] = {}; self._asl_links_asked: dict[str, float] = {}
+        self._asl_links_done.connect(self._on_asl_links)
         from .servers import Servers
         self.servers = getattr(self.engine, "servers", None) or Servers(self.store)      # one address book for the pages and the engine
         self._hosts_busy = False
@@ -128,8 +132,34 @@ class Ctx(QtCore.QObject):
         for h in list(cache):
             if h not in live: del cache[h]
 
+    ASL_LINKS_EVERY = 15.0              # seconds between two questions per node (the stats server allows 30 per minute)
+
+    def _asl_nodes_in_use(self) -> set[str]:
+        r = self.rules; nodes = {x.target.id for x in r.rx if x.target.net == "AllStar"}
+        if r.tx_connected and r.tx_target is not None and r.tx_target.net == "AllStar": nodes.add(r.tx_target.id)
+        return nodes
+
+    def poll_asl_links(self, now: float | None = None):
+        """Who is connected to the AllStar node(s) we are connected to: asked from the stats server in a worker thread, every 15 s."""
+        import time as _t
+        now = _t.monotonic() if now is None else now
+        for node in self._asl_nodes_in_use():
+            if now - self._asl_links_asked.get(node, -1e9) < self.ASL_LINKS_EVERY: continue
+            self._asl_links_asked[node] = now
+            def work(node=node):
+                from . import allstar
+                res = allstar.fetch_links(node)
+                if not self.closing: self._asl_links_done.emit(node, res)
+            threading.Thread(target=work, daemon=True).start()
+
+    def _on_asl_links(self, node, res):
+        res["ts"] = __import__("time").time(); self.asl_links[node] = res
+        from . import diag; diag.log(f"AllStar node {node}: {len(res.get('rows', []))} linked nodes" + (f" ({res['error']})" if res.get("error") else ""))
+        self.asl_links_changed.emit()
+
     def _tick(self):
         self._sync_audio()
+        self.poll_asl_links()
         if self.rules.ptt:
             self.rules.tick(250)
             if not self.rules.ptt:

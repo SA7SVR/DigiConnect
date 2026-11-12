@@ -60,6 +60,17 @@ def test_favorites_click_listens_and_amber(win):
     w.mixer.single.click(); assert c.property("state") == "pink"
 
 
+def test_favorites_second_click_stops_listening(win):
+    """First click on a favorite card starts listening, the second click on the same card stops it (and other cards stay)."""
+    w, ctx, app = win; ctx.store.toggle_fav("C4FM", "00006", "A"); ctx.store.toggle_fav("DMR", "91", "B"); w.nav("favorites"); app.processEvents()
+    a, b = w.favs.cards[0], w.favs.cards[1]; w.mixer.multi.click()
+    a.clicked.emit(a.fav); b.clicked.emit(b.fav)
+    assert ctx.rules.is_listening(Target("C4FM", "00006")) and ctx.rules.is_listening(Target("DMR", "91"))
+    a.clicked.emit(a.fav)
+    assert not ctx.rules.is_listening(Target("C4FM", "00006")) and ctx.rules.is_listening(Target("DMR", "91"))
+    a.clicked.emit(a.fav); assert ctx.rules.is_listening(Target("C4FM", "00006"))         # third click starts it again
+
+
 def test_qso_save_validation_export_import(win, tmp_path):
     w, ctx, app = win; q = w.qdrawer; w.open_qso()
     q.w["callsign"].setText("sv1abc"); q.w["grid"].setText("KM17"); q.w["dest"].setText("91"); q._save()
@@ -145,3 +156,17 @@ def test_master_dialog_has_a_network_filter(win, monkeypatch):
     ws._choose_master()
     assert seen["networks"][0] == "All networks" and any(n.startswith("BrandMeister") for n in seen["networks"]) and any(n.startswith("FreeDMR") for n in seen["networks"])
     assert len(seen["dmrplus"]) == 1 and "ANDALUCIA" in seen["dmrplus"][0]
+
+
+def test_allstar_page_lists_stations_connected_to_the_node(win):
+    w, ctx, app = win; w.nav("net:AllStar"); ws = w.ws["AllStar"]
+    t = Target("AllStar", "509830", "HELLAS Zone Net"); ctx.select(t)
+    ws._asl_links_show(); assert "Connect to a node" in ws.asl_head.text()                  # not connected: nothing to show
+    ctx.rules.listen(t)                                                                       # connected (listening) to the node
+    ctx._asl_links_asked["509830"] = 1e18                                                     # no real network in the test
+    ws._asl_links_show(); assert "509830" in ws.asl_head.text() and ws.asl_list.count() == 0
+    ctx._on_asl_links("509830", dict(title="HELLAS Zone Server", keyed=True, error="", rows=[
+        dict(node="63618", callsign="SV1GGF", owner="SV1GGF", location="Piraeus", site="SV1GGF NODE", mode="T", status="Active"),
+        dict(node="63938", callsign="DL4LGV", owner="DL4LGV", location="JO42tk", site="DL4LGV", mode="T", status="Active")]))
+    assert ws.asl_list.count() == 2 and "SV1GGF" in ws.asl_list.item(0).text() and "Piraeus" in ws.asl_list.item(0).text()
+    assert "2" in ws.asl_head.text() and "transmitting" in ws.asl_head.text()

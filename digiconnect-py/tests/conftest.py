@@ -32,4 +32,8 @@ def pytest_unconfigure(config):
     the result and the exit status are the test run's own, nothing of the program is skipped."""
     import sys
     try: sys.stdout.flush(); sys.stderr.flush()
-    finally: os._exit(_STATUS[0])
+    except Exception: pass
+    if sys.platform == "win32":          # os._exit() still runs the DLL shutdown of Qt on Windows (access violation there): end the process directly
+        import ctypes
+        ctypes.windll.kernel32.TerminateProcess(ctypes.windll.kernel32.GetCurrentProcess(), _STATUS[0])
+    os._exit(_STATUS[0])

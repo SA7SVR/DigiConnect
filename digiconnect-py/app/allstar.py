@@ -207,3 +207,46 @@ class NodeDirectory:
                 errs.append(str(getattr(ex, "reason", ex)))
         self.status = "failed: " + "; ".join(errs)
         return 0, "AllStarLink node list: " + "; ".join(errs)
+
+
+# ---- who is connected to a node (AllStarLink stats server) -------------------------
+STATS_URL = "https://stats.allstarlink.org/api/stats/{}"          # 30 requests per minute per IP are allowed; the program asks every 15 s for the node it is connected to
+
+
+def parse_links(j) -> dict:
+    """The nodes linked to a node, from the stats server's JSON ('stats' > 'data' > 'linkedNodes', with the 'nodes' string such as 'T63618,R70111'
+    giving the mode: T = transceive, R = receive only, C = connecting). Returns {title, keyed, rows[{node, callsign, owner, location, site, mode, status}]}."""
+    stats = (j or {}).get("stats") or {}; data = stats.get("data") or {}
+    modes = {}
+    for part in str(data.get("nodes") or "").split(","):
+        part = part.strip()
+        if len(part) > 1 and part[0].isalpha() and part[1:].isdigit(): modes[part[1:]] = part[0].upper()
+        elif part.isdigit(): modes[part] = ""
+    rows, seen = [], set()
+    for n in data.get("linkedNodes") or []:
+        if not isinstance(n, dict): continue
+        node = str(n.get("name") or "").strip()
+        if not node or node in seen: continue
+        seen.add(node); srv = n.get("server") or {}
+        rows.append(dict(node=node, callsign=str(n.get("callsign") or n.get("User_ID") or "").strip(), owner=str(n.get("User_ID") or "").strip(),
+                         location=str(srv.get("Location") or "").strip(), site=str(srv.get("Server_Name") or "").strip(),
+                         mode=modes.get(node, ""), status=str(n.get("Status") or "")))
+    for node in data.get("links") or []:                            # linked, but not in the directory (private / numbers only): still show the number
+        node = str(node).strip()
+        if node and node not in seen: seen.add(node); rows.append(dict(node=node, callsign="", owner="", location="", site="", mode=modes.get(node, ""), status=""))
+    me = (j or {}).get("node") or (stats.get("user_node") or {})
+    srv = me.get("server") or {}
+    return dict(title=str(srv.get("Server_Name") or me.get("callsign") or "").strip(), keyed=bool(data.get("keyed")), rows=rows)
+
+
+def fetch_links(node: str, url: str = STATS_URL, timeout: float = 10) -> dict:
+    """Blocking (call from a worker thread). Returns parse_links(...) plus 'error' ('' when fine)."""
+    node = (node or "").strip()
+    if not valid_node(node): return dict(title="", keyed=False, rows=[], error="Not a valid node number.")
+    try:
+        from . import net
+        out = parse_links(json.loads(net.get(url.format(node), timeout, 2 * 1024 * 1024)))
+        out["error"] = ""
+        return out
+    except Exception as ex:
+        return dict(title="", keyed=False, rows=[], error=f"Cannot read the node's connections ({getattr(ex, 'reason', ex)})")

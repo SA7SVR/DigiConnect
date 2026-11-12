@@ -97,7 +97,13 @@ class Workspace(W.QWidget):
         rv.addWidget(label("Last station heard")); rv.itemAt(0).widget().setStyleSheet("font-weight:700;font-size:14px;")
         self.lh_empty = label("🎧\nStation details will appear on reception."); self.lh_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lh_empty.setProperty("muted", True); rv.addWidget(self.lh_empty); rv.addSpacing(10)
-        rv.addWidget(label("LAST HEARD", section=True)); self.lh_list = label("Waiting for data", muted=True); rv.addWidget(self.lh_list); rv.addStretch()
+        rv.addWidget(label("LAST HEARD", section=True)); self.lh_list = label("Waiting for data", muted=True); rv.addWidget(self.lh_list)
+        if net == "AllStar":
+            rv.addSpacing(8); rv.addWidget(label("CONNECTED TO THIS NODE", section=True))
+            self.asl_head = label("Connect to a node to see who is connected to it.", muted=True); self.asl_head.setWordWrap(True); rv.addWidget(self.asl_head)
+            self.asl_list = W.QListWidget(); self.asl_list.setMinimumHeight(140); rv.addWidget(self.asl_list, 1)
+            ctx.asl_links_changed.connect(self._asl_links_show); ctx.changed.connect(self._asl_links_show)
+        rv.addStretch()
         left.setMinimumWidth(300); mid.setMinimumWidth(350); right.setMinimumWidth(240); self._right = right
         root.addWidget(left, 5); root.addWidget(mid, 5); root.addWidget(right, 4)
         # wiring
@@ -126,6 +132,25 @@ class Workspace(W.QWidget):
         self.country.blockSignals(True); self.country.clear(); self.country.addItems([tr("All countries")] + names); i18n.combo_item(self.country, 0, "All countries")
         if cur in names: self.country.setCurrentText(cur)
         self.country.blockSignals(False); self.fill()
+
+    def _asl_links_show(self):
+        """The stations connected to the selected AllStar node (from the AllStarLink stats server), as every AllStar program shows them."""
+        if self.net != "AllStar": return
+        t = self.ctx.selected; node = t.id if (t is not None and t.net == "AllStar") else ""
+        res = self.ctx.asl_links.get(node) if node else None
+        self.asl_list.clear()
+        if not node or node not in self.ctx._asl_nodes_in_use():
+            self.asl_head.setText(tr("Connect to a node to see who is connected to it.")); return
+        if res is None: self.asl_head.setText(tr("Reading the connections of node {} …").format(node)); return
+        if res.get("error"): self.asl_head.setText(tr(res["error"])); return
+        head = tr("Node {} · {} connected").format(node, len(res["rows"])) + ((" · " + res["title"]) if res.get("title") else "")
+        if res.get("keyed"): head += " · " + tr("● transmitting now")
+        self.asl_head.setText(head)
+        for r in res["rows"]:
+            mode = {"T": tr("transceive"), "R": tr("receive only"), "C": tr("connecting")}.get(r["mode"], "")
+            line1 = f"{r['callsign'] or '—'}  ·  {r['node']}" + (f"  ·  {mode}" if mode else "")
+            line2 = "   " + "  ·  ".join(x for x in (r["site"], r["location"]) if x)
+            self.asl_list.addItem(line1 + ("\n" + line2 if line2.strip() else ""))
 
     def _choose_master(self):
         masters = self.ctx.hosts.dmr_masters()

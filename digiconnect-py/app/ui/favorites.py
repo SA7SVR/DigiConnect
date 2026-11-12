@@ -97,8 +97,7 @@ class Favorites(W.QWidget):
 
     def _click(self, fav):
         t = Target(fav["net"], fav["id"], fav["name"]); self.ctx.select(t)
-        if not self.ctx.rules.is_listening(t): self.ctx.toggle_listen()   # one click starts listening
-        else: self.ctx.rules.listen(t); self.ctx.changed.emit()          # already listened: focus, no duplicate
+        self.ctx.toggle_listen()                                          # first click starts listening, second click on the same card stops it
 
     def rebuild(self):
         while self.grid.count():
