@@ -150,7 +150,8 @@ footer{border-top:1px solid var(--line);color:var(--muted);padding:26px 0;text-a
 
   <?php if (is_file(__DIR__.'/assets/shot-main.jpg')): ?>
   <section id="shots"><h2><?= T('Εικόνες','Screenshots','Bilder','Immagini') ?></h2><p class="sub"><?= T('Σκούρο και φωτεινό θέμα.','Dark and light theme.','Mörkt och ljust.','Tema scuro e chiaro.') ?></p>
-    <div class="shots"><a href="assets/shot-main.jpg" target="_blank" rel="noopener"><img src="assets/shot-main.jpg" alt="DigiConnect" loading="lazy"></a><a href="assets/shot-light.jpg" target="_blank" rel="noopener"><img src="assets/shot-light.jpg" alt="DigiConnect light" loading="lazy"></a></div>
+    <?php $sv1 = "?v=" . (int)@filemtime(__DIR__."/assets/shot-main.jpg"); $sv2 = "?v=" . (int)@filemtime(__DIR__."/assets/shot-light.jpg"); ?>
+    <div class="shots"><a href="assets/shot-main.jpg<?= $sv1 ?>" target="_blank" rel="noopener"><img src="assets/shot-main.jpg<?= $sv1 ?>" alt="DigiConnect" loading="lazy"></a><a href="assets/shot-light.jpg<?= $sv2 ?>" target="_blank" rel="noopener"><img src="assets/shot-light.jpg<?= $sv2 ?>" alt="DigiConnect light" loading="lazy"></a></div>
     <p class="note" style="text-align:center"><?= T('Πάτησε μια εικόνα για να τη δεις μεγάλη.','Click a picture to see it full size.','Klicka på en bild för att se den i full storlek.','Clicca su un’immagine per vederla a grandezza intera.') ?></p>
   </section>
   <?php endif; ?>
