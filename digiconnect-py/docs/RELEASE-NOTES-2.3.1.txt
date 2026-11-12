@@ -8,6 +8,10 @@ DigiConnect 2.3.1 — Release notes / Σημειώσεις έκδοσης / Vers
 • «Μόνο ακρόαση» (χωρίς εκπομπή), γενικά ή ανά εγκατάσταση. «Ελάχιστη έκδοση»: οι παλιότερες εκδόσεις κλείνουν τα modes και ζητούν ενημέρωση. Δικά σου μηνύματα (EL/EN) για κλειστό mode, για μόνο ακρόαση και για παλιά έκδοση.
 • Στο πρόγραμμα το κλειστό mode γίνεται γκρι («κλειστό»), η σελίδα του δείχνει το μήνυμά σου και τα Listen / Connect / PTT δεν ξεκινούν· ό,τι έτρεχε σταματά αμέσως. Η πολιτική είναι υπογεγραμμένη μαζί με την άδεια και μένει και χωρίς σύνδεση.
 • Κάθε αλλαγή καταγράφεται στη Δραστηριότητα.
+• Οι αλλαγές από το panel φτάνουν στο πρόγραμμα μέσα σε περίπου 30 δευτερόλεπτα, χωρίς επανεκκίνηση (το πρόγραμμα ρωτά τον server κάθε 30″ και ξαναελέγχει αμέσως όταν κάτι άλλαξε). Ισχύει όσο είναι τσεκαρισμένο το «Εμφάνιση του σταθμού μου ως online στον server του HELLAS Zone» στις Ρυθμίσεις.
+• Το EchoLink όταν το κλείνεις γίνεται γκρι «EchoLink · closed» με το μήνυμά σου.
+• Panel Εγκαταστάσεις: ξεχωριστές στήλες για Σύνδεση και Άδεια, με διαχωριστικές γραμμές· στα Modes η σελίδα μένει στο σημείο που έκανες την αλλαγή.
+• Παράθυρο «Άδεια και μηνύματα»: λογότυπο, όνομα, έκδοση και στοιχεία του προγράμματος.
 • Άδεια › «Αποστολή διαγνωστικών στον ιδιοκτήτη»: στέλνει (με τη θέλησή σου) την έκδοση, το σύστημα και το τέλος του log για να βρεθεί γρήγορα η αιτία προβλήματος.
 • Ρυθμίσεις: κάτω από τον κωδικό DMR φαίνεται ξεκάθαρα αν ο κωδικός είναι αποθηκευμένος· μήνυμα «αποθηκεύτηκε» μετά το Save.
 
@@ -37,6 +41,10 @@ NEW IN 2.3.1 — MODE CONTROL FROM THE SERVER
 • "Listen only" (no transmit), general or per installation. "Minimum version": older versions close the modes and ask for an update. Your own messages (EL/EN) for a closed mode, for listen-only and for an old version.
 • In the program a closed mode turns grey ("closed"), its page shows your message and Listen / Connect / PTT do not start; whatever was running stops at once. The policy is signed with the licence and is kept without a connection.
 • Every change is written to the Activity log.
+• Changes made in the panel reach the program within about 30 seconds, without a restart (the program asks the server every 30 s and re-checks at once when something changed). Works while "Show my station as online on the HELLAS Zone server" is ticked in Settings.
+• A closed EchoLink turns grey ("EchoLink · closed") with your message.
+• Panel Installations: separate Connection and Licence columns with divider lines; on Modes the page stays where you made the change.
+• "Licence and messages" window: logo, name, version and details of the program.
 • Licence › "Send diagnostics to the owner": sends (only when you press it) the version, system and the end of the log so the cause of a problem can be found quickly.
 • Settings: under the DMR password field it now says clearly whether the password is saved; a "saved" message appears after Save.
 
@@ -64,6 +72,10 @@ NYTT I 2.3.1 — LÄGESKONTROLL FRÅN SERVERN
 • «Endast lyssna» (ingen sändning), generellt eller per installation. «Lägsta version»: äldre versioner stänger lägena och ber om uppdatering. Egna meddelanden (EL/EN) för stängt läge, endast lyssna och gammal version.
 • I programmet blir ett stängt läge grått («stängt»), dess sida visar ditt meddelande och Lyssna / Anslut / PTT startar inte; det som pågick stoppas direkt. Reglerna är signerade tillsammans med licensen och finns kvar utan uppkoppling.
 • Varje ändring skrivs i Aktivitet.
+• Ändringar i panelen når programmet inom cirka 30 sekunder, utan omstart (programmet frågar servern var 30:e sekund och kontrollerar direkt när något ändrats). Gäller så länge rutan «Visa min station som online på HELLAS Zone-servern» är ikryssad i Inställningar.
+• Ett stängt EchoLink blir grått («EchoLink · stängt») med ditt meddelande.
+• Panelen Installationer: separata kolumner för Anslutning och Licens med skiljelinjer; på Lägen stannar sidan där du gjorde ändringen.
+• Fönstret «Licens och meddelanden»: logotyp, namn, version och uppgifter om programmet.
 • Licens › «Skicka diagnostik till ägaren»: skickar (bara när du trycker) version, system och slutet av loggen så att orsaken till ett problem hittas snabbt.
 • Inställningar: under DMR-lösenordet visas tydligt om lösenordet är sparat; ett «sparat»-meddelande efter Spara.
 

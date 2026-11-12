@@ -120,3 +120,39 @@ def test_message_language_pick():
     from app.policy import pick as pk
     i18n.set_language("English"); assert pk("Κλειστό\nClosed") == "Closed"
     i18n.set_language("Ελληνικά"); assert pk("Κλειστό\nClosed") == "Κλειστό"; i18n.set_language("English")
+
+
+def ping(srv, iid="inst-1", v="2.3.1"):
+    q = urllib.parse.urlencode(dict(id=iid, v=v, os="linux", arch="x64"))
+    return json.loads(urllib.request.urlopen(srv.base + "ping.php?" + q).read())
+
+
+def test_ping_carries_a_change_stamp_that_moves_only_when_something_changes(srv):
+    lic(srv).register(PERSON); a = Admin(srv.base)
+    r0 = ping(srv)["rev"]; assert r0 and ping(srv)["rev"] == r0                                              # same state: same stamp
+    a.post("modes", "mode_set", mode="NXDN", state="off"); r1 = ping(srv)["rev"]; assert r1 != r0            # a mode closed: new stamp
+    a.post("modes", "mode_set", mode="NXDN", state="on"); assert ping(srv)["rev"] == r0                      # back to the same state: the old stamp
+    a.post("modes", "modes_note", tx_all="0", min_version="", modes_note_el="Κείμενο", modes_note_en="Text"); assert ping(srv)["rev"] != r0
+
+
+def test_presence_asks_for_the_full_answer_as_soon_as_the_stamp_changes(srv, tmp_path):
+    from app.presence import Presence
+    from app.store import Store
+    from app.context import Ctx
+    lic(srv).register(PERSON); (tmp_path / "d").mkdir(); ctx = Ctx(Store(tmp_path / "d"))
+    class U:
+        def params(self): return dict(id="inst-1", v="2.3.1", os="linux", arch="x64", shell="2.2.0")
+    p = Presence(ctx, U(), srv.base + "ping.php"); hit = []; p.rev_changed.connect(lambda: hit.append(1))
+    p._send(p.query()); assert p.rev and not hit                                                              # the first answer is only the baseline
+    p._send(p.query()); assert not hit
+    Admin(srv.base).post("modes", "mode_set", mode="P25", state="off")
+    p._send(p.query()); assert hit == [1]                                                                       # change seen -> the program re-checks at once
+
+
+def test_echolink_closed_by_the_owner_looks_closed(srv, win):
+    w, ctx, app = win
+    ctx.apply_policy(dict(off=["EchoLink"], note="Κλειστό\nClosed"))
+    assert w.tabs["EchoLink"].text() == "EchoLink · " + __import__("app.i18n", fromlist=["tr"]).tr("closed") and w.tabs["EchoLink"].property("closed") is True
+    assert w.ws["EchoLink"].closed_note.isVisibleTo(w.ws["EchoLink"])
+    ctx.apply_policy(dict(off=[]))
+    assert w.tabs["EchoLink"].text() == "EchoLink · soon" and w.tabs["EchoLink"].property("closed") is False

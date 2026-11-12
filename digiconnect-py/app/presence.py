@@ -1,16 +1,16 @@
 """'I am online' signal for the HELLAS Zone server panel (the right-hand Stations list).
 
-While the program runs it sends, about once a minute, a very small message to <server>/ping.php:
+While the program runs it sends, about every 30 seconds, a very small message to <server>/ping.php:
   installation id, program version, operating system, callsign + name (as typed in Settings), and what the station is doing right now
   (which network/target it listens to, which one it transmits to, whether it is transmitting).
 No audio, no passwords, no files. Can be switched off in Settings > My station (setting share_presence)."""
 import json, platform, sys, threading
 from urllib.parse import urlencode
-from .qt import QtCore
+from .qt import QtCore, Signal
 from . import net, diag
 
 DEFAULT_URL = "https://hellaszone.com/digiconnect/ping.php"
-EVERY_S = 60
+EVERY_S = 30            # also how fast a change made in the server panel reaches the program (see 'rev')
 
 
 def activity(ctx) -> dict:
@@ -22,10 +22,11 @@ def activity(ctx) -> dict:
 
 
 class Presence(QtCore.QObject):
+    rev_changed = Signal()        # the server says: something for this installation changed (licence, modes, messages) -> ask for the full answer now
     def __init__(self, ctx, updater, url: str = DEFAULT_URL, every: int = EVERY_S):
         super().__init__(); self.ctx, self.updater, self.url = ctx, updater, url
         self.last_ok = False; self.last_error = ""; self.sent = 0
-        self._busy = False
+        self._busy = False; self.rev = None
         self._timer = QtCore.QTimer(self); self._timer.setInterval(every * 1000); self._timer.timeout.connect(self.ping)
 
     def start(self):
@@ -54,6 +55,10 @@ class Presence(QtCore.QObject):
             r = json.loads(net.get(self.url + "?" + urlencode(q), 10, 64 * 1024).decode("utf-8"))
             self.last_ok = bool(r.get("ok")); self.last_error = "" if self.last_ok else str(r.get("err", "refused"))
             self.sent += 1
+            rev = str(r.get("rev") or "")
+            if rev:
+                changed = self.rev is not None and rev != self.rev; self.rev = rev
+                if changed: self.rev_changed.emit()
         except Exception as e:
             self.last_ok = False; self.last_error = f"{type(e).__name__}: {e}"
         finally:

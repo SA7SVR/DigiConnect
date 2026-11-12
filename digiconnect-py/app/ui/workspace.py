@@ -306,7 +306,7 @@ class Workspace(W.QWidget):
         self.ctx.select(Target(self.net, text, f"{self.net} {text}")); self.fill(); self.ctx.changed.emit()
 
     def refresh(self):
-        closed = self.net != "EchoLink" and not self.ctx.policy.allows(self.net)
+        closed = not self.ctx.policy.allows(self.net)
         self.closed_note.setVisible(closed); self._sc.setEnabled(not closed)
         if closed: self.closed_txt.setText("⚠  " + tr(self.ctx.policy.reason(self.net)))
         t = self.ctx.selected; mine = t is not None and t.net == self.net

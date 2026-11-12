@@ -213,8 +213,8 @@ class MainWindow(W.QMainWindow):
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
         for t, b in self.tabs.items():
             if t != "favorites":
-                closed = t != "EchoLink" and not self.ctx.policy.allows(t)          # closed by the owner's server (EchoLink has its own 'soon')
-                b.setText("EchoLink · soon" if t == "EchoLink" else (t + " · " + tr("closed") if closed else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
+                closed = not self.ctx.policy.allows(t)          # closed by the owner's server (EchoLink too; when open it still says 'soon' until it is built)
+                b.setText(t + " · " + tr("closed") if closed else ("EchoLink · soon" if t == "EchoLink" else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
                 if bool(b.property("closed")) != closed: b.setProperty("closed", closed); repolish(b)
         self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else "Choose a station, then Listen. Connect transmission separately to participate.")
         self.h_add.setVisible(k == "favorites")

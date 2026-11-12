@@ -27,4 +27,4 @@ if (!$cur) {
     [$now, $v, $os, $arch, $call, $call, $grid, $eq, $rx, $tx, $ptt, dc_ip(), $id]);
 }
 dc_daily_mark($id, $v, $os);
-echo json_encode(['ok' => true, 't' => $now]);
+echo json_encode(['ok' => true, 't' => $now, 'rev' => dc_rev($id)]);

@@ -630,7 +630,7 @@ elseif ($p === 'installs') {
     . '<select name="st"><option value="">' . L('όλες','all') . '</option>'
     . '<option value="demo"' . ($sf==='demo'?' selected':'') . '>demo</option><option value="full"' . ($sf==='full'?' selected':'') . '>full</option><option value="free"' . ($sf==='free'?' selected':'') . '>free</option><option value="locked"' . ($sf==='locked'?' selected':'') . '>locked</option><option value="disabled"' . ($sf==='disabled'?' selected':'') . '>disabled</option></select>'
     . '<button class="btn sm">' . L('Φίλτρο','Filter') . '</button></form>'
-    . '<div class="tw"><table class="tbl"><tr><th>' . L('Διακριτικό / Αρ. εγκατάστασης','Callsign / Installation no.') . '</th><th>' . L('Έκδοση','Version') . '</th><th>OS</th><th>' . L('Κατάσταση','State') . '</th><th>' . L('Τελευταία','Last seen') . '</th><th style="width:38%">' . L('Ενέργειες','Actions') . '</th></tr>';
+    . '<div class="tw"><table class="tbl sep"><tr><th>' . L('Διακριτικό / Αρ. εγκατάστασης','Callsign / Installation no.') . '</th><th>' . L('Έκδοση','Version') . '</th><th>OS</th><th>' . L('Σύνδεση','Connection') . '</th><th>' . L('Άδεια','Licence') . '</th><th>' . L('Τελευταία','Last seen') . '</th><th style="width:34%">' . L('Ενέργειες','Actions') . '</th></tr>';
   $paid = [];                                                      // what each installation has paid, every currency on its own
   foreach (dc_q("SELECT install, currency c, SUM(amount) s FROM dc_payments WHERE status='Completed' AND install IS NOT NULL AND install<>'' GROUP BY install, currency")->fetchAll() as $x) $paid[$x['install']][] = number_format((float)$x['s'], 2) . ' ' . strtoupper($x['c']);
   foreach ($rows as $r) {
@@ -641,7 +641,8 @@ elseif ($p === 'installs') {
        . ($r['dmr_id'] ? '<br><span class="muted" style="font-size:11px">DMR ID ' . h($r['dmr_id']) . '</span>' : '')
        . (!empty($paid[$r['id']]) ? '<br><span class="pill ok" title="' . h(L('Πληρωμές αυτής της εγκατάστασης','Payments of this installation')) . '">♥ ' . h(implode(' · ', $paid[$r['id']])) . '</span>' : '') . '</td>'
        . '<td>' . h($r['version'] ?: '—') . '</td><td>' . h($r['os'] ?: '—') . '</td>'
-       . '<td><span class="pill onl ' . ($online?'ok':'') . '"><i></i>' . ($online ? 'online' : 'offline') . '</span><br>' . dc_lic_label($r) . '</td>'
+       . '<td><span class="pill onl ' . ($online?'ok':'') . '"><i></i>' . ($online ? 'online' : 'offline') . '</span></td>'
+       . '<td>' . dc_lic_label($r, true) . '</td>'
        . '<td class="muted">' . dc_dt(dc_last($r)) . '</td><td><div class="acts">'
        . lic_form($r, 'installs') . hw_form($r, 'installs')
        . ((int)$r['enabled'] === 1
@@ -1348,7 +1349,9 @@ elseif ($p === 'settings') {
 
 echo '<footer>DigiConnect Control Panel · ' . L('Έκδοση server ','Server version ') . '<b>' . DC_SERVER_VERSION . '</b> · © 2026 <b>SA7SVR</b> · HELLAS Zone Net</footer></main>';
 echo '<div class="rail" id="rail">' . rail_html() . '</div>';
-echo '<script>(function(){var b=document.getElementById("thm");if(b){function mark(){var t="auto";try{t=localStorage.getItem("dc_theme")||"auto"}catch(e){}b.querySelectorAll("a").forEach(function(a){a.className=a.dataset.t===t?"on":""})}b.addEventListener("click",function(e){var a=e.target.closest("a");if(!a)return;e.preventDefault();var t=a.dataset.t;try{t==="auto"?localStorage.removeItem("dc_theme"):localStorage.setItem("dc_theme",t)}catch(x){}if(t==="auto")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",t);mark()});mark()}var r=document.getElementById("rail");function up(){if(document.hidden)return;fetch("?rail=1",{cache:"no-store",credentials:"same-origin"}).then(function(x){return x.ok?x.text():null}).then(function(t){if(t&&t.indexOf("rail-h")>=0)r.innerHTML=t}).catch(function(){})}setInterval(up,30000);document.addEventListener("visibilitychange",up)})();</script></body></html>';
+echo '<script>(function(){var b=document.getElementById("thm");if(b){function mark(){var t="auto";try{t=localStorage.getItem("dc_theme")||"auto"}catch(e){}b.querySelectorAll("a").forEach(function(a){a.className=a.dataset.t===t?"on":""})}b.addEventListener("click",function(e){var a=e.target.closest("a");if(!a)return;e.preventDefault();var t=a.dataset.t;try{t==="auto"?localStorage.removeItem("dc_theme"):localStorage.setItem("dc_theme",t)}catch(x){}if(t==="auto")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",t);mark()});mark()}var r=document.getElementById("rail");function up(){if(document.hidden)return;fetch("?rail=1",{cache:"no-store",credentials:"same-origin"}).then(function(x){return x.ok?x.text():null}).then(function(t){if(t&&t.indexOf("rail-h")>=0)r.innerHTML=t}).catch(function(){})}setInterval(up,30000);document.addEventListener("visibilitychange",up)})();</script>'
+ // after Apply / Save the page stays where you were (no jump to the top); the confirmation floats on screen for a few seconds
+ . '<script>(function(){var K="dc_sy";document.addEventListener("submit",function(){try{sessionStorage.setItem(K,JSON.stringify({q:location.search,y:window.pageYOffset,t:Date.now()}))}catch(e){}},true);try{var o=JSON.parse(sessionStorage.getItem(K)||"null");sessionStorage.removeItem(K);if(o&&o.q===location.search&&Date.now()-o.t<20000&&o.y>0){var f=document.querySelector(".flash");if(f){f.classList.add("toast");setTimeout(function(){f.style.opacity=0},5000);setTimeout(function(){f.style.display="none"},5600)}var go=function(){window.scrollTo(0,o.y)};go();window.addEventListener("load",go)}}catch(e){}})();</script></body></html>';
 
 /* ============================================================= helpers */
 function station_cards($rows) {
@@ -1423,11 +1426,11 @@ function rail_html() {
 }
 
 /* ---- licence helpers shared by Installations and Licences (same as HAM Digi) ---- */
-function dc_lic_label(array $r): string {
+function dc_lic_label(array $r, bool $split = false): string {
   if ((int)($r['enabled'] ?? 1) === 0 || ($r['state'] ?? '') === 'disabled') return '<span class="pill bad">' . L('Απενεργοποιημένη', 'Disabled') . '</span>';
   list($st, $exp) = dc_lic_effective($r); $x = $exp ? ' → ' . gmdate('Y-m-d H:i', $exp) . ' UTC' : '';
   $m = ['free' => ['ok', L('Δωρεάν', 'Free')], 'full' => ['ok', L('Μόνιμη άδεια', 'Licensed')], 'demo' => ['o', 'Demo'], 'locked' => ['bad', L('Κλειδωμένο', 'Locked')], 'pending' => ['o', L('Αναμονή έγκρισης', 'Waiting for approval')], 'expired' => ['bad', L('Έληξε', 'Expired')]][$st] ?? ['', $st];
-  return '<span class="pill ' . $m[0] . '">' . h($m[1]) . '</span>' . ($exp && $st !== 'free' ? ' <small class="muted">' . h($x) . '</small>' : '');
+  return '<span class="pill ' . $m[0] . '">' . h($m[1]) . '</span>' . ($exp && $st !== 'free' ? ($split ? '<br><small class="muted" style="white-space:nowrap">' . L('έως ', 'until ') . h(gmdate('Y-m-d H:i', $exp)) . ' UTC</small>' : ' <small class="muted">' . h($x) . '</small>') : '');
 }
 function hw_form(array $r, string $back): string {
   $hw = (string)($r['hw'] ?? '');
@@ -1441,7 +1444,7 @@ function hw_form(array $r, string $back): string {
 }
 function lic_form(array $r, string $back): string {
   $u = function ($sel) { return '<select name="unit"><option value="h">' . L('ώρες', 'hours') . '</option><option value="d"' . ($sel === 'd' ? ' selected' : '') . '>' . L('ημέρες', 'days') . '</option><option value="m">' . L('μήνες', 'months') . '</option><option value="y">' . L('χρόνια', 'years') . '</option></select>'; };
-  return '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="' . h($back) . '"><input type="hidden" name="a" value="lic_one"><input type="hidden" name="id" value="' . h($r['id']) . '">'
+  return '<form method="post" class="licf"><div class="fh">' . L('Αλλαγή άδειας', 'Change the licence') . '</div>' . csrf() . '<input type="hidden" name="p" value="' . h($back) . '"><input type="hidden" name="a" value="lic_one"><input type="hidden" name="id" value="' . h($r['id']) . '">'
     . '<select name="do"><option value="demo">' . L('Demo για', 'Demo for') . '</option><option value="extend">' . L('Παράταση κατά', 'Extend by') . '</option><option value="full_until">' . L('Άδεια για', 'Licence for') . '</option><option value="full">' . L('Μόνιμη άδεια', 'Permanent licence') . '</option><option value="free">' . L('Δωρεάν (χωρίς όριο)', 'Free (no limit)') . '</option><option value="lock">' . L('Κλείδωμα', 'Lock') . '</option><option value="default">' . L('Όπως η προεπιλογή', 'As the default') . '</option></select>'
     . '<input name="n" type="number" min="1" value="6" style="width:70px">' . $u('d') . '<button class="btn sm pri">' . L('Εφαρμογή', 'Apply') . '</button></form>';
 }
@@ -1553,9 +1556,9 @@ label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:13
 input,select,textarea{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;min-width:0}input[type=file]{padding:6px}input[type=checkbox]{width:17px;height:17px;accent-color:var(--acc)}input:focus,select:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:1px}
 .btn{font:inherit;font-weight:600;cursor:pointer;border-radius:9px;padding:8px 16px;border:1px solid var(--line2);background:var(--bg2);color:var(--text);align-self:flex-start}.btn:hover{border-color:var(--acc)}.btn.pri{background:linear-gradient(135deg,var(--acc),var(--acc2));border:0;color:#04140f}.btn.danger{border-color:var(--bad);color:var(--bad)}.btn.danger:hover{background:color-mix(in srgb,var(--bad) 12%,transparent)}.btn.sm{padding:5px 12px;font-size:13px}
 .help{background:color-mix(in srgb,var(--acc) 9%,transparent);border:1px solid color-mix(in srgb,var(--acc) 30%,transparent);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--text)}
-.flash{border-radius:10px;padding:11px 14px;margin-bottom:16px;border:1px solid}.flash.ok{border-color:var(--rx);color:var(--rx);background:color-mix(in srgb,var(--rx) 10%,transparent)}.flash.bad{border-color:var(--bad);color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
+.flash{border-radius:10px;padding:11px 14px;margin-bottom:16px;border:1px solid}.flash.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:60;max-width:560px;box-shadow:0 8px 28px rgba(0,0,0,.35);margin:0;transition:opacity .4s}.flash.toast.ok,.flash.toast.bad{background:var(--card)}.flash.ok{border-color:var(--rx);color:var(--rx);background:color-mix(in srgb,var(--rx) 10%,transparent)}.flash.bad{border-color:var(--bad);color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,transparent)}
 .relrow{border:1px solid var(--line2);border-radius:12px;margin-bottom:10px}.relrow summary{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;list-style:none;flex-wrap:wrap}.relrow summary::-webkit-details-marker{display:none}.relrow.active{border-color:var(--rx)}.relrow .ver{font-size:18px;font-family:var(--mono)}.relbody{padding:0 14px 14px}
-.acts{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.acts form{margin:0}.ro{display:flex;gap:6px;align-items:center}.ro input{width:70px}
+.acts{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.acts form{margin:0}.tbl.sep th,.tbl.sep td{border-left:1px solid var(--line)}.tbl.sep th:first-child,.tbl.sep td:first-child{border-left:0}.tbl.sep td.muted{white-space:nowrap}.tbl.sep .acts{display:block}.tbl.sep .acts>form+form,.tbl.sep .acts>form+form+form{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}.licf .fh{flex:0 0 100%;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}.tbl.sep .acts form.licf{margin-top:0}.ro{display:flex;gap:6px;align-items:center}.ro input{width:70px}
 .notes{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font:13px/1.5 system-ui;margin:10px 0 0}
 .tw{overflow:auto;max-height:min(640px,72vh)}.tbl{width:100%;border-collapse:collapse;font-size:13.5px}.tbl th{position:sticky;top:0;background:var(--card);text-align:left;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:7px 10px;border-bottom:1px solid var(--line2)}.tbl td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}.tbl tr:hover td{background:color-mix(in srgb,var(--acc) 5%,transparent)}
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}.filters input,.filters select{height:36px}

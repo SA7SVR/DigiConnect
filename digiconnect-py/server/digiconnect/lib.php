@@ -465,6 +465,18 @@ function dc_hw_bind(string $id, string $hw, string $os = '', string $call = ''):
   return $stored;                                       // the licence stays with the first computer
 }
 
+// A short stamp of everything an installation would be told by a full licence check (state, expiry, modes policy, messages, owner replies, computer).
+// The program sends its "I am online" ping every ~30 s and compares the stamp: when it changed, it asks for the full answer at once. No restart needed.
+function dc_rev(string $id): string {
+  $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]); if (!$in) return '';
+  $a = dc_lic_answer($id, '', []);
+  $p = json_decode((string)($a['payload'] ?? ''), true); if (!is_array($p)) $p = [];
+  unset($p['now'], $p['n']);
+  $m = []; foreach (dc_messages_for($id, (int)$in['first_seen']) as $x) $m[] = $x['id'];
+  $rep = (int)dc_scalar("SELECT COALESCE(MAX(reply_t),0) FROM dc_inbox WHERE install=?", [$id]);
+  return substr(md5(json_encode([$p, $m, $rep, (string)($in['hw'] ?? '')])), 0, 12);
+}
+
 // =============================================================================================================================
 // Modes and policies: which radio modes work in the programs, whether they may transmit, the oldest allowed version.
 // Set in the panel (page Modes), resolved here per installation, and sent inside the SIGNED answer (field "pol").
