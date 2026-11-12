@@ -132,7 +132,7 @@ EL: dict[str, str] = {
     "This licence belongs to another computer.": "Αυτή η άδεια ανήκει σε άλλον υπολογιστή.",
     "Message to the owner": "Μήνυμα προς τον ιδιοκτήτη", "Subject": "Θέμα", "Close": "Κλείσιμο", "Send": "Αποστολή", "Write your message first.": "Γράψε πρώτα το μήνυμά σου.", "Sending…": "Αποστολή…",
     "Could not send ({}). Try again later.": "Δεν στάλθηκε ({}). Δοκίμασε αργότερα.", "too many messages, try later": "πολλά μηνύματα, δοκίμασε αργότερα", "Sent. The answer will appear here.": "Στάλθηκε. Η απάντηση θα εμφανιστεί εδώ.",
-    "Licence and messages": "Άδεια και μηνύματα", "Messages": "Μηνύματα", "No messages.": "Κανένα μήνυμα.", "Reply": "Απάντηση", "Status": "Κατάσταση", "Installation": "Εγκατάσταση", "Licensed to": "Άδεια στο όνομα",
+    "Licence and messages": "Άδεια και μηνύματα", "Version": "Έκδοση", "Digital voice client: DMR, D-Star, C4FM, NXDN, P25, M17, AllStar": "Πελάτης ψηφιακής φωνής: DMR, D-Star, C4FM, NXDN, P25, M17, AllStar", "Made by Panagiotis Tsekouras (SA7SVR)": "Δημιουργός: Παναγιώτης Τσεκούρας (SA7SVR)", "Messages": "Μηνύματα", "No messages.": "Κανένα μήνυμα.", "Reply": "Απάντηση", "Status": "Κατάσταση", "Installation": "Εγκατάσταση", "Licensed to": "Άδεια στο όνομα",
     "This computer": "Αυτός ο υπολογιστής", "Licensed": "Με άδεια", "Free": "Δωρεάν",
     "The licence answer could not be trusted ({}).": "Η απάντηση της άδειας δεν είναι αξιόπιστη ({}).",
     "The licence period has ended; the server must be reached.": "Η περίοδος της άδειας έληξε· πρέπει να υπάρξει σύνδεση με τον server.",

@@ -167,6 +167,19 @@ class LicenceDialog(W.QDialog):
     def __init__(self, watcher, parent=None):
         super().__init__(parent); self.watcher = watcher; self.lic = watcher.lic; self._sent.connect(self._sent_done); self.setWindowTitle(tr("Licence and messages")); self.setMinimumSize(560, 560)
         v = vbox(self, m=(24, 20, 24, 20), s=10)
+        head = hbox(); head.setSpacing(16)                                        # the program's identity: logo, name, version, who made it, where to read more
+        logo = W.QLabel(); logo.setFixedSize(76, 76); logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        try:
+            from .main_window import LOGO
+            if LOGO.exists(): logo.setPixmap(QtGui.QPixmap(str(LOGO)).scaled(76, 76, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        except Exception: pass
+        head.addWidget(logo)
+        from ..version import APP_VERSION
+        hv = vbox(s=2); nm = label("DigiConnect", brand=True); nm.setStyleSheet("font-size:24px;font-weight:700;"); hv.addWidget(nm)
+        hv.addWidget(label(tr("Version") + " " + APP_VERSION + " · HELLAS Zone Net"))
+        hv.addWidget(label(tr("Digital voice client: DMR, D-Star, C4FM, NXDN, P25, M17, AllStar"), muted=True))
+        hv.addWidget(label(tr("Made by Panagiotis Tsekouras (SA7SVR)") + " · hellaszone.com", muted=True))
+        head.addLayout(hv, 1); v.addLayout(head)
         t = label(tr("Licence and messages")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
         self.status = label("", muted=True); self.status.setWordWrap(True); self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); v.addWidget(self.status)
         row = hbox(); self.code = button(tr("Activation code…")); self.donate = button("♥ " + tr("Donate")); self.write = button(tr("Write to the owner…"))
