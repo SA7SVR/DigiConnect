@@ -49,7 +49,18 @@ def test_listen_and_tx_through_real_engine(tmp_path, reflector):
     ctx.toggle_listen()
     assert ctx.rules.rx, "receiver should be registered"
     from app import diag
-    assert pump(app, lambda: reflector["ysfp"] > 0, 30), "engine never contacted the reflector; log:\n" + diag.tail(60)      # a loaded CI runner starts the engine slowly
+    ok = pump(app, lambda: reflector["ysfp"] > 0, 30)      # a loaded CI runner starts the engine slowly
+    if not ok:
+        extra = ""
+        import subprocess, sys
+        for ln in eng.links.values():
+            pid = int(ln.proc.processId() or 0)
+            extra += f"\nengine pid={pid} state={ln.proc.state()} stdout-so-far={bytes(ln._buf)[:300]!r}"
+            if pid and sys.platform == "darwin":       # CI diagnosis: where is the engine waiting?
+                for cmd in (["sample", str(pid), "2"], ["lsof", "-nP", "-a", "-p", str(pid), "-i"]):
+                    try: extra += "\n$ " + " ".join(cmd) + "\n" + subprocess.run(cmd, capture_output=True, text=True, timeout=30).stdout[-5000:]
+                    except Exception as ex: extra += f"\n{cmd[0]} failed: {ex}"
+        assert False, "engine never contacted the reflector; log:\n" + diag.tail(60) + extra
     assert pump(app, lambda: eng.links and next(iter(eng.links.values())).state == "connected", 20)
     # Connect (TX) on the same destination reuses the same engine process
     ctx.toggle_tx()
