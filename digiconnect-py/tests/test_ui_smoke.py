@@ -257,3 +257,13 @@ def test_registration_dialog_links_to_privacy_policy(win):
     d = RegistrationDialog(_FakeLic([]), ctx.store)
     assert d.policy.text()
     assert any("Panagiotis Tsekouras" in l.text() for l in d.findChildren(QtWidgets.QLabel))          # the standard notice names the controller
+
+
+def test_stop_all_is_always_in_reach(win):
+    w, ctx, app = win; w.show(); app.processEvents()
+    ws = pick(w, "DMR", 0); ws.list.setCurrentRow(0); ws.tx.listen.click(); assert ctx.rules.rx
+    w.nav("favorites"); app.processEvents(); assert w.stop_all_btn.isVisible() and not w.stop_top.isVisible()
+    w.nav("log"); app.processEvents(); assert w.stop_top.isVisible() and not w.head.isVisible()          # tab row hidden: the top bar has one
+    w.stop_top.click(); assert not ctx.rules.rx
+    w.nav("net:DMR"); ws.list.setCurrentRow(0); ws.tx.listen.click(); assert ctx.rules.rx
+    w.stop_all_btn.click(); assert not ctx.rules.rx

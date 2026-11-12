@@ -88,6 +88,7 @@ class MainWindow(W.QMainWindow):
         self.demo_lbl = label("", tone="amber"); self.demo_lbl.setVisible(False); th.addWidget(self.demo_lbl)
         self.donate_btn = button("♥ Donate", "", tip="Support the development of DigiConnect"); self.donate_btn.clicked.connect(lambda: self._donate()); th.addWidget(self.donate_btn)
         self.license_url = ""
+        self.stop_top = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_top.clicked.connect(lambda: self.ctx.stop_all()); self.stop_top.setVisible(False); th.addWidget(self.stop_top)
         self.theme_btn = button("", ""); th.addWidget(self.theme_btn); self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top); col.addWidget(top)
         # head (page title + tabs) – used by workspace pages
         self.head = W.QWidget(); hv = vbox(self.head, m=(24, 14, 24, 8), s=8)
@@ -97,6 +98,7 @@ class MainWindow(W.QMainWindow):
         tabs = hbox(s=10); self.tabs = {}
         for k in ("favorites", *NETS):
             b = button("My favorites" if k == "favorites" else k, "tab", checkable=True); b.clicked.connect(lambda _, k=k: self.nav("favorites" if k == "favorites" else "net:" + k)); self.tabs[k] = b; tabs.addWidget(b)
+        self.stop_all_btn = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_all_btn.clicked.connect(lambda: self.ctx.stop_all()); tabs.addWidget(self.stop_all_btn)   # always in reach, on the same line as the network tabs
         tabs.addStretch(); hv.addLayout(tabs); col.addWidget(self.head)
         # pages + right drawers
         mid = hbox(s=0); col.addLayout(mid, 1)
@@ -171,6 +173,7 @@ class MainWindow(W.QMainWindow):
     def _sync_chrome(self):
         k, ws = self.current, self.current.startswith("net:")
         self.head.setVisible(k == "favorites" or ws)
+        self.stop_top.setVisible(not (k == "favorites" or ws))          # the Stop all of the tab row is hidden with the row
         net = k[4:] if ws else None
         self.title.setText("My favorites" if k == "favorites" else (f"Radio workspace  {net}" if ws else ""))
         self.title.setTextFormat(Qt.TextFormat.RichText)

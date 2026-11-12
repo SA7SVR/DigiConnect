@@ -84,7 +84,7 @@ EL: dict[str, str] = {
     "DMR ID (also used for P25)": "DMR ID (χρησιμοποιείται και για P25)", "NXDN ID": "NXDN ID",
     "Identifier (e.g. REF001 C / 00006 / M17-DEU A)": "Αναγνωριστικό (π.χ. REF001 C / 00006 / M17-DEU A)",
     # ---- controls
-    "Listen": "Ακρόαση", "Stop listening": "Διακοπή ακρόασης", "Stop": "Διακοπή", "Connect (TX)": "Σύνδεση (TX)", "Disconnect": "Αποσύνδεση", "Stop all": "Διακοπή όλων",
+    "Listen": "Ακρόαση", "Stop listening": "Διακοπή ακρόασης", "Stop": "Διακοπή", "Connect (TX)": "Σύνδεση (TX)", "Disconnect": "Αποσύνδεση", "Stop all": "Διακοπή όλων", "Stop all listening and transmission": "Διακοπή όλων των ακροάσεων και της εκπομπής",
     "Connect to the selected server and listen (reception only)": "Σύνδεση στον επιλεγμένο διακομιστή και ακρόαση (μόνο λήψη)",
     "Connect your transmit link to the selected server so you can use PTT": "Σύνδεσε τον σύνδεσμο εκπομπής στον επιλεγμένο διακομιστή για να χρησιμοποιήσεις PTT",
     "Hold PTT": "Κράτημα PTT", "Latch PTT": "Μόνιμο PTT", "Stop TX": "Τέλος TX", "Limit": "Όριο", "Record audio": "Ηχογράφηση", "No station selected": "Δεν έχει επιλεγεί σταθμός",

@@ -1,5 +1,6 @@
 """Registration + demo/licence against the real PHP server code (php -S on localhost), and the offline rules."""
 import os, shutil, socket, sqlite3, subprocess, sys, time, pathlib
+import urllib.request
 import pytest
 from app import license as L
 
@@ -11,18 +12,29 @@ def free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 
+def _php_flags():
+    """php.exe from a CI image can come without php.ini, so sqlite is not loaded: switch it on explicitly when `php -m` does not list it."""
+    have = subprocess.run(["php", "-m"], capture_output=True, text=True).stdout.lower()
+    return [] if "pdo_sqlite" in have else ["-d", "extension=pdo_sqlite", "-d", "extension=sqlite3"]
+
+
 @pytest.fixture()
 def srv(tmp_path):
     root = tmp_path / "dc"; shutil.copytree(SERVER, root, ignore=shutil.ignore_patterns("data", "pkg", "hosts"))
     (root / "data").mkdir(); (root / "pkg").mkdir(); (root / "hosts").mkdir()
     (root / "config.php").write_text("<?php return ['admin_user'=>'a','admin_pass'=>'b','demo_days'=>14,'gate'=>true];")
-    port = free_port(); p = subprocess.Popen(["php", "-S", f"127.0.0.1:{port}", "-t", str(root)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    port = free_port(); log = (tmp_path / "php.log").open("w+")
+    p = subprocess.Popen(["php", *_php_flags(), "-S", f"127.0.0.1:{port}", "-t", str(root)], stdout=log, stderr=subprocess.STDOUT)
     for _ in range(50):
         try: socket.create_connection(("127.0.0.1", port), 0.2).close(); break
         except OSError: time.sleep(0.1)
     class S: pass
     s = S(); s.port, s.root, s.proc = port, root, p; s.base = f"http://127.0.0.1:{port}/"
     s.sql = lambda q, *a: _sql(root, q, a)
+    try: urllib.request.urlopen(s.base + "manifest.php?id=probe&v=2.1.0")
+    except Exception as ex:                                                    # say WHY the PHP server answers with an error (missing extension ...)
+        log.flush(); log.seek(0); p.kill(); pytest.fail(f"php server probe failed: {ex}\n--- php output ---\n{log.read()[-3000:]}\n--- php -m ---\n{subprocess.run(['php', '-m'], capture_output=True, text=True).stdout[-1500:]}")
+    s.sql("DELETE FROM dc_installs"); s.sql("DELETE FROM dc_events")                                   # the probe above is not part of any test
     yield s
     p.kill(); p.wait()
 
