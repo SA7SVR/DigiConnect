@@ -124,3 +124,24 @@ def test_mute_reaches_a_transmit_only_link(win):
     ctx.rules.net_muted["AllStar"] = True; ctx._sync_audio()
     assert sent[-1] == ("out_volume", {"out": 0.0})
     n = len(sent); ctx._sync_audio(); assert len(sent) == n                    # nothing is resent while unchanged
+
+
+def test_master_dialog_has_a_network_filter(win, monkeypatch):
+    """Choose DMR server: pick BrandMeister / DMR+ / FreeDMR (networks named by the host list) and see only their masters."""
+    import time
+    from app import hostlists as H
+    from app.qt import QtWidgets as W
+    w, ctx, app = win; ws = pick(w, "DMR", 4)
+    ctx.hosts._set(H.parse_dmr("BM_2022_Greece\t\t\t2022\t2022.master.brandmeister.network\t\tpassw0rd\t62031\n"
+                               "DMR+_IPSC2-ANDALUCIA\t\t124734\t141.94.206.232\t\t\t\tPASSWORD\t55555\n"
+                               "FreeDMR_Spain\t\t\t1\tfreedmr.example.org\t\tpassw0rd\t62031\n"), {"DMR": "ok 3"}, time.time())
+    seen = {}
+    def fake_exec(self):
+        box = self.findChildren(W.QComboBox)[0]; lst = self.findChildren(W.QListWidget)[0]
+        seen["networks"] = [box.itemText(i) for i in range(box.count())]
+        i = box.findData("DMR+"); box.setCurrentIndex(i); seen["dmrplus"] = [lst.item(k).text() for k in range(lst.count())]
+        return 0
+    monkeypatch.setattr(W.QDialog, "exec", fake_exec)
+    ws._choose_master()
+    assert seen["networks"][0] == "All networks" and any(n.startswith("BrandMeister") for n in seen["networks"]) and any(n.startswith("FreeDMR") for n in seen["networks"])
+    assert len(seen["dmrplus"]) == 1 and "ANDALUCIA" in seen["dmrplus"][0]

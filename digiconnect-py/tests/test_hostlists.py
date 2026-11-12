@@ -174,3 +174,13 @@ def test_fcs_rooms():
     from app.store import Store
     hl = H.HostLists(pathlib.Path(tempfile.mkdtemp())); hl._set(f, {}, 1.0)
     assert hl.find("FCS", "FCS20269") == dict(host="fcs202.xreflector.net", port=62500) and [e["id"] for e in hl.for_net("C4FM")] == ["FCS00134", "FCS20269"]
+
+
+def test_dmr_networks_come_from_the_list_names():
+    d = H.parse_dmr("BM_2402_Sweden\t\t\t2402\t2402.master.brandmeister.network\t\tpassw0rd\t62031\n"
+                    "BM_2022_Greece\t\t\t2022\t2022.master.brandmeister.network\t\tpassw0rd\t62031\n"
+                    "DMR+_IPSC2-ANDALUCIA\t\t124734\t141.94.206.232\t\t\t\tPASSWORD\t55555\n"
+                    "FreeDMR_Spain\t\t\t1\tfreedmr.example.org\t\tpassw0rd\t62031\n")
+    hl = H.HostLists.__new__(H.HostLists); hl.entries = d
+    assert [H.HostLists.dmr_network(e) for e in d] == ["BrandMeister", "BrandMeister", "DMR+", "FreeDMR"]
+    assert hl.dmr_networks()[0] == ("BrandMeister", 2) and {n for n, _ in hl.dmr_networks()} == {"BrandMeister", "DMR+", "FreeDMR"}

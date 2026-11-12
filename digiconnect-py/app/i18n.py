@@ -110,6 +110,7 @@ EL: dict[str, str] = {
     "The DMR master refused the password. On BrandMeister use your hotspot password (SelfCare › Hotspot Security), not your login password.": "Ο DMR master απέρριψε τον κωδικό. Στο BrandMeister βάλε τον κωδικό hotspot (SelfCare › Hotspot Security), όχι τον κωδικό εισόδου του λογαριασμού σου.",
     "The DMR master refused the connection settings after the password was accepted.": "Ο DMR master απέρριψε τις ρυθμίσεις σύνδεσης αφού είχε δεχτεί τον κωδικό.",
     "The DMR master's address could not be found (DNS). Check the internet connection and the master server in the DMR server card.": "Η διεύθυνση του DMR master δεν βρέθηκε (DNS). Έλεγξε τη σύνδεση στο internet και τον master server στην κάρτα DMR.",
+    "All networks": "Όλα τα δίκτυα", "DMR network (BrandMeister, DMR+, FreeDMR …)": "Δίκτυο DMR (BrandMeister, DMR+, FreeDMR …)",
     "✓ Password saved on this computer": "✓ Ο κωδικός αποθηκεύτηκε σε αυτόν τον υπολογιστή",
     "Password kept only until you close the program (\"Remember\" is off)": "Ο κωδικός θα μείνει μόνο μέχρι να κλείσεις το πρόγραμμα (το «Απομνημόνευση» είναι ανενεργό)",
     "No password entered yet": "Δεν έχει δοθεί ακόμη κωδικός",

@@ -276,6 +276,18 @@ class HostLists:
             if e["proto"] == "DMR" and e["host"].lower() == (host or "").strip().lower() and e.get("password"): return e["password"]
         return ""
 
+    @staticmethod
+    def dmr_network(e: dict) -> str:
+        """The network a DMR master belongs to, as the host list itself names it: the part of the name before the first '_' (BM_2402_Sweden -> BrandMeister, DMR+_IPSC2-X -> DMR+, FreeDMR_... -> FreeDMR)."""
+        p = (e.get("name") or "").split("_", 1)[0].strip()
+        return "BrandMeister" if p.upper() == "BM" else (p or "Other")
+
+    def dmr_networks(self) -> list[tuple[str, int]]:
+        c: dict[str, int] = {}
+        for e in self.entries:
+            if e["proto"] == "DMR": n = self.dmr_network(e); c[n] = c.get(n, 0) + 1
+        return sorted(c.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+
     def dmr_masters(self) -> list[dict]: return sorted((e for e in self.entries if e["proto"] == "DMR"), key=lambda e: e["name"].lower())
 
     def find(self, proto: str, ref: str) -> dict | None:

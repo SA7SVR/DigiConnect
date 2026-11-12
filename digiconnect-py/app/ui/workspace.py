@@ -132,15 +132,25 @@ class Workspace(W.QWidget):
         if not masters:
             self.ctx.toast.emit("The DMR master list is not downloaded yet — press Refresh (needs internet)."); self.ctx.refresh_hosts(True); return
         dlg = W.QDialog(self); dlg.setWindowTitle(tr("Choose DMR master server")); dlg.resize(560, 520); v = W.QVBoxLayout(dlg)
+        H = type(self.ctx.hosts); netbox = W.QComboBox(); netbox.addItem(tr("All networks"), "")
+        for nm, k in self.ctx.hosts.dmr_networks(): netbox.addItem(f"{nm}  ({k})", nm)
+        cur_host = str(self.ctx.store.settings.get("dmr_server") or "").lower()
+        for m in masters:                                           # open on the network of the master used now
+            if cur_host and m["host"].lower() == cur_host:
+                i = netbox.findData(H.dmr_network(m))
+                if i >= 0: netbox.setCurrentIndex(i)
+                break
+        v.addWidget(label("DMR network (BrandMeister, DMR+, FreeDMR …)", muted=True)); v.addWidget(netbox)
         q = W.QLineEdit(); q.setPlaceholderText(tr("Search master name, country or host…")); lst = W.QListWidget(); v.addWidget(q); v.addWidget(lst, 1)
         cnt = W.QLabel(); v.addWidget(cnt)
         def fillm():
-            t = q.text().strip().lower(); lst.clear(); n = 0
+            t = q.text().strip().lower(); lst.clear(); n = 0; want = netbox.currentData() or ""
             for m in masters:
+                if want and H.dmr_network(m) != want: continue
                 if t and t not in (m["name"] + " " + m["host"] + " " + m.get("country", "")).lower(): continue
                 it = W.QListWidgetItem(f"{m['name']}\n   {m['host']}:{m['port']}"); it.setData(Qt.ItemDataRole.UserRole, m); lst.addItem(it); n += 1
             cnt.setText(f"{n} of {len(masters)} masters")
-        q.textChanged.connect(fillm); fillm()
+        q.textChanged.connect(fillm); netbox.currentIndexChanged.connect(lambda *_: fillm()); fillm()
         bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Ok | W.QDialogButtonBox.StandardButton.Cancel); v.addWidget(bb)
         bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject); lst.itemDoubleClicked.connect(lambda *_: dlg.accept())
         if dlg.exec() and lst.currentItem():
