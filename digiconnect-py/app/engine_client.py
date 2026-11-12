@@ -25,6 +25,20 @@ def find_engine() -> str | None:
     return None
 
 
+def clean_engine_env():
+    """Environment for the protocol engine: it has its own Qt, so variables that point to ANOTHER Qt (the Python UI's PySide6, a CI/SDK Qt)
+    or to the PyInstaller bundle must not reach it - otherwise it can load the wrong libraries/plugins and stall (seen on macOS arm64)."""
+    import sys
+    env = QtCore.QProcessEnvironment.systemEnvironment()
+    for k in ("QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QML2_IMPORT_PATH", "QML_IMPORT_PATH", "QT_ROOT_DIR", "QT_DEBUG_PLUGINS",
+              "DYLD_FRAMEWORK_PATH", "DYLD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"):
+        env.remove(k)
+    if getattr(sys, "frozen", False) and env.contains("LD_LIBRARY_PATH"):          # PyInstaller on Linux prepends its own folder
+        orig = env.value("LD_LIBRARY_PATH_ORIG")
+        env.insert("LD_LIBRARY_PATH", orig) if orig else env.remove("LD_LIBRARY_PATH")
+    return env
+
+
 class Link(QtCore.QObject):
     event = Signal(object, dict)          # (link, event)
     finished = Signal(object)
@@ -41,6 +55,7 @@ class Link(QtCore.QObject):
         self._errn = 0
         self.proc = QtCore.QProcess(self)
         self.proc.setProgram(path)
+        self.proc.setProcessEnvironment(clean_engine_env())
         self.proc.readyReadStandardOutput.connect(self._read)
         self.proc.readyReadStandardError.connect(self._read_err)
         self.proc.started.connect(self._flush)
