@@ -158,3 +158,37 @@ jobs:
           hdiutil create -volname DigiConnect -srcfolder dist/DigiConnect.app -ov -format UDZO DigiConnect-macOS-${{ matrix.arch }}.dmg
       - uses: actions/upload-artifact@v4
         with: { name: "DigiConnect-macOS-${{ matrix.arch }}", path: "digiconnect-py/DigiConnect-macOS-${{ matrix.arch }}.dmg" }
+
+  package:
+    # ONE package for the whole release: program (all systems) + server + source, version in the name
+    name: package
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: arts }
+      - name: Assemble DigiConnect-PACKAGE
+        run: |
+          set -e
+          VER=$(python3 -c "import re;print(re.search(r'\"([0-9.]+)\"', open('app/version.py').read()).group(1))")
+          P="DigiConnect-PACKAGE-$VER"; A="$GITHUB_WORKSPACE/arts"
+          mkdir -p "$P/1-PROGRAM/Windows/portable" "$P/1-PROGRAM/macOS/Intel" "$P/1-PROGRAM/macOS/AppleSilicon" "$P/1-PROGRAM/Linux" "$P/1-PROGRAM/Αναβάθμιση" "$P/2-SERVER" "$P/3-SOURCE"
+          find "$A" -type f | sed "s|$A/||"
+          cp -r "$A/DigiConnect-Windows-Setup/." "$P/1-PROGRAM/Windows/"
+          cp -r "$A/DigiConnect-Windows-portable/." "$P/1-PROGRAM/Windows/portable/"
+          cp -r "$A/DigiConnect-macOS-Intel/." "$P/1-PROGRAM/macOS/Intel/"
+          cp -r "$A/DigiConnect-macOS-AppleSilicon/." "$P/1-PROGRAM/macOS/AppleSilicon/"
+          cp -r "$A/DigiConnect-Linux/." "$P/1-PROGRAM/Linux/"
+          cp -r "$A/DigiConnect-update-package-dcpkg/." "$P/1-PROGRAM/Αναβάθμιση/"
+          cp -r server/digiconnect "$P/2-SERVER/digiconnect"
+          git -C .. archive --format=zip --prefix="DigiConnect-source-$VER/" -o "$PWD/$P/3-SOURCE/DigiConnect-source-$VER.zip" HEAD
+          sed "s/__VER__/$VER/g" packaging/package/ΔΙΑΒΑΣΕ-ΠΡΩΤΑ.txt > "$P/ΔΙΑΒΑΣΕ-ΠΡΩΤΑ.txt"
+          # the version must be the same everywhere
+          grep -q "$VER" "$P/2-SERVER/digiconnect/lib.php" || { echo "server version differs from $VER"; exit 1; }
+          ls "$P/1-PROGRAM/Αναβάθμιση" | grep -q "$VER" || { echo "dcpkg version differs from $VER"; exit 1; }
+          zip -qr -0 "$P.zip" "$P"
+          ls -la "$P.zip"; unzip -l "$P.zip" | tail -40
+          echo "PKG=$P.zip" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with: { name: "DigiConnect-PACKAGE", path: "digiconnect-py/${{ env.PKG }}", compression-level: 0 }
