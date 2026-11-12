@@ -1456,6 +1456,7 @@ void YSF::process_rx_data()
 		m_rximbecodecq.clear();
 		//m_ambedev->clear_queue();
 		qDebug() << "YSF playback stopped: frames played" << m_rx_played << ", gaps (interruptions)" << m_rx_gaps;
+		emit update_log(QString("YSF playback stopped: frames played %1 , gaps (interruptions) %2").arg(m_rx_played).arg(m_rx_gaps));   // also as an event: same on every platform
 		m_rx_played = 0; m_rx_gaps = 0; m_rx_wasplaying = false; m_rx_primed = false;
 		m_modeinfo.stream_state = STREAM_IDLE;
 		return;

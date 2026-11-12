@@ -25,7 +25,9 @@ def reader():
     for line in p.stdout:
         line = line.strip()
         if line.startswith("{"):
-            events.put(json.loads(line))
+            e = json.loads(line)
+            if e.get("ev") == "log": errlines.append(str(e.get("text", "")))      # the engine reports the statistics as an event too
+            events.put(e)
 def err_reader():
     for line in p.stderr:
         errlines.append(line.strip())
@@ -81,6 +83,7 @@ time.sleep(2.5)
 
 stat = [l for l in errlines if "YSF playback stopped" in l]
 print("   engine:", stat[-1] if stat else "(no statistics line)")
+if not stat: print("   engine output seen:", errlines[-15:])
 m = re.search(r"frames played (\d+) , gaps \(interruptions\) (\d+)", stat[-1]) if stat else None
 played, gaps = (int(m.group(1)), int(m.group(2))) if m else (0, -1)
 check("stream was played", played >= 5 * (len(frames) - 3), f"played={played} of ~{5 * (len(frames) - 2)}")
