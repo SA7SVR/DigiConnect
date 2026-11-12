@@ -35,7 +35,7 @@ def scenario(port, dmrid, essid, password, master_id, master_password):
                 sock.sendto(b"RPTACK" + data[4:8], addr)
             elif tag == b"RPTP":
                 sock.sendto(b"MSTPONG" + data[7:11], addr)
-    threading.Thread(target=master, daemon=True).start()
+    mt = threading.Thread(target=master, daemon=True); mt.start()
     events = queue.Queue()
     p = subprocess.Popen([engine_bin], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                          env=dict(os.environ, QT_QPA_PLATFORM="offscreen"), text=True, bufsize=1)
@@ -58,7 +58,7 @@ def scenario(port, dmrid, essid, password, master_id, master_password):
     send("quit"); time.sleep(0.4); stop.set()
     try: p.wait(timeout=4)
     except subprocess.TimeoutExpired: p.kill()
-    sock.close()
+    mt.join(2); sock.close()
     return final, seen
 
 # 1. right ID, right password, no ESSID: hotspot id = DMR ID

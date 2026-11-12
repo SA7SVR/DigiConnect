@@ -109,6 +109,7 @@ EL: dict[str, str] = {
     "The DMR master did not accept your DMR ID. Check the DMR ID in Settings › Radio networks (your own ID from RadioID.net, digits only) and the ESSID (leave it empty if unsure).": "Ο DMR master δεν δέχτηκε το DMR ID σου. Έλεγξε το DMR ID στις Ρυθμίσεις › Ραδιοδίκτυα (το δικό σου ID από το RadioID.net, μόνο ψηφία) και το ESSID (άφησέ το κενό αν δεν είσαι σίγουρος).",
     "The DMR master refused the password. On BrandMeister use your hotspot password (SelfCare › Hotspot Security), not your login password.": "Ο DMR master απέρριψε τον κωδικό. Στο BrandMeister βάλε τον κωδικό hotspot (SelfCare › Hotspot Security), όχι τον κωδικό εισόδου του λογαριασμού σου.",
     "The DMR master refused the connection settings after the password was accepted.": "Ο DMR master απέρριψε τις ρυθμίσεις σύνδεσης αφού είχε δεχτεί τον κωδικό.",
+    "The DMR master's address could not be found (DNS). Check the internet connection and the master server in the DMR server card.": "Η διεύθυνση του DMR master δεν βρέθηκε (DNS). Έλεγξε τη σύνδεση στο internet και τον master server στην κάρτα DMR.",
     "✓ Password saved on this computer": "✓ Ο κωδικός αποθηκεύτηκε σε αυτόν τον υπολογιστή",
     "Password kept only until you close the program (\"Remember\" is off)": "Ο κωδικός θα μείνει μόνο μέχρι να κλείσεις το πρόγραμμα (το «Απομνημόνευση» είναι ανενεργό)",
     "No password entered yet": "Δεν έχει δοθεί ακόμη κωδικός",

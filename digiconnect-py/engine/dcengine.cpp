@@ -203,7 +203,7 @@ void Engine::teardown(const QString &state, const QString &msg) {
 void Engine::on_update(Mode::MODEINFO i) {
     if (!m_mode) return;
     if (m_status == Mode::CONNECTING && i.status == Mode::DISCONNECTED) {
-        teardown("error", i.netmsg.startsWith("DMR_NAK_") ? i.netmsg : QString("Connection refused or no answer from the server"));       // DMR_NAK_*: the master answered and refused (see DMR::process_udp)
+        teardown("error", i.netmsg.startsWith("DMR_") ? i.netmsg : QString("Connection refused or no answer from the server"));       // DMR_NAK_*: the master answered and refused (see DMR::process_udp)
         return;
     }
     if (m_status == Mode::CONNECTING && (i.status == Mode::CONNECTED_RW || i.status == Mode::CONNECTED_RO)) {

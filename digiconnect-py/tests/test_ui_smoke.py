@@ -107,3 +107,20 @@ def test_dmr_password_shows_where_it_is_kept(win):
     assert "saved on this computer" in ws.dm_state.text() and ctx.store.settings["dmr_pw"] == "abc123"
     ws.dm_rem.setChecked(False)
     assert "only until you close" in ws.dm_state.text() and ctx.store.settings["dmr_pw"] == "" and ctx.dmr_password == "abc123"
+
+
+def test_mute_reaches_a_transmit_only_link(win):
+    """Connect (TX) without Listen: the server's audio still plays, so the network's mute / volume must be sent to that link too."""
+    w, ctx, app = win
+    sent = []
+    class L:
+        key = "AllStar:1234"; target = Target("AllStar", "1234"); rx = set(); tx = True; state = "connected"
+        def send(self, cmd, **kw): sent.append((cmd, kw))
+    class E:
+        name = "fake"; preview = False
+        def tx_only_links(self): return [L()]
+    ctx.engine = E(); ctx.engine.set_rx_volume = lambda *a: None
+    ctx.rules.net_muted["AllStar"] = False; ctx._sync_audio(); assert sent[-1] == ("out_volume", {"out": 1.0}) or sent[-1][1]["out"] > 0
+    ctx.rules.net_muted["AllStar"] = True; ctx._sync_audio()
+    assert sent[-1] == ("out_volume", {"out": 0.0})
+    n = len(sent); ctx._sync_audio(); assert len(sent) == n                    # nothing is resent while unchanged

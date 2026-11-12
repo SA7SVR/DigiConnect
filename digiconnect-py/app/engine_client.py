@@ -263,6 +263,10 @@ class EngineClient(QtCore.QObject, Engine):
 
     def mic_level(self): return min(1.0, self._level / 20000.0)
 
+    def tx_only_links(self):
+        """Connected links that only transmit (Connect TX, no Listen): they still receive audio from the server, so they need the volume/mute too."""
+        return [ln for ln in self.links.values() if ln.tx and not ln.rx and ln.state == "connected"]
+
     def set_rx_volume(self, handle, vol: float):
         for ln in self.links.values():
             if handle in ln.rx: ln.send("out_volume", out=max(0.0, min(1.0, vol)))
@@ -276,6 +280,8 @@ class EngineClient(QtCore.QObject, Engine):
         ev = e.get("ev")
         if ev == "warn":
             self.notice.emit(e.get("msg", "")); return
+        if ev == "log":
+            from . import diag; diag.log(f"engine {ln.key}: {e.get('text', '')}"); return          # e.g. the steps of a DMR login (never the password)
         if ev in ("status", "error"):
             from . import diag; diag.log(f"engine {ln.key}: {ev} {e.get('state', '')} {e.get('msg', '')}")
         if ev == "status":

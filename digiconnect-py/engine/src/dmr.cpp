@@ -105,6 +105,7 @@ void DMR::process_udp()
 		qDebug() << "Received MSTNAK from master - reconnecting...";
 		// Remember at which step of the login the master refused us (the app tells the user what to check)
 		m_modeinfo.netmsg = (m_modeinfo.status == CONNECTING) ? "DMR_NAK_ID" : (m_modeinfo.status == DMR_AUTH) ? "DMR_NAK_PASSWORD" : "DMR_NAK_CONFIG";
+		emit update_log("DMR login: the master refused (MSTNAK) after our " + QString(m_modeinfo.status == CONNECTING ? "login with hotspot id" : m_modeinfo.status == DMR_AUTH ? "password hash" : "configuration") + " " + (m_modeinfo.status == CONNECTING ? QString::number(m_essid) : QString()));
 		// Mark disconnected, stop timers and clean up socket
 		m_modeinfo.status = DISCONNECTED;
 		if(m_ping_timer && m_ping_timer->isActive()){
@@ -145,6 +146,7 @@ void DMR::process_udp()
 	if((m_modeinfo.status != CONNECTED_RW) && (::memcmp(buf.data(), "RPTACK", 6U) == 0)){
 		switch(m_modeinfo.status){
 		case CONNECTING:
+			emit update_log("DMR login: master accepted hotspot id " + QString::number(m_essid) + ", sending the password hash");
 			m_modeinfo.status = DMR_AUTH;
 			in.append(buf[6]);
 			in.append(buf[7]);
@@ -165,6 +167,7 @@ void DMR::process_udp()
 			sha256.buffer((uint8_t *)in.data(), (uint32_t)(m_password.size() + sizeof(uint32_t)), (uint8_t *)out.data() + 8U);
 			break;
 		case DMR_AUTH:
+			emit update_log("DMR login: password accepted, sending the station configuration");
 			out.clear();
 			buffer[0] = 'R';
 			buffer[1] = 'P';
@@ -195,6 +198,7 @@ void DMR::process_udp()
 			out.append(buffer, 302);
 			break;
 		case DMR_CONF:
+			emit update_log("DMR login: configuration accepted - connected");
 			setup_connection();
 			if(m_options.size()){
 				out.clear();
@@ -404,6 +408,7 @@ void DMR::hostname_lookup(QHostInfo i)
 		m_udp = new QUdpSocket(this);
 		connect(m_udp, SIGNAL(readyRead()), this, SLOT(process_udp()));
 		m_udp->writeDatagram(out, m_address, m_modeinfo.port);
+		emit update_log("DMR login: sent hotspot id " + QString::number(m_essid) + " to " + m_address.toString() + ":" + QString::number(m_modeinfo.port));
 
         if(m_debug){
             QDebug debug = qDebug();
@@ -414,6 +419,13 @@ void DMR::hostname_lookup(QHostInfo i)
             }
             debug << s;
         }
+	}
+	else{
+		// the master's name could not be resolved: say so instead of waiting for ever
+		emit update_log("DMR login: the master's address " + m_modeinfo.host + " could not be resolved (DNS)");
+		m_modeinfo.netmsg = "DMR_NO_HOST";
+		m_modeinfo.status = DISCONNECTED;
+		emit update(m_modeinfo);
 	}
 }
 

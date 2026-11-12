@@ -11,6 +11,7 @@ import threading
 DMR_REFUSALS = {
     "DMR_NAK_ID": "The DMR master did not accept your DMR ID. Check the DMR ID in Settings › Radio networks (your own ID from RadioID.net, digits only) and the ESSID (leave it empty if unsure).",
     "DMR_NAK_PASSWORD": "The DMR master refused the password. On BrandMeister use your hotspot password (SelfCare › Hotspot Security), not your login password.",
+    "DMR_NO_HOST": "The DMR master's address could not be found (DNS). Check the internet connection and the master server in the DMR server card.",
     "DMR_NAK_CONFIG": "The DMR master refused the connection settings after the password was accepted.",
 }
 
@@ -115,6 +116,15 @@ class Ctx(QtCore.QObject):
             live.add(r.handle); v = round(self.rules.effective_volume(r), 3)
             if cache.get(r.handle) != v:
                 cache[r.handle] = v; self.engine.set_rx_volume(r.handle, v)
+        r = self.rules
+        for ln in (self.engine.tx_only_links() if hasattr(self.engine, "tx_only_links") else []):
+            # a link that was only connected for transmitting also plays what the server sends: mute / volume of its network must reach it too
+            net = ln.target.net; key = ("tx", ln.key); live.add(key)
+            v = 0.0 if r.net_muted[net] else r.net_volume[net]
+            if r.ptt and r.tx_target == ln.target: v = 0.0               # no self-monitoring
+            elif r.ptt and r.ducking: v *= 0.25
+            v = round(v, 3)
+            if cache.get(key) != v: cache[key] = v; ln.send("out_volume", out=max(0.0, min(1.0, v)))
         for h in list(cache):
             if h not in live: del cache[h]
 
