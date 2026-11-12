@@ -1,4 +1,4 @@
-﻿DigiConnect 2.1.0 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.2.0 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,7 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.1.0)
+What is new in this version (2.2.0)
   • NEW: AllStarLink. Sign in with your own AllStarLink portal account (callsign +
     password), search the worldwide node list (or type a node number) and listen / talk.
     EXPERIMENTAL: it works only with nodes that accept AllStarLink app connections, and it has

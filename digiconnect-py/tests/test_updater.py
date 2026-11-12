@@ -90,19 +90,19 @@ def _wait(app, cond, t=10):
 
 def test_download_from_server_end_to_end(tmp_path, server):
     base, www, state = server; app = W.QApplication.instance() or W.QApplication([])
-    blob = pkg("2.1.7"); (www / "DigiConnect-2.1.7.dcpkg").write_bytes(blob)
-    state["manifest"] = dict(ok=True, checkEvery=3600, state="demo", update="available", version="2.1.7", min_shell="2.0.0", pkg=base + "/DigiConnect-2.1.7.dcpkg",
+    blob = pkg("2.8.7"); (www / "DigiConnect-2.8.7.dcpkg").write_bytes(blob)
+    state["manifest"] = dict(ok=True, checkEvery=3600, state="demo", update="available", version="2.8.7", min_shell="2.0.0", pkg=base + "/DigiConnect-2.8.7.dcpkg",
                              sha256=hashlib.sha256(blob).hexdigest(), size=len(blob))
     (tmp_path / "data").mkdir(); root = tmp_path / "upd"; st = Store(tmp_path / "data"); u = U.Updater(st, root, base + "/manifest.php"); states = []; u.changed.connect(lambda s, m: states.append((s, m)))
     u.check(); assert _wait(app, lambda: u.state == "ready"), states
-    assert u.pending == "2.1.7" and bootstrap.current(root)["version"] == "2.1.7" and ("downloading", "2.1.7") in states
+    assert u.pending == "2.8.7" and bootstrap.current(root)["version"] == "2.8.7" and ("downloading", "2.8.7") in states
     q = state["hits"][0]; assert "id=" in q and f"v={bootstrap.BASE_VERSION}" in q and f"shell={bootstrap.SHELL_VERSION}" in q and "os=" in q
     # next check: the same version is not downloaded again
-    n = len(state["hits"]); u.check(); assert _wait(app, lambda: u.state == "uptodate") and not any("DigiConnect-2.1.7" in h for h in state["hits"][n:])
+    n = len(state["hits"]); u.check(); assert _wait(app, lambda: u.state == "uptodate") and not any("DigiConnect-2.8.7" in h for h in state["hits"][n:])
     # a package that needs a newer shell is announced, not installed
-    state["manifest"].update(version="3.0.0", min_shell="3.0.0"); u.check(); assert _wait(app, lambda: u.state == "needs_installer") and bootstrap.current(root)["version"] == "2.1.7"
+    state["manifest"].update(version="3.0.0", min_shell="3.0.0"); u.check(); assert _wait(app, lambda: u.state == "needs_installer") and bootstrap.current(root)["version"] == "2.8.7"
     # a damaged download is rejected and the installed update stays
-    state["manifest"].update(version="2.1.8", min_shell="2.0.0", sha256="0" * 64); u.check(); assert _wait(app, lambda: u.state == "error") and bootstrap.current(root)["version"] == "2.1.7"
+    state["manifest"].update(version="2.8.8", min_shell="2.0.0", sha256="0" * 64); u.check(); assert _wait(app, lambda: u.state == "error") and bootstrap.current(root)["version"] == "2.8.7"
 
 
 def test_build_tool_makes_a_valid_package(tmp_path):
