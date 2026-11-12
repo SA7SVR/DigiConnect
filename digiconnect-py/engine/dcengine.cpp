@@ -14,9 +14,13 @@
 #include <memory>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #ifdef Q_OS_WIN
 #include <io.h>
 #include <fcntl.h>
+#include <process.h>
+#else
+#include <unistd.h>
 #endif
 
 Engine::Engine(QObject *parent) : QObject(parent) {
@@ -264,5 +268,7 @@ int main(int argc, char **argv) {
     Reader r; r.e = &eng; r.start();
     int rc = app.exec();
     r.wait(200);
-    return rc;
+    // The reader thread may still be blocked in fgets(): destroying a running QThread aborts the process (exit code 6, a "crash" on every normal quit).
+    fflush(stdout); fflush(stderr);
+    _exit(rc);
 }

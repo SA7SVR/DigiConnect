@@ -237,7 +237,19 @@ void Mode::host_lookup()
         hostname_lookup(i);
     }
     else{
-        QHostInfo::lookupHost(m_modeinfo.host, this, SLOT(hostname_lookup(QHostInfo)));
+        // An IP address needs no lookup. QHostInfo::lookupHost() on an IP literal still does a reverse lookup (getnameinfo) on a helper thread,
+        // which can hang for a long time on macOS (mDNS) and made every connection time out ("No answer within 15 seconds").
+        QHostAddress lit(m_modeinfo.host);
+        if(!lit.isNull()){
+            QList<QHostAddress> h;
+            QHostInfo i;
+            h.append(lit);
+            i.setAddresses(h);
+            hostname_lookup(i);
+        }
+        else{
+            QHostInfo::lookupHost(m_modeinfo.host, this, SLOT(hostname_lookup(QHostInfo)));
+        }
     }
 }
 

@@ -610,6 +610,15 @@ void IAX::send_connect()
 {
 	m_modeinfo.status = CONNECTING;
 	qDebug() << "lookup IP = " << m_host << ":" << m_port;
+	QHostAddress lit(m_host);      // an IP address needs no lookup (the reverse lookup behind QHostInfo can hang on macOS)
+	if(!lit.isNull()){
+		QList<QHostAddress> h;
+		QHostInfo i;
+		h.append(lit);
+		i.setAddresses(h);
+		hostname_lookup(i);
+		return;
+	}
 	QHostInfo::lookupHost(m_host, this, SLOT(hostname_lookup(QHostInfo)));
 }
 
