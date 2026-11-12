@@ -237,3 +237,14 @@ def test_run_gate_registers_then_continues_and_blocks_when_refused(win, monkeypa
     assert LD.run_gate(lic, ctx.store) is True and seq == {"reg": 1, "block": 0}
     lic2 = _FakeLic([L.Verdict("blocked", "locked", "", "x")]); assert LD.run_gate(lic2, ctx.store) is False and seq["block"] == 1       # Quit
     lic3 = _FakeLic([L.Verdict("offline", msg="no server")]); assert LD.run_gate(lic3, ctx.store) is False
+
+
+def test_microphone_meter_only_when_transmit_is_connected(win):
+    """Listening only: no microphone knob / level bar. It appears when Connect (TX) is on and goes away again."""
+    w, ctx, app = win; ws = pick(w, "DMR", 4)
+    ws.tx.listen.click(); app.processEvents()
+    assert ctx.rules.is_listening(ctx.selected) and ws.tx.knob.isHidden() and w.dock.knob.isHidden()
+    ws.tx.connect.click(); app.processEvents()
+    assert ctx.rules.tx_connected and not ws.tx.knob.isHidden() and not w.dock.knob.isHidden()
+    ws.tx.connect.click(); app.processEvents()
+    assert not ctx.rules.tx_connected and ws.tx.knob.isHidden() and w.dock.knob.isHidden()

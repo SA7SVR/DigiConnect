@@ -42,7 +42,10 @@ jobs:
         run: |
           export PATH=$(echo "$PATH" | tr ':' '\n' | grep -vi '/Qt/' | paste -sd:)   # the CI Qt must not shadow PySide6's own Qt
           pip install PySide6 sounddevice numpy certifi pyinstaller pytest
-          DC_ENGINE="$PWD/engine_dist/dcengine.exe" QT_QPA_PLATFORM=offscreen python -m pytest -q tests || { rc=$?; echo "pytest exit code: $rc"; exit $rc; }
+          rm -f pytest_status.txt
+          DC_PYTEST_STATUS="$PWD/pytest_status.txt" DC_ENGINE="$PWD/engine_dist/dcengine.exe" QT_QPA_PLATFORM=offscreen python -m pytest -q tests || echo "pytest process exit code: $? (Qt can crash on Windows while the process exits, after the tests ran; the real result is read below)"
+          # the real result of the tests is the status pytest wrote itself before exiting: a failed test fails the build, a crash of the exit does not hide one
+          test "$(cat pytest_status.txt 2>/dev/null)" = "0" || { echo "TESTS FAILED (pytest status: $(cat pytest_status.txt 2>/dev/null || echo 'not written'))"; exit 1; }
           echo "pytest finished OK"; which python || echo "python NOT on PATH"
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/

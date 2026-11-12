@@ -23,17 +23,18 @@ _STATUS = [0]
 
 
 def pytest_sessionfinish(session, exitstatus):
+    """The real result of the test run, written before anything of Qt is torn down (CI reads it: on Windows the process can still crash on exit)."""
     _STATUS[0] = int(exitstatus)
+    f = os.environ.get("DC_PYTEST_STATUS")
+    if f:
+        try: open(f, "w").write(str(int(exitstatus)))
+        except OSError: pass
 
 
 def pytest_unconfigure(config):
     """Qt/PySide objects of finished tests are destroyed in an unpredictable order when the interpreter shuts down; on CI that crashed
-    (segfault / abort, "shared QObject was deleted directly") AFTER every test had passed. Leave right after pytest has printed its result:
-    the result and the exit status are the test run's own, nothing of the program is skipped."""
+    (segfault / abort, "shared QObject was deleted directly") AFTER every test had passed. Leave right after pytest has printed its result."""
     import sys
     try: sys.stdout.flush(); sys.stderr.flush()
     except Exception: pass
-    if sys.platform == "win32":          # os._exit() still runs the DLL shutdown of Qt on Windows (access violation there): end the process directly
-        import ctypes
-        ctypes.windll.kernel32.TerminateProcess(ctypes.windll.kernel32.GetCurrentProcess(), _STATUS[0])
     os._exit(_STATUS[0])

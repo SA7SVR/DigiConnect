@@ -23,6 +23,7 @@ class _Sync:
         self.hold.setEnabled(r.ptt_available); self.latch.setEnabled(r.ptt_available)
         self.latch.setText("Stop TX" if r.ptt and r.latched else "Latch PTT")
         self.limit.setEnabled(not r.ptt)
+        self.knob.setVisible(bool(r.tx_connected or r.ptt))               # the microphone is only shown when this station can transmit; listening only = no mic meter
         if self.limit.currentText() != f"{r.limit} s" and not r.ptt: self.limit.setCurrentText(f"{r.limit} s")
         self.countdown.setText(_mmss(r.remaining if r.ptt else r.limit))
         self.countdown.setStyleSheet(f"color:{C['red'] if r.countdown_red else C['text']}; font-weight:700; font-size:16px;")
