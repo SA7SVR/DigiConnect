@@ -42,7 +42,8 @@ jobs:
         run: |
           export PATH=$(echo "$PATH" | tr ':' '\n' | grep -vi '/Qt/' | paste -sd:)   # the CI Qt must not shadow PySide6's own Qt
           pip install PySide6 sounddevice numpy certifi pyinstaller pytest
-          DC_ENGINE="$PWD/engine_dist/dcengine.exe" QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+          DC_ENGINE="$PWD/engine_dist/dcengine.exe" QT_QPA_PLATFORM=offscreen python -m pytest -q tests || { rc=$?; echo "pytest exit code: $rc"; exit $rc; }
+          echo "pytest finished OK"; which python || echo "python NOT on PATH"
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
       - name: Installer

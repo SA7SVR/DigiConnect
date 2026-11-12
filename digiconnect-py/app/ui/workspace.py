@@ -235,7 +235,7 @@ class Workspace(W.QWidget):
             if not n_tg or not n_ms:
                 why = lambda k: (self.ctx.hosts.status.get(k, "") or "not downloaded yet").replace("failed: ", "")
                 bits = ([tr("TG list: {}").format(tr(why('TG')))] if not n_tg else []) + ([tr("DMR master list: {}").format(tr(why('DMR')))] if not n_ms else [])
-                self.count.setText(tr("BrandMeister · {} entries (built-in only) — {} — press Refresh").format(total, " · ".join(bits)))
+                self.count.setText(tr("DMR · {} entries — {} — press Refresh").format(total, " · ".join(bits)))
         if self.net == "AllStar":
             self.count.setText(f"AllStarLink · {total} nodes" if self.ctx.asl_nodes.nodes else "AllStarLink · node list not downloaded yet — press Refresh (needs internet), or type a node number")
         if self.net == "EchoLink" and not total: self.count.setText("EchoLink · 0 entries — the directory appears after signing in")

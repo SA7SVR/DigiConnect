@@ -15,7 +15,9 @@ from app.ui.main_window import MainWindow
 def win():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     st = Store(pathlib.Path(tempfile.mkdtemp())); st.settings["callsign"] = "SA7SVR"
-    ctx = Ctx(st); app.setStyleSheet(qss(14)); w = MainWindow(ctx); w.show(); app.processEvents()
+    ctx = Ctx(st); app.setStyleSheet(qss(14))
+    from app import hostlists            # the DMR list comes only from a downloaded source list: use a sample of the Pi-Star TG list format
+    ctx.hosts._set(hostlists.parse_tg("1;0;LOCAL;TG1\n2;0;CLUSTER;TG2\n8;0;REGIONAL;TG8\n9;0;LOCAL;TG9\n91;0;WORLD-WIDE;TG91\n92;0;EUROPE;TG92\n202;0;;TG202\n"), {"TG": "ok 7"}, __import__("time").time()); w = MainWindow(ctx); w.show(); app.processEvents()
     yield w, ctx, app
     w.close()
 

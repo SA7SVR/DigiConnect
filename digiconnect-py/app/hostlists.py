@@ -10,9 +10,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 UPSTREAM = "http://www.dudetronics.com/ar-dns/"                          # the public host-file site the open-source DV clients use
-PISTAR = ["https://hostfiles.w0chp.net/", "https://www.pistar.uk/downloads/"]   # last resort, Pi-Star / WPSD file names (see `alt` below)
+PISTAR = ["https://hostfiles.w0chp.net/", "https://www.pistar.uk/downloads/"]   # the Pi-Star / WPSD host files: FIRST choice (same lists and descriptions the hotspot dashboards show)
 XLX_API = "https://xlxapi.rlx.lu/api.php?do=GetReflectorList"
-MAX_AGE = 24 * 3600
+MAX_AGE = 3600                 # the source lists are refreshed about hourly (Pi-Star: YSF hourly): ask again after an hour
 MAX_BYTES = 8 * 1024 * 1024
 TIMEOUT = 15
 
@@ -22,14 +22,14 @@ SOURCES = {
     "REF": ("dplus.txt", "dstar:REF", "D-Star REF (DPlus)", ["DPlus_Hosts.txt", "DStar_Hosts.json"]),
     "XRF": ("dextra.txt", "dstar:XRF", "D-Star XRF (DExtra)", ["DExtra_Hosts.txt", "DStar_Hosts.json"]),
     "DCS": ("dcs.txt", "dstar:DCS", "D-Star DCS", ["DCS_Hosts.txt", "DStar_Hosts.json"]),
-    "XLX": ("XLXHosts.txt", "dstar:XLX", "XLX reflectors", ["XLX_Hosts.txt"]),
+    "XLX": ("XLXHosts.txt", "dstar:XLX", "XLX reflectors", ["XLX_Hosts.txt", "XLXHosts.txt"]),
     "DMR": ("DMRHosts.txt", "dmr", "DMR masters", ["DMR_Hosts.txt"]),
     "NXDN": ("NXDNHosts.txt", "num:NXDN", "NXDN talkgroups", ["NXDN_Hosts.txt"]),
     "P25": ("P25Hosts.txt", "num:P25", "P25 talkgroups", ["P25_Hosts.txt"]),
     "M17": ("M17Hosts-full.csv", "m17", "M17 reflectors", ["M17_Hosts.txt"]),
     "TG": ("TalkGroups.json", "tg", "DMR talkgroups", []),          # BrandMeister talkgroup catalogue (public API, see FULL_URL)
 }
-FULL_URL = {"TG": ["https://api.brandmeister.network/v2/talkgroup", "https://www.pistar.uk/downloads/TGList_BM.txt", "https://hostfiles.w0chp.net/TGList_BM.txt"]}
+FULL_URL = {"TG": ["https://api.brandmeister.network/v2/talkgroup", "https://www.pistar.uk/downloads/TGList_BM.txt", "https://hostfiles.w0chp.net/TGList_BM.txt"]}   # the BrandMeister API is what the Pi-Star TG page itself shows (live names, e.g. TG 202)
 DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000, "TG": 0}
 DEFAULT_MODULE = {"REF": "C", "XRF": "C", "DCS": "A", "XLX": "A", "M17": "A"}
 NET_OF = {"YSF": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR", "NXDN": "NXDN", "P25": "P25", "M17": "M17", "TG": "DMR"}
@@ -73,7 +73,7 @@ def parse_ysf(text: str) -> list[dict]:
         hi = _host_index(tok)
         if hi is None: continue
         name = tok[1] or tok[0]; desc = " ".join(x for x in tok[2:hi] if x)
-        out.append(_entry("YSF", tok[0], name + (f" · {desc}" if desc and desc != name else ""), f"{tok[0]} · YSF",
+        out.append(_entry("YSF", tok[0], f"YSF{tok[0]} - {name}" + (f" - {desc}" if desc else ""), f"{tok[0]} · YSF",
                           tok[hi], _port_after(tok, hi + 1, DEFAULT_PORT["YSF"])))
     return out
 
@@ -98,11 +98,13 @@ def parse_dstar(text: str, proto: str) -> list[dict]:
         tok = _tokens(line)
         if len(tok) < 2: continue
         ref = tok[0].upper()
+        if proto == "XLX" and re.match(r"^\d{3}$", ref): ref = "XLX" + ref        # Pi-Star XLXHosts.txt: '000;ip;4004' (the port there is not the link port)
         if not re.match(r"^[A-Z0-9]{3,8}$", ref) or (proto == "XLX" and not ref.startswith("XLX")): continue
         hi = _host_index(tok)
         if hi is None: continue
         mod = DEFAULT_MODULE[proto]
-        out.append(_entry(proto, f"{ref} {mod}", ref, f"{ref} · module {mod} · {proto}", tok[hi], _port_after(tok, hi + 1, DEFAULT_PORT[proto])))
+        port = DEFAULT_PORT[proto] if proto == "XLX" else _port_after(tok, hi + 1, DEFAULT_PORT[proto])
+        out.append(_entry(proto, f"{ref} {mod}", ref, f"{ref} · module {mod} · {proto}", tok[hi], port))
     return out
 
 
@@ -139,10 +141,11 @@ def parse_dmr(text: str) -> list[dict]:
         tok = _tokens(line)
         if len(tok) < 3: continue
         hi = _host_index(tok)
-        if hi is None: continue
+        if hi is None or tok[hi].startswith("127."): continue          # DMRGateway / DMR2YSF ... are local gateway lines, not servers
         name = tok[0]; parts = name.split("_")
-        country = " ".join(parts[1:-1]) if len(parts) >= 3 and parts[-1].isdigit() else ""
-        e = _entry("DMR", name, name.replace("_", " "), f"{tok[hi]}", tok[hi], _port_after(tok, hi + 2, DEFAULT_PORT["DMR"]), country)
+        country = (" ".join(parts[2:]) if parts[0] == "BM" and len(parts) >= 3 and parts[1].isdigit()          # real file: BM_2402_Sweden
+                   else " ".join(parts[1:-1]) if len(parts) >= 3 and parts[-1].isdigit() else "")
+        e = _entry("DMR", name, name, f"{tok[hi]}", tok[hi], _port_after(tok, hi + 2, DEFAULT_PORT["DMR"]), country)
         out.append(e)
     return out
 
@@ -186,7 +189,9 @@ def parse_tg(text: str) -> list[dict]:
         return out
     for line in text.splitlines():
         tok = _tokens(line)
-        if len(tok) >= 1 and tok[0].isdigit(): add(tok[0], " ".join(x for x in tok[1:] if x))
+        if not tok or not tok[0].isdigit(): continue
+        if len(tok) >= 4 and tok[1] in ("0", "1", "2"): add(tok[0], tok[2])          # Pi-Star TGList_BM.txt:  id;option;NAME;TGid
+        else: add(tok[0], " ".join(x for x in tok[1:] if x))
     return out
 
 
@@ -274,9 +279,9 @@ class HostLists:
         fname, _, _, alt = SOURCES[key]
         if mirrors: return [m + fname for m in mirrors]            # tests / custom mirrors
         if key in FULL_URL: return list(FULL_URL[key])
-        c = [UPSTREAM + fname]
+        c = []
         for a in alt: c += [m + a for m in PISTAR]
-        return c
+        return c + [UPSTREAM + fname]
 
     def download(self, mirrors=None, xlx_api=XLX_API) -> tuple[int, list[str]]:
         """Downloads the worldwide lists: the public host-file site first, then Pi-Star mirrors.

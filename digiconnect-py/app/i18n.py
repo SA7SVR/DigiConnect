@@ -214,7 +214,7 @@ EL: dict[str, str] = {
     "No extra settings: C4FM uses your callsign. The reflector address is on the C4FM page.": "Καμία πρόσθετη ρύθμιση: το C4FM χρησιμοποιεί το διακριτικό σου. Η διεύθυνση του reflector είναι στη σελίδα C4FM.",
     "No extra settings: M17 uses your callsign. The reflector and its module are on the M17 page.": "Καμία πρόσθετη ρύθμιση: το M17 χρησιμοποιεί το διακριτικό σου. Ο reflector και το module είναι στη σελίδα M17.",
     "Sign in with your AllStarLink portal account on the AllStar page (username, password).": "Συνδέσου με τον λογαριασμό σου στην πύλη AllStarLink στη σελίδα AllStar (όνομα χρήστη, κωδικός).", "AllStarLink": "AllStarLink", "C4FM / YSF": "C4FM / YSF",
-    "BrandMeister · {} entries (built-in only) — {} — press Refresh": "BrandMeister · {} εγγραφές (μόνο οι ενσωματωμένες) — {} — πάτα Ανανέωση",
+    "DMR · {} entries — {} — press Refresh": "DMR · {} εγγραφές — {} — πάτα Ανανέωση",
     "TG list: {}": "Λίστα TG: {}", "DMR master list: {}": "Λίστα DMR master: {}",
     "not downloaded yet": "δεν έχει κατέβει ακόμη",
     "Signing in to AllStarLink…": "Σύνδεση στο AllStarLink…",

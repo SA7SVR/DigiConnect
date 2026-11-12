@@ -146,3 +146,18 @@ def test_directory_and_ui(tmp_path, web):
     dw = w.ws["DMR"]; dw.search.setText("20208"); app.processEvents(); assert dw.list.count() >= 1 and "20208" in dw.list.item(0).text()
     dw.list.setCurrentRow(0); assert ctx.selected.id == "20208" and ctx.selected.net == "DMR"
     w.close()
+
+
+def test_real_pistar_formats():
+    """Lines exactly as in the Pi-Star / WPSD host files: names and descriptions come from the list, nothing is added by us."""
+    y = H.parse_ysf("00006;GR-HELLAS Zone A;(YCS202);185.243.214.85;42000;010\n62674;----------------;EXPERIMENTS;198.251.70.144;42003;000\n")
+    assert y[0]["name"] == "YSF00006 - GR-HELLAS Zone A - (YCS202)" and y[0]["host"] == "185.243.214.85" and y[0]["port"] == 42000
+    d = H.parse_dmr("DMRGateway\t\t\t0000\t127.0.0.1\t\t\t\tnone\t\t62031\n"
+                    "BM_2402_Sweden\t\t\t2402\t2402.master.brandmeister.network\t\tpassw0rd\t62031\n"
+                    "DMR+_IPSC2-ANDALUCIA\t\t124734\t141.94.206.232\t\t\t\tPASSWORD\t55555\n"
+                    "XLX_493\t\t\t\t0000\t104.218.221.46\t\t\t\tpassw0rd\t62030\n")
+    assert [e["name"] for e in d] == ["BM_2402_Sweden", "DMR+_IPSC2-ANDALUCIA", "XLX_493"]      # local gateway lines are not servers
+    assert d[0]["country"] == "Sweden" and d[0]["port"] == 62031 and d[1]["port"] == 55555 and d[2]["port"] == 62030
+    x = H.parse_dstar("000;71.41.121.226;4004\n", "XLX"); assert x[0]["id"] == "XLX000 A" and x[0]["port"] == 30051
+    t = H.parse_tg("1;0;LOCAL;TG1\n240;0;SWEDEN;TG240\n"); assert t[1]["name"] == "TG 240 · SWEDEN"
+    assert H.HostLists.candidates("YSF")[0].startswith("https://hostfiles.w0chp.net/") and H.HostLists.candidates("TG")[0].startswith("https://api.brandmeister")
