@@ -68,18 +68,38 @@ nav a.mi:hover{color:var(--acc);border-color:var(--acc);background:var(--btnh)}
 .cta{display:flex;gap:12px;justify-content:center;margin:22px 0;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border:1px solid var(--line2);border-radius:12px;background:var(--card);color:var(--text);text-decoration:none;font-weight:800}
 .btn.pri{background:linear-gradient(135deg,var(--acc),var(--acc2));border:0;color:#04140f}
-section{padding:34px 0}
-h2{font-size:24px;margin:0 0 6px}.sub{color:var(--muted);margin:0 0 22px}
-.feats{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
-.feat{border:1px solid var(--line2);border-radius:14px;background:var(--card);padding:16px}
-.feat h3{margin:0 0 6px;font-size:16px}.feat p{margin:0;color:var(--text2);font-size:14px}
+section{padding:46px 0}section+section{border-top:1px solid var(--line)}
+section>h2{font-size:28px;line-height:1.2;margin:0 0 8px;text-align:center;letter-spacing:-.01em}
+section>h2::after{content:"";display:block;width:44px;height:3px;margin:12px auto 0;border-radius:3px;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+.sub{color:var(--muted);margin:14px auto 30px;text-align:center;max-width:620px}
+.feats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.feat{display:flex;flex-direction:column;border:1px solid var(--line2);border-radius:16px;background:var(--card);padding:20px 22px 22px;position:relative;overflow:hidden;transition:border-color .15s,transform .15s}
+.feat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--acc),var(--acc2));opacity:.85}
+.feat:hover{border-color:var(--acc);transform:translateY(-2px)}
+.feat h3{margin:0 0 8px;font-size:16px;line-height:1.3}.feat p{margin:0;color:var(--text2);font-size:14px;line-height:1.6}
+@media(max-width:980px){.feats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.feats{grid-template-columns:1fr}section{padding:34px 0}section>h2{font-size:24px}}
 .shots{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .shots img{width:100%;border:1px solid var(--line2);border-radius:14px;display:block}
 @media(max-width:760px){.shots{grid-template-columns:1fr}}
-.dl{border:1px solid var(--line2);border-radius:16px;background:var(--card);padding:22px;max-width:640px;margin:0 auto}
-.dl .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.dl label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
-.dl input,.dl select{width:100%;height:40px;border:1px solid var(--line2);border-radius:10px;background:var(--bg2);color:var(--text);padding:0 11px;font:inherit}
+.split{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:stretch}
+.info{border:1px solid var(--line2);border-radius:18px;padding:26px 26px 24px;background:linear-gradient(160deg,color-mix(in srgb,var(--acc) 14%,var(--card)),var(--card) 70%);display:flex;flex-direction:column}
+.info h3{margin:0 0 14px;font-size:18px}
+.info ul{list-style:none;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:12px}
+.info li{display:flex;gap:11px;align-items:flex-start;color:var(--text2);font-size:14.5px;line-height:1.5}
+.info li::before{content:"✓";flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;color:#04140f;background:linear-gradient(135deg,var(--acc),var(--acc2));margin-top:1px}
+.info .btn{align-self:flex-start;margin-top:auto}
+.dl,.ctf{border:1px solid var(--line2);border-radius:18px;background:var(--card);padding:26px}
+.dl .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.dl label,.ctf label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;letter-spacing:.01em}
+.dl input:not([type=checkbox]),.dl select,.ctf input,.ctf select,.ctf textarea{width:100%;min-width:0;border:1px solid var(--line2);border-radius:10px;background:var(--bg2);color:var(--text);padding:0 12px;font:inherit}
+.dl input:not([type=checkbox]),.dl select,.ctf input,.ctf select{height:42px}
+.ctf textarea{padding:10px 12px;resize:vertical;min-height:130px}
+.dl input:focus,.dl select:focus,.ctf input:focus,.ctf select:focus,.ctf textarea:focus{outline:2px solid color-mix(in srgb,var(--acc) 55%,transparent);outline-offset:1px;border-color:var(--acc)}
+.dl .btn.pri,.ctf .btn.pri{width:100%;justify-content:center;margin-top:6px}
+.ctf{display:flex;flex-direction:column;gap:14px}.ctrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.ctrow2{display:flex;align-items:center;gap:12px}.ctrow2 .btn{width:auto!important;padding:12px 28px}.ctrow2 .sub{margin:0;text-align:left;max-width:none;font-size:13.5px}
+@media(max-width:900px){.split{grid-template-columns:1fr}}
+@media(max-width:640px){.dl .row,.ctrow{grid-template-columns:1fr}}
 .msg{padding:11px 14px;border-radius:10px;margin-bottom:14px;font-weight:600}
 .msg.ok{background:var(--btnh);border:1px solid var(--acc);color:var(--acc)}
 .msg.no{background:rgba(255,90,110,.14);border:1px solid #ff5a6e;color:#ff5a6e}
@@ -146,6 +166,17 @@ footer{border-top:1px solid var(--line);color:var(--muted);padding:26px 0;text-a
   </section>
 
   <section id="download"><h2><?= T('Λήψη','Download','Hämta','Scarica') ?></h2><p class="sub"><?= T('Συμπλήρωσε τα στοιχεία σου — μία λήψη ανά διακριτικό.','Fill in your details — one download per callsign.','Fyll i dina uppgifter.','Inserisci i tuoi dati.') ?></p>
+    <div class="split">
+    <aside class="info">
+      <h3><?= T('Τι παίρνεις','What you get','Vad du får','Cosa ottieni') ?></h3>
+      <ul>
+        <li><?= T('Windows, macOS (Intel και Apple Silicon) και Linux','Windows, macOS (Intel and Apple Silicon) and Linux','Windows, macOS (Intel och Apple Silicon) och Linux','Windows, macOS (Intel e Apple Silicon) e Linux') ?></li>
+        <li><?= T('Δοκιμαστική περίοδος (demo) από την πρώτη εκκίνηση','A trial period (demo) from the first start','Demoperiod från första start','Un periodo di prova (demo) dal primo avvio') ?></li>
+        <li><?= T('Αυτόματες αναβαθμίσεις μέσα στην εφαρμογή','Automatic updates inside the app','Automatiska uppdateringar i appen','Aggiornamenti automatici nell’app') ?></li>
+        <li><?= T('Μία λήψη ανά διακριτικό / email','One download per callsign / e-mail','En nedladdning per anropssignal / e-post','Un download per nominativo / e-mail') ?></li>
+      </ul>
+      <div class="note" style="margin-top:auto"><?= T('Τα στοιχεία χρησιμοποιούνται μόνο για την άδεια — δες την πολιτική απορρήτου.','Your details are used only for the licence — see the privacy policy.','Uppgifterna används bara för licensen — se integritetspolicyn.','I dati servono solo per la licenza — vedi la privacy policy.') ?></div>
+    </aside>
     <div class="dl">
       <?php if($dlmsg) echo '<div class="msg '.($dlok?'ok':'no').'">'.h($dlmsg).'</div>'; ?>
       <?php if($dlok && $files): ?>
@@ -168,35 +199,37 @@ footer{border-top:1px solid var(--line);color:var(--muted);padding:26px 0;text-a
         </form>
       <?php endif; ?>
     </div>
-  </section>
-</div>
-
-<section id="contact"><div class="wrap" style="max-width:720px">
-  <h2><?= T('Επικοινωνία με τον διαχειριστή','Contact the administrator','Kontakta administratören','Contatta l’amministratore') ?></h2>
-  <p class="sub"><?= T('Έχασες το installer, δεν ενεργοποιείται η άδεια ή βρήκες πρόβλημα; Στείλε μήνυμα απευθείας στον SA7SVR.','Lost the installer, a licence will not activate, or found a problem? Send a message straight to SA7SVR.','Förlorat installationsfilen, licensen aktiveras inte eller hittat ett fel? Skicka ett meddelande direkt till SA7SVR.','Hai perso l’installer, la licenza non si attiva o hai trovato un problema? Scrivi direttamente a SA7SVR.') ?></p>
-  <p><a class="btn" href="talk.php?lang=<?= $LANG ?>">💬 <?= T('Ζωντανή συνομιλία — παίρνεις απάντηση εδώ, χωρίς email','Live chat — get your reply right here, no e-mail','Livechatt — få svar här, ingen e-post','Chat dal vivo — la risposta arriva qui, senza e-mail') ?></a></p>
-  <p class="sub"><?= T('Ή συμπλήρωσε τη φόρμα:','Or fill in the form:','Eller fyll i formuläret:','Oppure compila il modulo:') ?></p>
-  <form id="ctf" class="ctf" onsubmit="return false">
-    <div class="ctrow">
-      <label><?= T('Θέμα','Topic','Ämne','Argomento') ?>
-        <select name="topic"><option value=""><?= T('— Επίλεξε —','— Choose —','— Välj —','— Scegli —') ?></option>
-          <option value="reinstall"><?= T('Επανεγκατάσταση / χάθηκε το installer','Reinstall / lost installer','Ominstallation / förlorad installerare','Reinstallazione / installer perso') ?></option>
-          <option value="activation"><?= T('Ενεργοποίηση άδειας','Licence activation','Licensaktivering','Attivazione licenza') ?></option>
-          <option value="bug"><?= T('Πρόβλημα / σφάλμα','Problem / bug','Problem / fel','Problema / errore') ?></option>
-          <option value="other"><?= T('Άλλο','Other','Annat','Altro') ?></option></select></label>
-      <label><?= T('Διακριτικό','Callsign','Anropssignal','Nominativo') ?><input name="call" style="text-transform:uppercase" maxlength="16"></label>
-      <label>Email<input name="email" type="email" maxlength="120" placeholder="you@example.com"></label>
     </div>
-    <label><?= T('Μήνυμα','Message','Meddelande','Messaggio') ?><textarea name="body" rows="5" maxlength="4000" required></textarea></label>
-    <div class="ctrow2"><button class="btn pri" id="ctsend" type="submit"><?= T('Αποστολή','Send','Skicka','Invia') ?></button><span id="ctmsg" class="sub"></span></div>
-  </form>
-</div></section>
-<style>
-.ctf{display:flex;flex-direction:column;gap:12px;margin-top:14px}.ctf label{display:flex;flex-direction:column;gap:5px;font-size:13.5px;color:var(--text2)}
-.ctf input,.ctf select,.ctf textarea{min-width:0;width:100%;box-sizing:border-box;font:inherit;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;background:var(--card);color:var(--text)}
-.ctrow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.4fr);gap:12px}.ctrow2{display:flex;align-items:center;gap:12px}
-@media(max-width:640px){.ctrow{grid-template-columns:1fr}}
-</style>
+  </section>
+
+<section id="contact"><h2><?= T('Επικοινωνία με τον διαχειριστή','Contact the administrator','Kontakta administratören','Contatta l’amministratore') ?></h2>
+  <p class="sub"><?= T('Έχασες το installer, δεν ενεργοποιείται η άδεια ή βρήκες πρόβλημα; Στείλε μήνυμα απευθείας στον SA7SVR.','Lost the installer, a licence will not activate, or found a problem? Send a message straight to SA7SVR.','Förlorat installationsfilen, licensen aktiveras inte eller hittat ett fel? Skicka ett meddelande direkt till SA7SVR.','Hai perso l’installer, la licenza non si attiva o hai trovato un problema? Scrivi direttamente a SA7SVR.') ?></p>
+  <div class="split">
+    <aside class="info">
+      <h3>💬 <?= T('Ζωντανή συνομιλία','Live chat','Livechatt','Chat dal vivo') ?></h3>
+      <ul>
+        <li><?= T('Η απάντηση εμφανίζεται εδώ, στην ίδια σελίδα — χωρίς email','The reply appears right here on the page — no e-mail','Svaret visas här på sidan — ingen e-post','La risposta appare qui, nella stessa pagina — senza e-mail') ?></li>
+        <li><?= T('Ιδιωτική συνομιλία: τη βλέπεις μόνο εσύ και ο SA7SVR','Private conversation: only you and SA7SVR can see it','Privat konversation: bara du och SA7SVR ser den','Conversazione privata: solo tu e SA7SVR potete vederla') ?></li>
+        <li><?= T('Μπορείς να στείλεις και φωτογραφία (π.χ. στιγμιότυπο οθόνης)','You can send a picture too (e.g. a screenshot)','Du kan skicka en bild (t.ex. en skärmdump)','Puoi inviare anche un’immagine (es. uno screenshot)') ?></li>
+      </ul>
+      <a class="btn pri" href="talk.php?lang=<?= $LANG ?>">💬 <?= T('Άνοιγμα συνομιλίας','Open the chat','Öppna chatten','Apri la chat') ?></a>
+    </aside>
+    <form id="ctf" class="ctf" onsubmit="return false">
+      <div class="ctrow">
+        <div><label for="ct_topic"><?= T('Θέμα','Topic','Ämne','Argomento') ?></label>
+          <select id="ct_topic" name="topic"><option value=""><?= T('— Επίλεξε —','— Choose —','— Välj —','— Scegli —') ?></option>
+            <option value="reinstall"><?= T('Επανεγκατάσταση / χάθηκε το installer','Reinstall / lost installer','Ominstallation / förlorad installerare','Reinstallazione / installer perso') ?></option>
+            <option value="activation"><?= T('Ενεργοποίηση άδειας','Licence activation','Licensaktivering','Attivazione licenza') ?></option>
+            <option value="bug"><?= T('Πρόβλημα / σφάλμα','Problem / bug','Problem / fel','Problema / errore') ?></option>
+            <option value="other"><?= T('Άλλο','Other','Annat','Altro') ?></option></select></div>
+        <div><label for="ct_call"><?= T('Διακριτικό','Callsign','Anropssignal','Nominativo') ?></label><input id="ct_call" name="call" style="text-transform:uppercase" maxlength="16"></div>
+        <div><label for="ct_mail">Email</label><input id="ct_mail" name="email" type="email" maxlength="120" placeholder="you@example.com"></div>
+      </div>
+      <div><label for="ct_body"><?= T('Μήνυμα','Message','Meddelande','Messaggio') ?></label><textarea id="ct_body" name="body" rows="5" maxlength="4000" required></textarea></div>
+      <div class="ctrow2"><button class="btn pri" id="ctsend" type="submit"><?= T('Αποστολή','Send','Skicka','Invia') ?></button><span id="ctmsg" class="sub"></span></div>
+    </form>
+  </div>
+</section>
 <script>
 (function(){var f=document.getElementById('ctf');if(!f)return;var b=document.getElementById('ctsend'),m=document.getElementById('ctmsg');
 f.addEventListener('submit',function(){var body=f.body.value.trim();if(!body){m.textContent='<?= T('Γράψε μήνυμα','Write a message','Skriv ett meddelande','Scrivi un messaggio') ?>';return;}
