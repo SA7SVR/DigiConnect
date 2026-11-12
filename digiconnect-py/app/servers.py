@@ -8,7 +8,7 @@ from .hostlists import HostLists
 
 # Standard UDP ports per protocol (used when the user types just a host name).
 DEFAULT_PORT = {"YSF": 42000, "DMR": 62031, "REF": 20001, "XRF": 30001, "DCS": 30051,
-                "NXDN": 41400, "P25": 41000, "M17": 17000}
+                "NXDN": 41400, "P25": 41000, "M17": 17000, "IAX": 4569}
 
 # Entries known with certainty. Add more here as the HELLAS Zone endpoints are confirmed.
 BUILTIN: dict[str, dict] = {
@@ -18,6 +18,7 @@ BUILTIN: dict[str, dict] = {
 
 def protocol_for(t: Target) -> str | None:
     if t.net == "C4FM": return "YSF"
+    if t.net == "AllStar": return "IAX"
     if t.net in ("DMR", "NXDN", "P25", "M17"): return t.net
     if t.net == "D-Star":
         p = t.id.strip().upper()
@@ -54,6 +55,10 @@ class Servers:
             host = (self.settings.get("dmr_server") or "").strip()
             if not host: return None
             return {"host": host, "port": int(self.settings.get("dmr_port") or DEFAULT_PORT["DMR"])}
+        if t.net == "AllStar":
+            from . import allstar            # the real address comes from AllStarLink DNS just before connecting
+            if self.user.get(self.key(t)): return self.user[self.key(t)]
+            return {"host": allstar.dns_name(t.id), "port": allstar.DEFAULT_PORT} if allstar.valid_node(t.id) else None
         k = self.key(t)
         if self.user.get(k) or BUILTIN.get(k): return self.user.get(k) or BUILTIN.get(k)
         if t.net == "C4FM": return self.hosts.find("YSF", t.id)                    # worldwide list, downloaded
@@ -69,6 +74,9 @@ class Servers:
         """(endpoint, where it comes from): 'your address', 'built in', 'DMR master (Settings)', 'worldwide list' or ''."""
         if t.net == "DMR":
             ep = self.resolve(t); return ep, ("DMR master (Settings)" if ep else "")
+        if t.net == "AllStar":
+            if self.user.get(self.key(t)): return self.user[self.key(t)], "your address"
+            ep = self.resolve(t); return ep, ("AllStarLink DNS" if ep else "")
         k = self.key(t)
         if self.user.get(k): return self.user[k], "your address"
         if BUILTIN.get(k): return BUILTIN[k], "built in"

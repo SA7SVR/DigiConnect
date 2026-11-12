@@ -152,7 +152,7 @@ void Engine::connect_to(const QJsonObject &c) {
     m_mode->moveToThread(m_thread);
 
     if (m_proto == "IAX") {
-        m_mode->set_iax_params(c.value("iax_user").toString(), c.value("iax_pass").toString(), "", refname, host, port);
+        m_mode->set_iax_params(c.value("iax_user").toString(), c.value("iax_pass").toString(), c.value("iax_name").toString(), refname, host, port);
         connect(this, SIGNAL(dtmf(QByteArray)), m_mode, SLOT(send_dtmf(QByteArray)));
     }
     m_mode->init(callsign, (uint32_t)c.value("dmrid").toDouble(), (uint16_t)c.value("nxdnid").toInt(),

@@ -12,12 +12,17 @@ class Ctx(QtCore.QObject):
     toast = Signal(str)
     hosts_changed = Signal()            # the worldwide server lists were (re)loaded
     _hosts_done = Signal(int, object)
+    _asl_done = Signal(int, str)
 
     def __init__(self, store: Store | None = None, engine=None):
         super().__init__()
         self.store = store or Store()
         self.engine = engine or NullEngine()
         self.hosts = HostLists.for_root(self.store.root)
+        from .allstar import NodeDirectory
+        self.asl_nodes = NodeDirectory.for_root(self.store.root)
+        self._asl_busy = False
+        self._asl_done.connect(self._on_asl_done)
         from .servers import Servers
         self.servers = getattr(self.engine, "servers", None) or Servers(self.store)      # one address book for the pages and the engine
         self._hosts_busy = False
@@ -31,6 +36,7 @@ class Ctx(QtCore.QObject):
         self.engine_msg = ""
         self.last_heard: list[dict] = []        # newest first
         self.dmr_password = ""                   # session only, never written to disk
+        self.asl_password = ""                   # AllStarLink portal password: session only, never written to disk
         if hasattr(self.engine, "status"):
             self.engine.status.connect(self._on_status); self.engine.heard.connect(self._on_heard)
             self.engine.volume_refresh.connect(lambda: self.__dict__.pop("_vol_cache", None))
@@ -53,6 +59,27 @@ class Ctx(QtCore.QObject):
             except Exception as ex: n, problems = 0, [str(ex)]
             self._hosts_done.emit(n, problems)
         threading.Thread(target=work, daemon=True).start()
+
+    def refresh_asl(self, force=False):
+        """Downloads the AllStarLink node list in the background (when missing, older than 24 h, or forced - but never more often than every 15 minutes)."""
+        if self._asl_busy or not (force or self.asl_nodes.stale()): return
+        if not self.asl_nodes.can_refresh():
+            if force: self.toast.emit("The AllStarLink node list is up to date (it is renewed at most every 15 minutes).")
+            return
+        self._asl_busy = True
+        if force: self.toast.emit("Downloading the AllStarLink node list…")
+        def work():
+            try: n, problem = self.asl_nodes.download()
+            except Exception as ex: n, problem = 0, str(ex)
+            self._asl_done.emit(n, problem)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_asl_done(self, n, problem):
+        self._asl_busy = False
+        from . import diag; diag.log(f"AllStar nodes: {n}; problem={problem}")
+        if problem: self.toast.emit(problem + (" — using the saved copy." if self.asl_nodes.nodes else ""))
+        elif n: self.toast.emit(f"AllStarLink node list updated: {n} nodes")
+        self.hosts_changed.emit()
 
     def _on_hosts_done(self, n, problems):
         self._hosts_busy = False
@@ -155,6 +182,14 @@ class Ctx(QtCore.QObject):
     def set_mic_gain(self, pct: int):
         self.store.settings["mic_gain"] = int(pct); self.store.save_settings()
         if hasattr(self.engine, "set_mic_gain"): self.engine.set_mic_gain(pct)
+
+    def set_asl_login(self, user: str, pw: str, remember_user=True):
+        """AllStarLink portal account. The password is kept in memory for this session only, never written to disk."""
+        user = (user or "").strip()
+        if remember_user and user != self.store.settings.get("asl_user", ""):
+            self.store.settings["asl_user"] = user; self.store.save_settings()
+        self.asl_password = pw
+        if hasattr(self.engine, "asl_password"): self.engine.asl_password = pw
 
     def set_dmr_password(self, pw: str):
         self.dmr_password = pw

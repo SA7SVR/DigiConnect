@@ -12,10 +12,14 @@ from .audioblock import AudioBlock
 PAGE = 100
 
 
+def valid_node_text(t): from ..allstar import valid_node; return valid_node(t)
+def valid_user_text(t): from ..allstar import valid_user; return valid_user(t)
+
+
 class Workspace(W.QWidget):
     def __init__(self, ctx, net, on_new_qso):
         super().__init__(); self.ctx, self.net = ctx, net; self.page = 0; self.show_favs = False
-        self.entries = directory.entries(net, ctx.hosts)
+        self.entries = directory.entries(net, ctx.hosts, ctx.asl_nodes)
         root = hbox(self, s=14)
         # --- left: directory
         left = panel(); lv = vbox(left, m=(14, 14, 14, 10), s=10)
@@ -23,10 +27,11 @@ class Workspace(W.QWidget):
         self.b_cat = button("TG catalogue" if net == "DMR" else "Station directory", "seg", checkable=True); self.b_fav = button("My favorites", "seg", checkable=True)
         self.b_cat.setChecked(True); self.b_cat.clicked.connect(lambda: self._mode(False)); self.b_fav.clicked.connect(lambda: self._mode(True))
         self.refresh_btn = button("Refresh"); top.addWidget(self.b_cat); top.addWidget(self.b_fav); top.addStretch(); top.addWidget(self.refresh_btn)
-        self.search = W.QLineEdit(); self.search.setPlaceholderText("Search TG, name or callsign…" if net in ("DMR", "NXDN", "P25") else "Search name or callsign…")
+        self.search = W.QLineEdit(); self.search.setPlaceholderText("Search TG, name or callsign…" if net in ("DMR", "NXDN", "P25") else ("Search node number, callsign or description…" if net == "AllStar" else "Search name or callsign…"))
         self.country = W.QComboBox(); self.country.addItems([tr("All countries")]); i18n.combo_item(self.country, 0, "All countries")
         self.module = W.QComboBox(); self.module.addItems([tr("Default module")] + [chr(c) for c in range(65, 91)]); i18n.combo_item(self.module, 0, "Default module"); self.module.setVisible(net in ("D-Star", "M17"))
         self.module.setToolTip("Reflector module to link to (REF/XRF default C, DCS/XLX default A)")
+        self.country.setVisible(net != "AllStar")
         self.manual = button("Manual entry"); cr = hbox(s=6); cr.addWidget(self.country, 1); cr.addWidget(self.module); cr.addWidget(self.manual)
         self.count = label("", muted=True); self.count.setWordWrap(True)
         self.list = W.QListWidget(); self.list.setVerticalScrollMode(W.QAbstractItemView.ScrollMode.ScrollPerPixel)
@@ -37,6 +42,15 @@ class Workspace(W.QWidget):
         mid = panel(); _mo = vbox(mid, s=0); _sc = W.QScrollArea(); _sc.setWidgetResizable(True); _sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); _in = W.QWidget(); _in.setObjectName('scrollinner'); _in.setStyleSheet('QWidget#scrollinner{background:transparent;}'); _sc.setWidget(_in); _mo.addWidget(_sc); mv = vbox(_in, m=(16, 16, 16, 12), s=8)
         mv.addWidget(label("Selected station", eyebrow=True)); self.title = label("Select a station"); self.title.setStyleSheet("font-size:20px;font-weight:700;")
         self.sub = label("Select an entry in the list on the left.", muted=True); mv.addWidget(self.title); mv.addWidget(self.sub)
+        if net == "AllStar":
+            note = panel("note"); nv = vbox(note, m=(12, 10, 12, 10))
+            nv.addWidget(label("Sign in with your own AllStarLink portal account, then pick a node. Experimental: only nodes that accept AllStarLink app connections can be reached.")); note.findChildren(W.QLabel)[0].setWordWrap(True)
+            mv.addWidget(note)
+            g = W.QGridLayout(); self.asl_user = W.QLineEdit(ctx.store.settings.get("asl_user") or ctx.store.settings.get("callsign", ""))
+            self.asl_pw = W.QLineEdit(); self.asl_pw.setEchoMode(W.QLineEdit.EchoMode.Password); self.asl_pw.setText(ctx.asl_password)
+            g.addWidget(field("AllStarLink username (callsign)", self.asl_user), 0, 0); g.addWidget(field("AllStarLink password", self.asl_pw), 0, 1); mv.addLayout(g)
+            self.asl_note = label("The password stays in memory for this session only and is never saved on disk.", muted=True); self.asl_note.setWordWrap(True); mv.addWidget(self.asl_note)
+            self.asl_user.textChanged.connect(self._asl_login); self.asl_pw.textChanged.connect(self._asl_login)
         self.srvcard = panel("tx"); sv = vbox(self.srvcard, m=(12, 8, 12, 10), s=4)
         sv.addWidget(label("Server used for this station", muted=True))
         self.srv_host = W.QLineEdit(); self.srv_port = W.QLineEdit(); self.srv_port.setMaximumWidth(110)
@@ -63,7 +77,8 @@ class Workspace(W.QWidget):
         self.rxvol = W.QSlider(Qt.Orientation.Horizontal); self.rxvol.setRange(0, 100); self.rxvol.setValue(int(ctx.rules.net_volume[net] * 100))
         vr = hbox(); vr.addWidget(label("RX volume", muted=True)); vr.addWidget(self.rxvol, 1); mv.addLayout(vr)
         self.hint = label({"DMR": "Connects to the DMR master set in Settings › Radio networks (DMR ID required). Listen and Connect (TX) are separate.",
-                           "EchoLink": "Listening requires a validated EchoLink account. Enable TX only to participate."}.get(net, "Listen links for reception only. Connect (TX) is separate and must be enabled to transmit."), muted=True)
+                           "EchoLink": "Listening requires a validated EchoLink account. Enable TX only to participate.",
+                           "AllStar": "Connects to the chosen AllStarLink node with your portal account. Listen and Connect (TX) are separate; the node must allow app connections."}.get(net, "Listen links for reception only. Connect (TX) is separate and must be enabled to transmit."), muted=True)
         self.hint.setWordWrap(True); mv.addWidget(self.hint); mv.addStretch()
         # --- right: last heard
         right = panel(); rv = vbox(right, m=(16, 16, 16, 12), s=10)
@@ -77,14 +92,18 @@ class Workspace(W.QWidget):
         self.search.textChanged.connect(lambda: (setattr(self, "page", 0), self.fill())); self.country.currentIndexChanged.connect(lambda: self.fill())
         self.prev.clicked.connect(lambda: self._page(-1)); self.next.clicked.connect(lambda: self._page(1))
         self.list.currentRowChanged.connect(self._picked); self.addfav.clicked.connect(self._togglefav)
-        self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: (ctx.refresh_hosts(True), self.fill()))
+        self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: ((ctx.refresh_asl(True) if net == "AllStar" else ctx.refresh_hosts(True)), self.fill()))
         self.rxvol.valueChanged.connect(lambda v: ctx.rules.net_volume.__setitem__(net, v / 100))
         self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded)
         self.srv_save.clicked.connect(self._srv_save); self.srv_reset.clicked.connect(self._srv_reset); self._srv_key = None
         ctx.changed.connect(self.refresh); self._hosts_loaded()
 
+    def _asl_login(self):
+        self.ctx.set_asl_login(self.asl_user.text(), self.asl_pw.text(), remember_user=False)
+        if self.asl_user.text().strip() and valid_user_text(self.asl_user.text()): self.ctx.store.settings["asl_user"] = self.asl_user.text().strip(); self.ctx.store.save_settings()
+
     def _hosts_loaded(self):
-        self.entries = directory.entries(self.net, self.ctx.hosts)
+        self.entries = directory.entries(self.net, self.ctx.hosts, self.ctx.asl_nodes)
         cur = self.country.currentText()
         names = sorted({e.get("country", "") for e in self.entries if e.get("country")})
         self.country.blockSignals(True); self.country.clear(); self.country.addItems([tr("All countries")] + names); i18n.combo_item(self.country, 0, "All countries")
@@ -129,7 +148,8 @@ class Workspace(W.QWidget):
         self.srv_host.setText(ep["host"] if ep else ""); self.srv_port.setText(str(ep["port"]) if ep else "")
         self.srv_src.setText({"your address": "Source: your own address (used instead of the list).", "built in": "Source: built into DigiConnect.",
                               "DMR master (Settings)": "Source: the DMR master you chose. Press «Choose DMR server» to change it.",
-                              "worldwide list": "Source: the downloaded worldwide server list."}.get(src, "Not in the downloaded lists yet — press Refresh, or type the address here."))
+                              "worldwide list": "Source: the downloaded worldwide server list.",
+                              "AllStarLink DNS": "Source: AllStarLink node address (looked up when you connect)."}.get(src, "Not in the downloaded lists yet — press Refresh, or type the address here."))
         self._srv_en(True)
         self.srv_reset.setEnabled(src == "your address")
 
@@ -174,6 +194,8 @@ class Workspace(W.QWidget):
         if self.show_favs: src = src + [dict(e, sub=e["id"], activity="Activity unavailable") for e in manual]
         c = self.country.currentText()
         if c and self.country.currentIndex() > 0: src = [e for e in src if e.get("country") == c]
+        if q and not self.show_favs and self.net == "AllStar" and valid_node_text(q) and not any(e["id"] == q for e in src):
+            src = [dict(net="AllStar", id=q, name=f"AllStar node {q}", sub=f"Node {q} · typed number", activity="", proto="IAX", country="")] + src
         res = [e for e in src if q in (e["name"] + " " + e["id"] + " " + e["sub"] + " " + e.get("country", "")).lower()] if q else src
         if q and not self.show_favs and self.net in ("DMR", "NXDN", "P25") and valid_dmr_tg(q) and not any(e["id"] == q for e in res):
             # the catalogue never holds every talkgroup: a typed number can always be used
@@ -187,7 +209,7 @@ class Workspace(W.QWidget):
         self.list.blockSignals(True); self.list.clear()
         for e in chunk:
             it = W.QListWidgetItem(); it.setData(Qt.ItemDataRole.UserRole, e)
-            it.setText(f"{'★ ' if self.ctx.store.is_fav(e['net'], e['id']) else '☆ '}{tr(e['name'])}\n   {tr(e['sub'])}\n   {tr(e['activity'])}"); self.list.addItem(it)
+            it.setText(f"{'★ ' if self.ctx.store.is_fav(e['net'], e['id']) else '☆ '}{tr(e['name'])}\n   {tr(e['sub'])}" + (f"\n   {tr(e['activity'])}" if e.get("activity") else "")); self.list.addItem(it)
         self.list.blockSignals(False)
         src = "BrandMeister" if self.net == "DMR" else self.net
         self.count.setText(f"{src} · {total} entries"); a = self.page * PAGE
@@ -195,6 +217,8 @@ class Workspace(W.QWidget):
             self.count.setText(f"{self.net} · worldwide list not downloaded yet — press Refresh (needs internet)")
         self.pager.setText(f"{a + 1 if total else 0}–{min(total, a + PAGE)} / {total}")
         self.prev.setEnabled(self.page > 0); self.next.setEnabled((self.page + 1) * PAGE < total)
+        if self.net == "AllStar":
+            self.count.setText(f"AllStarLink · {total} nodes" if self.ctx.asl_nodes.nodes else "AllStarLink · node list not downloaded yet — press Refresh (needs internet), or type a node number")
         if self.net == "EchoLink" and not total: self.count.setText("EchoLink · 0 entries — the directory appears after signing in")
         self.refresh()
 
@@ -211,12 +235,14 @@ class Workspace(W.QWidget):
         if t and t.net == self.net: self.ctx.store.toggle_fav(t.net, t.id, t.name); self.fill(); self.ctx.changed.emit()
 
     def _manual(self):
-        text, ok = W.QInputDialog.getText(self, tr("Manual entry"), tr("TG number (1–16777215)" if self.net in ("DMR", "NXDN", "P25") else "Identifier (e.g. REF001 C / 00006 / M17-DEU A)"))
+        text, ok = W.QInputDialog.getText(self, tr("Manual entry"), tr("TG number (1–16777215)" if self.net in ("DMR", "NXDN", "P25") else ("AllStarLink node number (digits)" if self.net == "AllStar" else "Identifier (e.g. REF001 C / 00006 / M17-DEU A)")))
         if not ok: return
         text = text.strip()
         if self.net in ("DMR", "NXDN", "P25") and not valid_dmr_tg(text):
             self.ctx.toast.emit("A manual TG must be a positive integer no greater than 16777215."); return
         if not text: return
+        if self.net == "AllStar" and not valid_node_text(text):
+            self.ctx.toast.emit("An AllStarLink node number has 3 to 8 digits."); return
         self.ctx.store.toggle_fav(self.net, text, f"{self.net} {text}") if not self.ctx.store.is_fav(self.net, text) else None
         self.ctx.select(Target(self.net, text, f"{self.net} {text}")); self.fill(); self.ctx.changed.emit()
 

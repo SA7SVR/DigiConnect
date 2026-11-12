@@ -6,7 +6,7 @@ PALETTES = {
     "dark": dict(
         bg="#0b1220", panel="#111a2e", panel2="#152139", border="#243452", text="#e8eefb", muted="#8493b4",
         accent="#2f9bff", accent2="#1f6fd1", on_accent="#04122a", field="#0a101d",
-        dmr="#5db0ff", echo="#35d0c0", nxdn="#ff8a5c", p25="#9bd84e", m17="#8ea6ff", dstar="#f2b94b", c4fm="#f276b8", green="#47d39b", green_bd="#2b6e5b", amber="#f5c451", red="#ff5d6c", pink="#f276b8",
+        dmr="#5db0ff", echo="#35d0c0", asl="#e0a8ff", nxdn="#ff8a5c", p25="#9bd84e", m17="#8ea6ff", dstar="#f2b94b", c4fm="#f276b8", green="#47d39b", green_bd="#2b6e5b", amber="#f5c451", red="#ff5d6c", pink="#f276b8",
         rail="#0d1527", footer="#09101c", mixer="#0e172a", dock_a="#14274a", dock_b="#111a2e",
         btn="#172440", btn_hover="#1f3157", btn_dis="#111b31", btn_dis_fg="#5d6c8f",
         primary_hover="#58b0ff", primary_dis="#244067", primary_dis_fg="#7f95bb",
@@ -20,7 +20,7 @@ PALETTES = {
     "light": dict(
         bg="#eef2f8", panel="#ffffff", panel2="#f6f8fc", border="#cfd9e8", text="#13203a", muted="#5a6a88",
         accent="#1769d6", accent2="#124fa3", on_accent="#ffffff", field="#ffffff",
-        dmr="#1769d6", echo="#0b8f82", nxdn="#c4551c", p25="#5f8f12", m17="#4a63d6", dstar="#b36f00", c4fm="#c42d80", green="#1b9a68", green_bd="#8fd1b5", amber="#b07a00", red="#d03545", pink="#c42d80",
+        dmr="#1769d6", echo="#0b8f82", asl="#8a3fc2", nxdn="#c4551c", p25="#5f8f12", m17="#4a63d6", dstar="#b36f00", c4fm="#c42d80", green="#1b9a68", green_bd="#8fd1b5", amber="#b07a00", red="#d03545", pink="#c42d80",
         rail="#e3e9f3", footer="#e3e9f3", mixer="#e9eef6", dock_a="#e3edfb", dock_b="#ffffff",
         btn="#e6edf8", btn_hover="#d8e3f4", btn_dis="#eef2f8", btn_dis_fg="#9aa7c0",
         primary_hover="#2f80ea", primary_dis="#b9cdea", primary_dis_fg="#ffffff",
@@ -44,7 +44,7 @@ def set_theme(name: str) -> str:
     global current
     name = name if name in PALETTES else "dark"
     C.clear(); C.update(PALETTES[name]); current = name
-    NET_COLOR.clear(); NET_COLOR.update({"DMR": C["dmr"], "D-Star": C["dstar"], "EchoLink": C["echo"], "C4FM": C["c4fm"], "NXDN": C["nxdn"], "P25": C["p25"], "M17": C["m17"]})
+    NET_COLOR.clear(); NET_COLOR.update({"DMR": C["dmr"], "D-Star": C["dstar"], "EchoLink": C["echo"], "AllStar": C["asl"], "C4FM": C["c4fm"], "NXDN": C["nxdn"], "P25": C["p25"], "M17": C["m17"]})
     return name
 
 
@@ -71,6 +71,7 @@ QLabel[tone="echo"] {{ color:{c['echo']}; }}
 QLabel[net="DMR"] {{ color:{c['dmr']}; font-weight:700; }}
 QLabel[net="D-Star"] {{ color:{c['dstar']}; font-weight:700; }}
 QLabel[net="EchoLink"] {{ color:{c['echo']}; font-weight:700; }}
+QLabel[net="AllStar"] {{ color:{c['asl']}; font-weight:700; }}
 QLabel[net="C4FM"] {{ color:{c['c4fm']}; font-weight:700; }}
 QLabel[net="NXDN"] {{ color:{c['nxdn']}; font-weight:700; }}
 QLabel[net="P25"] {{ color:{c['p25']}; font-weight:700; }}

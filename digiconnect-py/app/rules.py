@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-NETS = ("DMR", "D-Star", "EchoLink", "C4FM", "NXDN", "P25", "M17")
+NETS = ("DMR", "D-Star", "EchoLink", "AllStar", "C4FM", "NXDN", "P25", "M17")
 MAX_DMR = 4
 WARN_SECONDS = 15
 

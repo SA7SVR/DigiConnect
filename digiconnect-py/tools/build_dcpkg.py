@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds the update package that is uploaded in the DigiConnect panel (Releases).
 
-    python3 tools/build_dcpkg.py 2.0.1 [--min-shell 2.0.0] [--out dir]
+    python3 tools/build_dcpkg.py 2.0.1 [--min-shell 2.1.0] [--out dir]
 
 It writes DigiConnect-<version>.dcpkg: the whole app/ folder + assets/ + LICENSES/ (the same file for Windows, macOS and Linux).
 The version is also written into app/version.py inside the package."""
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("version"); ap.add_argument("--min-shell", default="2.0.0"); ap.add_argument("--out", default=str(ROOT / "dist_pkg"))
+    ap = argparse.ArgumentParser(); ap.add_argument("version"); ap.add_argument("--min-shell", default="2.1.0"); ap.add_argument("--out", default=str(ROOT / "dist_pkg"))
     a = ap.parse_args()
     if not re.fullmatch(r"\d+\.\d+\.\d+", a.version): sys.exit("version must look like 2.0.1")
     files = {}

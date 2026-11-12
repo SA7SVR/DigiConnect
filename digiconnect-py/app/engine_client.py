@@ -118,6 +118,7 @@ class EngineClient(QtCore.QObject, Engine):
     heard = Signal(object, dict)          # (link, rx event)
     notice = Signal(str)                  # an engine warning for the user (e.g. the microphone delivers no sound)
     volume_refresh = Signal()             # a link just connected: re-send the receive volumes
+    _tok_done = Signal(object, str, str)  # (callback, token, error) from the sign-in worker thread -> UI thread
 
     def __init__(self, path: str, store, parent=None):
         QtCore.QObject.__init__(self, parent)
@@ -128,12 +129,19 @@ class EngineClient(QtCore.QObject, Engine):
         self._decay = QtCore.QTimer(self); self._decay.setInterval(100)
         self._decay.timeout.connect(lambda: setattr(self, "_level", self._level * 0.7)); self._decay.start()
         self.dmr_password = ""
+        self.asl_password = ""                         # AllStarLink portal password (session only)
+        self._tok_done.connect(lambda cb, tok, err: cb(tok, err))
+        self.token_fn = None                           # tests replace these two; None = the real AllStarLink services
+        self.dns_fn = None
 
     # ---- helpers ----------------------------------------------------------
     def _params(self, t: Target) -> tuple[dict | None, str]:
         s = self.store.settings
         proto = protocol_for(t)
         if not proto: return None, "EchoLink is not available in this build yet."
+        if proto == "IAX":
+            from . import allstar
+            if not allstar.valid_node(t.id): return None, "Enter a valid AllStarLink node number (digits only)."
         call = (s.get("callsign") or "").strip().upper()
         if not call: return None, "Enter your callsign first (Settings › Station)."
         ep = self.servers.resolve(t)
@@ -146,6 +154,11 @@ class EngineClient(QtCore.QObject, Engine):
                      password=self.dmr_password, tg=int(t.id) if t.id.isdigit() else 0, cc=int(s.get("cc") or 1), slot=int(s.get("slot") or 2))
         elif proto in ("REF", "XRF", "DCS", "M17"):
             ref, mod = split_dstar(t); p.update(name=ref, module=mod)
+        elif proto == "IAX":
+            user = (s.get("asl_user") or call).strip()
+            if not allstar.valid_user(user): return None, "Enter your AllStarLink portal username on the AllStar page (your callsign)."
+            if not self.asl_password: return None, "Enter your AllStarLink portal password on the AllStar page."
+            p.update(name=t.id.strip(), iax_user=allstar.PUBLIC_USER, iax_pass=allstar.PUBLIC_SECRET, asl_user=user)
         elif proto == "NXDN":
             if not str(s.get("nxdn_id") or "").strip().isdigit(): return None, "An NXDN ID is required for NXDN (Settings › Radio networks)."
             p.update(nxdnid=int(s["nxdn_id"]), name=t.id.strip())
@@ -163,9 +176,38 @@ class EngineClient(QtCore.QObject, Engine):
         ln = Link(key, t, self.path, self)
         ln.event.connect(self._on_event); ln.finished.connect(self._on_finished)
         self.links[key] = ln
-        from . import diag; diag.log("connect " + key + " " + str({k: v for k, v in params.items() if k != "password"}))
-        ln.send("connect", **params)
+        from . import diag; diag.log("connect " + key + " " + str({k: v for k, v in params.items() if k not in ("password", "iax_name")}))
+        if params["mode"] == "IAX": self._prepare_allstar(ln, t, params)
+        else: ln.send("connect", **params)
         return ln, ""
+
+    # ---- AllStarLink: address from DNS + single-use token, both before the call --------------------------------
+    def _prepare_allstar(self, ln: Link, t: Target, params: dict):
+        from . import allstar
+        node, user, pw = t.id.strip(), params.pop("asl_user"), self.asl_password
+        res = {}
+        def step():
+            if "ep" not in res or "tok" not in res: return
+            if self.links.get(ln.key) is not ln: return                  # cancelled meanwhile (Listen/Connect switched off)
+            tok, err = res["tok"]
+            if not tok:
+                self.status.emit(ln, "error", err); ln.rx.clear(); ln.tx = False; self.links.pop(ln.key, None); ln.close(); return
+            host, port = res["ep"]
+            params.update(host=host, port=port, iax_name=allstar.caller_name(tok, user))
+            ln.send("connect", **params)
+        def got_ep(host, port): res["ep"] = (host, port); step()
+        def got_tok(tok, err): res["tok"] = (tok, err); step()
+        self.status.emit(ln, "connecting", "Signing in to AllStarLink…")
+        user_ep = self.servers.user.get(self.servers.key(t))
+        if user_ep: got_ep(user_ep["host"], int(user_ep["port"]))
+        else: (self.dns_fn or allstar.srv_lookup)(node, got_ep)
+        cid = allstar.client_id(self.store)
+        def work():
+            fn = self.token_fn or allstar.request_token
+            try: tok, err = fn(user, pw, cid)
+            except Exception as ex: tok, err = "", f"AllStarLink sign-in failed: {ex}"
+            self._tok_done.emit(got_tok, tok, err)
+        import threading; threading.Thread(target=work, daemon=True).start()
 
     def _release(self, ln: Link):
         if not ln.rx and not ln.tx and self.links.get(ln.key) is ln:

@@ -14,10 +14,10 @@
   δεν κατεβάζουν πακέτο που χρειάζεται νεότερο shell, αλλά ειδοποιούνται να κατεβάσουν τον πλήρη installer.
 
 ## Βήματα για κάθε νέα έκδοση
-1. Αλλαγές στον κώδικα, αύξηση του `APP_VERSION` στο `app/version.py` (π.χ. 2.0.5). Το `BASE_VERSION` στο `bootstrap.py` ΜΕΝΕΙ ίδιο
+1. Αλλαγές στον κώδικα, αύξηση του `APP_VERSION` στο `app/version.py` (π.χ. 2.1.0). Το `BASE_VERSION` στο `bootstrap.py` ΜΕΝΕΙ ίδιο
    μέχρι να ξαναχτιστεί ο installer.
-2. Push στο GitHub → το CI τρέχει τα τεστ και βγάζει το artifact **DigiConnect-update-package-dcpkg** (`DigiConnect-2.0.5.dcpkg`).
-   (Τοπικά: `python3 tools/build_dcpkg.py 2.0.5`.)
+2. Push στο GitHub → το CI τρέχει τα τεστ και βγάζει το artifact **DigiConnect-update-package-dcpkg** (`DigiConnect-2.1.0.dcpkg`).
+   (Τοπικά: `python3 tools/build_dcpkg.py 2.1.0`.)
 3. Στο panel `…/digiconnect/admin/index.php?p=releases` → «Ανέβασμα νέας έκδοσης» → διάλεξε το `.dcpkg` (η έκδοση και το ελάχιστο shell
    διαβάζονται αυτόματα από το πακέτο) → Ανέβασμα → «Ενεργοποίηση» (ή «Επιβολή σε όλους»). Το rollout % επιτρέπει σταδιακή διάθεση.
 4. Οι εγκατεστημένες εφαρμογές την παίρνουν μόνες τους.
