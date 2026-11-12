@@ -48,8 +48,8 @@ class MainWindow(W.QMainWindow):
         root = W.QWidget(); root.setObjectName("root"); self.setCentralWidget(root); outer = vbox(root, s=0)
         body = hbox(s=0); outer.addLayout(body, 1)
         # rail
-        rail = W.QFrame(); rail.setObjectName("rail"); rail.setFixedWidth(72); rv = vbox(rail, m=(12, 14, 12, 14), s=8)
-        lg = W.QLabel(); lg.setPixmap(QtGui.QPixmap(str(LOGO)).scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)); lg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        rail = W.QFrame(); rail.setObjectName("rail"); rail.setFixedWidth(96); rv = vbox(rail, m=(10, 14, 10, 14), s=8)
+        lg = W.QLabel(); lg.setPixmap(QtGui.QPixmap(str(LOGO)).scaled(76, 76, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)); lg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         rv.addWidget(lg); rv.addSpacing(10); self.rail_btn = {}
         def rb(key, ic, tip):
             b = button("", "rail", checkable=True, tip=tip); b.setIcon(icon(ic)); b.setProperty("icon_name", ic); b.setIconSize(QtCore.QSize(22, 22)); b.setFixedSize(46, 42); b.clicked.connect(lambda _, k=key: self.nav(k)); self.rail_btn[key] = b; return b
@@ -62,6 +62,8 @@ class MainWindow(W.QMainWindow):
         # centre column
         col = vbox(s=0); body.addLayout(col, 1)
         top = W.QFrame(); top.setObjectName("topbar"); top.setFixedHeight(64); th = hbox(top, m=(24, 8, 20, 8), s=14)
+        self.brand_top = W.QLabel("HELLAS ZONE NET"); self.brand = W.QLabel()
+        bv = vbox(s=0); bv.addWidget(self.brand_top); bv.addWidget(self.brand); th.addLayout(bv); self._brand_style()
         th.addStretch()
         self.clock = label(""); self.clock.setAlignment(Qt.AlignmentFlag.AlignRight); th.addWidget(self.clock)
         self.callsign = label(""); self.callsign.setProperty("tone", "accent"); th.addWidget(self.callsign)
@@ -177,6 +179,12 @@ class MainWindow(W.QMainWindow):
     def open_qso(self, *_):
         self.settings.hide(); self.qdrawer.show(); self.qdrawer.prepare()
 
+    def _brand_style(self):
+        """Title in the top bar: small 'HELLAS ZONE NET' over DIGI (text colour) + CONNECT (green); follows the theme."""
+        self.brand_top.setStyleSheet(f"color:{C['text']}; font-size:10px; font-weight:700; letter-spacing:2.5px;")
+        self.brand.setText(f"<span style='color:{C['text']}'>DIGI</span><span style='color:{C['green']}'>CONNECT</span>")
+        self.brand.setStyleSheet("font-size:24px; font-weight:800; letter-spacing:1px;")
+
     def apply_settings(self):
         s = self.ctx.store.settings; self.callsign.setText(s.get("callsign") or "—"); self.lang.setText(s["language"])
         theme.set_theme(s.get("theme", "dark")); i18n.set_language(s.get("language", "English")); i18n.retranslate()
@@ -184,7 +192,7 @@ class MainWindow(W.QMainWindow):
         for _w in self.ws.values(): _w.fill()          # list rows are built from text, so they are rebuilt in the new language
         self.theme_btn.setText("☀  Light" if theme.current == "dark" else "☾  Dark")
         self.avatar.setText((s.get("callsign") or "DC")[:2].upper()); W.QApplication.instance().setStyleSheet(qss(s["text_size"]))
-        repaint_icons()
+        repaint_icons(); self._brand_style()
         if hasattr(self, "favs"): self.favs.restyle(); self.favs.rebuild(); self._sync_chrome()
 
     def toggle_theme(self):

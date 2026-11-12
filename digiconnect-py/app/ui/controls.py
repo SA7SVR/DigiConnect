@@ -3,6 +3,7 @@ from ..qt import QtWidgets as W, QtCore, Qt, Signal
 from ..rules import NETS, ListenMode
 from ..theme import NET_COLOR, C
 from .widgets import *
+from .knob import MicKnob
 
 
 def _mmss(s): return f"{s // 60:02d}:{s % 60:02d}"
@@ -40,6 +41,7 @@ class TxControls(W.QWidget, _Sync):
         row = FlowLayout(hspace=8, vspace=6); row.addWidget(self.listen); row.addWidget(self.connect); row.addWidget(self.stopall)
         self.hold = button("Hold PTT", "ptt", "mic"); self.latch = button("Latch PTT", "latch", "lock")
         pr = hbox(s=10); pr.addWidget(self.hold, 3); pr.addWidget(self.latch, 2)
+        self.knob = MicKnob(ctx, 84); pr.addWidget(self.knob, 0, Qt.AlignmentFlag.AlignVCenter)
         self.limit = W.QComboBox(); self.limit.setFixedSize(84, 30); self.limit.setStyleSheet("padding:2px 8px;"); self.countdown = label("02:00")
         self.dest = label("No TX destination", muted=True)
         lr = hbox(); lr.addWidget(label("Limit", muted=True)); lr.addWidget(self.limit); lr.addStretch(); lr.addWidget(self.countdown)
@@ -77,8 +79,7 @@ class Dock(W.QFrame, _Sync):
         info.addWidget(self.name); info.addWidget(self.txstate); info.addWidget(self.status)
         self.dest = label("", muted=True); info.addWidget(self.dest)
         l.addLayout(info, 1)
-        mic = vbox(s=2); self.mic = W.QProgressBar(); self.mic.setRange(0, 100); self.mic.setTextVisible(False); self.mic.setFixedSize(90, 6)
-        mic.addStretch(); mic.addWidget(self.mic); mic.addWidget(label("MIC · —", muted=True)); l.addLayout(mic)
+        self.knob = MicKnob(ctx, 62); l.addWidget(self.knob)
         self.listen = button("Listen", "", "headphones"); self.connect = button("Connect (TX)", "primary", "power")
         self.rec = button("Record audio", "", "circle")
         l.addWidget(self.listen); l.addWidget(self.connect); l.addWidget(self.rec)
@@ -100,7 +101,7 @@ class Dock(W.QFrame, _Sync):
         self.listen.setEnabled(sel is not None); self.connect.setEnabled(sel is not None and not r.ptt)
         self.listen.setText("Stop" if sel and r.is_listening(sel) else "Listen")
         self.connect.setText("Disconnect" if r.tx_connected else "Connect (TX)")
-        self.mic.setValue(int(c.engine.mic_level() * 100)); self._sync_ptt()
+        self._sync_ptt()
 
 
 class Mixer(W.QFrame):

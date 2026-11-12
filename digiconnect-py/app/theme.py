@@ -6,7 +6,7 @@ PALETTES = {
     "dark": dict(
         bg="#0b1220", panel="#111a2e", panel2="#152139", border="#243452", text="#e8eefb", muted="#8493b4",
         accent="#2f9bff", accent2="#1f6fd1", on_accent="#04122a", field="#0a101d",
-        dmr="#5db0ff", echo="#35d0c0", nxdn="#ff8a5c", p25="#9bd84e", m17="#8ea6ff", dstar="#f2b94b", c4fm="#f276b8", green="#47d39b", amber="#f5c451", red="#ff5d6c", pink="#f276b8",
+        dmr="#5db0ff", echo="#35d0c0", nxdn="#ff8a5c", p25="#9bd84e", m17="#8ea6ff", dstar="#f2b94b", c4fm="#f276b8", green="#47d39b", green_bd="#2b6e5b", amber="#f5c451", red="#ff5d6c", pink="#f276b8",
         rail="#0d1527", footer="#09101c", mixer="#0e172a", dock_a="#14274a", dock_b="#111a2e",
         btn="#172440", btn_hover="#1f3157", btn_dis="#111b31", btn_dis_fg="#5d6c8f",
         primary_hover="#58b0ff", primary_dis="#244067", primary_dis_fg="#7f95bb",
@@ -20,7 +20,7 @@ PALETTES = {
     "light": dict(
         bg="#eef2f8", panel="#ffffff", panel2="#f6f8fc", border="#cfd9e8", text="#13203a", muted="#5a6a88",
         accent="#1769d6", accent2="#124fa3", on_accent="#ffffff", field="#ffffff",
-        dmr="#1769d6", echo="#0b8f82", nxdn="#c4551c", p25="#5f8f12", m17="#4a63d6", dstar="#b36f00", c4fm="#c42d80", green="#1b9a68", amber="#b07a00", red="#d03545", pink="#c42d80",
+        dmr="#1769d6", echo="#0b8f82", nxdn="#c4551c", p25="#5f8f12", m17="#4a63d6", dstar="#b36f00", c4fm="#c42d80", green="#1b9a68", green_bd="#8fd1b5", amber="#b07a00", red="#d03545", pink="#c42d80",
         rail="#e3e9f3", footer="#e3e9f3", mixer="#e9eef6", dock_a="#e3edfb", dock_b="#ffffff",
         btn="#e6edf8", btn_hover="#d8e3f4", btn_dis="#eef2f8", btn_dis_fg="#9aa7c0",
         primary_hover="#2f80ea", primary_dis="#b9cdea", primary_dis_fg="#ffffff",
@@ -58,8 +58,8 @@ def qss(font_px: int = 14) -> str:
 QMainWindow, #root {{ background:{c['bg']}; }}
 QDialog, QMessageBox, QInputDialog {{ background:{c['panel']}; }}
 QToolTip {{ background:{c['tip_bg']}; color:{c['tip_fg']}; border:1px solid {c['border']}; padding:3px 6px; }}
-#rail {{ background:{c['rail']}; border-right:1px solid {c['border']}; }}
-#topbar {{ background:{c['bg']}; border-bottom:1px solid {c['border']}; }}
+#rail {{ background:{c['rail']}; border-right:1px solid {c['green_bd']}; }}
+#topbar {{ background:{c['bg']}; border-bottom:1px solid {c['green_bd']}; }}
 #footer {{ background:{c['footer']}; border-top:1px solid {c['border']}; }}
 #footer QLabel {{ color:{c['muted']}; font-size:{font_px-4}px; }}
 .muted, QLabel[muted="true"] {{ color:{c['muted']}; }}
@@ -75,14 +75,14 @@ QLabel[net="C4FM"] {{ color:{c['c4fm']}; font-weight:700; }}
 QLabel[net="NXDN"] {{ color:{c['nxdn']}; font-weight:700; }}
 QLabel[net="P25"] {{ color:{c['p25']}; font-weight:700; }}
 QLabel[net="M17"] {{ color:{c['m17']}; font-weight:700; }}
-QLabel#toast {{ background:{c['toast']}; border:1px solid {c['accent']}; border-radius:10px; padding:10px 16px; }}
+QLabel#toast {{ background:{c['toast']}; border:1px solid {c['green']}; border-radius:10px; padding:10px 16px; }}
 QLabel#avatar {{ background:{c['avatar']}; border-radius:18px; font-weight:700; }}
 QLabel[section="true"] {{ color:{c['muted']}; font-size:{font_px-5}px; font-weight:700; letter-spacing:1.5px; }}
-#panel, #drawer, #dock, #mixer {{ background:{c['panel']}; border:1px solid {c['border']}; border-radius:14px; }}
+#panel, #drawer, #dock, #mixer {{ background:{c['panel']}; border:1px solid {c['green_bd']}; border-radius:14px; }}
 #drawer {{ border-radius:0; border-top:none; border-bottom:none; border-right:none; }}
 #dock {{ background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {c['dock_a']},stop:1 {c['dock_b']}); }}
 #mixer {{ border-radius:0; border-left:none; border-right:none; background:{c['mixer']}; }}
-QFrame#card {{ background:{c['panel2']}; border:1px solid {c['border']}; border-radius:12px; }}
+QFrame#card {{ background:{c['panel2']}; border:1px solid {c['green_bd']}; border-radius:12px; }}
 QFrame#card[sel="true"] {{ border:2px solid {c['accent']}; }}
 QFrame#card[state="pink"] {{ background:{c['card_pink']}; border-color:{c['card_pink_bd']}; }}
 QFrame#card[state="amber"] {{ background:{c['card_amber']}; border-color:{c['amber']}; }}
@@ -101,11 +101,11 @@ QPushButton[kind="danger"] {{ background:{c['danger']}; border-color:{c['danger_
 QPushButton[kind="ptt"] {{ background:{c['ptt']}; border:1px solid {c['ptt_bd']}; font-weight:700; min-height:40px; }}
 QPushButton[kind="ptt"]:disabled {{ background:{c['ptt_dis']}; color:{c['ptt_dis_fg']}; }}
 QPushButton[kind="ptt"]:pressed, QPushButton[kind="ptt"]:checked {{ background:{c['red']}; color:#ffffff; }}
-QPushButton[kind="latch"] {{ background:{c['latch']}; border:1px solid {c['latch_bd']}; font-weight:700; min-height:40px; }}
+QPushButton[kind="latch"] {{ background:{c['latch']}; border:1px solid {c['green_bd']}; font-weight:700; min-height:40px; }}
 QPushButton[kind="latch"]:disabled {{ background:{c['latch_dis']}; color:{c['latch_dis_fg']}; }}
 QPushButton[kind="latch"]:checked {{ background:{c['red']}; color:#ffffff; }}
-QPushButton[kind="tab"] {{ background:{c['panel']}; border:1px solid {c['border']}; border-radius:12px; padding:9px 18px; font-size:{font_px-1}px; }}
-QPushButton[kind="tab"]:checked {{ background:{c['tab_on']}; border-color:{c['accent']}; }}
+QPushButton[kind="tab"] {{ background:{c['panel']}; border:1px solid {c['green_bd']}; border-radius:12px; padding:9px 18px; font-size:{font_px-1}px; }}
+QPushButton[kind="tab"]:checked {{ background:{c['tab_on']}; border:2px solid {c['green']}; }}
 QPushButton[kind="rail"] {{ background:transparent; border:none; border-radius:10px; padding:0; }}
 QPushButton[kind="rail"]:hover {{ background:{c['rail_hover']}; }}
 QPushButton[kind="rail"]:checked {{ background:{c['rail_on']}; }}
@@ -116,10 +116,10 @@ QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {{ border-color:{c['accen
 QComboBox::drop-down {{ border:none; width:22px; }}
 QComboBox QAbstractItemView {{ background:{c['panel']}; border:1px solid {c['border']}; selection-background-color:{c['accent2']}; selection-color:#ffffff; }}
 QCheckBox::indicator {{ width:16px; height:16px; border-radius:4px; border:1px solid {c['border']}; background:{c['field']}; }}
-QCheckBox::indicator:checked {{ background:{c['accent']}; border-color:{c['accent']}; }}
+QCheckBox::indicator:checked {{ background:{c['green']}; border-color:{c['green']}; }}
 QSlider::groove:horizontal {{ height:4px; background:{c['groove']}; border-radius:2px; }}
-QSlider::sub-page:horizontal {{ background:{c['accent']}; border-radius:2px; }}
-QSlider::handle:horizontal {{ background:{c['accent']}; width:14px; height:14px; margin:-5px 0; border-radius:7px; }}
+QSlider::sub-page:horizontal {{ background:{c['green']}; border-radius:2px; }}
+QSlider::handle:horizontal {{ background:{c['green']}; width:14px; height:14px; margin:-5px 0; border-radius:7px; }}
 QProgressBar {{ background:{c['progress']}; border:none; border-radius:3px; }}
 QProgressBar::chunk {{ background:{c['green']}; border-radius:3px; }}
 QScrollArea {{ border:none; background:transparent; }}

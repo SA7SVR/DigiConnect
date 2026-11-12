@@ -1,4 +1,4 @@
-﻿DigiConnect 2.0.3 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.0.4 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,12 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.0.3)
+What is new in this version (2.0.4)
+  • Microphone volume knob (0-300%) next to the PTT buttons and in the bottom bar:
+    drag, mouse wheel or arrow keys; double-click = 100%. Shows the live mic level.
+  • Bigger logo and the "HELLAS ZONE NET - DIGICONNECT" title back in the top bar.
+  • Green outlines on cards, tabs, panels and controls, so the look is not only blue.
+  Also new in 2.0.3:
   • Your station appears as "online" in the HELLAS Zone control panel (callsign,
     program version, what you listen to). You can switch this off in
     Settings > My station. No audio or passwords are ever sent.
