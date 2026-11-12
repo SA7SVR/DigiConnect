@@ -12,6 +12,7 @@ What is new in this version (2.0.5)
     cut the sound. (The sound is heard about 0.3 s later.)
   • The speaker button now shows its state: a red crossed speaker = muted, an open
     speaker = sound on (also when you press F4 = mute all).
+  • Bigger logo: the empty margin of the picture is cut, so it is now clearly larger.
   • Notices (e.g. "Connected ...") now appear at the top of the window, fade out after a
     few seconds and no longer cover the controls at the bottom.
   Also new in 2.0.4:

@@ -62,8 +62,11 @@ class MainWindow(W.QMainWindow):
         root = W.QWidget(); root.setObjectName("root"); self.setCentralWidget(root); outer = vbox(root, s=0)
         body = hbox(s=0); outer.addLayout(body, 1)
         # rail
-        rail = W.QFrame(); rail.setObjectName("rail"); rail.setFixedWidth(96); rv = vbox(rail, m=(10, 14, 10, 14), s=8)
-        lg = W.QLabel(); lg.setPixmap(QtGui.QPixmap(str(LOGO)).scaled(76, 76, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)); lg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        rail = W.QFrame(); rail.setObjectName("rail"); rail.setFixedWidth(132); rv = vbox(rail, m=(8, 14, 8, 14), s=8)
+        lg = W.QLabel(); lg.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        _pm = QtGui.QPixmap(str(LOGO)); _bb = QtGui.QRegion(_pm.createMaskFromColor(QtGui.QColor(0, 0, 0, 0), Qt.MaskMode.MaskOutColor)).boundingRect() if not _pm.isNull() else QtCore.QRect()   # cut the empty transparent margin so the logo fills the rail
+        if not _bb.isEmpty(): _pm = _pm.copy(_bb)
+        lg.setPixmap(_pm.scaled(116, 116, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         rv.addWidget(lg); rv.addSpacing(10); self.rail_btn = {}
         def rb(key, ic, tip):
             b = button("", "rail", checkable=True, tip=tip); b.setIcon(icon(ic)); b.setProperty("icon_name", ic); b.setIconSize(QtCore.QSize(22, 22)); b.setFixedSize(46, 42); b.clicked.connect(lambda _, k=key: self.nav(k)); self.rail_btn[key] = b; return b
