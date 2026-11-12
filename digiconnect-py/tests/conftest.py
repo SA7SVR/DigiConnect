@@ -17,3 +17,19 @@ def no_background_downloads(monkeypatch):
     from app.context import Ctx
     monkeypatch.setattr(Ctx, "refresh_hosts", lambda self, force=False: None)
     monkeypatch.setattr(Ctx, "refresh_asl", lambda self, force=False: None)
+
+
+_STATUS = [0]
+
+
+def pytest_sessionfinish(session, exitstatus):
+    _STATUS[0] = int(exitstatus)
+
+
+def pytest_unconfigure(config):
+    """Qt/PySide objects of finished tests are destroyed in an unpredictable order when the interpreter shuts down; on CI that crashed
+    (segfault / abort, "shared QObject was deleted directly") AFTER every test had passed. Leave right after pytest has printed its result:
+    the result and the exit status are the test run's own, nothing of the program is skipped."""
+    import sys
+    try: sys.stdout.flush(); sys.stderr.flush()
+    finally: os._exit(_STATUS[0])
