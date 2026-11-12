@@ -28,7 +28,9 @@ def sample_later():
     time.sleep(n)
     if p.poll() is None and not pings[0]:
         print("--- no YSFP seen after %.0f s: process sample ---" % n, flush=True)
-        try: print(subprocess.run(["sample", str(p.pid), "2"], capture_output=True, text=True, timeout=30).stdout[-6000:], flush=True)
+        try:
+            out = subprocess.run(["sample", str(p.pid), "2"], capture_output=True, text=True, timeout=30).stdout
+            print(out.split("Binary Images:")[0][:9000], flush=True)           # the call graph (where each thread waits), not the list of libraries
         except Exception as ex: print("sample failed:", ex, flush=True)
 pings = [0]
 threading.Thread(target=sample_later, daemon=True).start()
