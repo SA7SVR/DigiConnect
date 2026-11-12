@@ -139,6 +139,7 @@ EL: dict[str, str] = {
     "This licence belongs to another computer. Contact the administrator if you changed computer.": "Αυτή η άδεια ανήκει σε άλλον υπολογιστή. Επικοινώνησε με τον διαχειριστή αν άλλαξες υπολογιστή.",
     "EchoLink is under construction — coming soon.": "Το EchoLink είναι υπό κατασκευή — έρχεται προσεχώς.", "EchoLink is under construction — coming soon. The page is here so you can see where it will be; it does not connect yet.": "Το EchoLink είναι υπό κατασκευή — έρχεται προσεχώς. Η σελίδα είναι εδώ για να φαίνεται πού θα βρίσκεται· δεν συνδέεται ακόμη.", "EchoLink · under construction — coming soon": "EchoLink · υπό κατασκευή — έρχεται προσεχώς",
     "EchoLink · soon": "EchoLink · σύντομα",
+    "INSTALLATION": "ΕΓΚΑΤΑΣΤΑΣΗ", "LICENCE": "ΑΔΕΙΑ", "CALLSIGN": "ΔΙΑΚΡΙΤΙΚΟ", "COMPUTER": "ΥΠΟΛΟΓΙΣΤΗΣ", "Engine: {}": "Μηχανή: {}",
     "Donate": "Δωρεά", "Support the development of DigiConnect": "Στήριξε την ανάπτυξη του DigiConnect", "Demo": "Demo",
     "{} days left": "απομένουν {} ημέρες", "{} day left": "απομένει {} ημέρα",
     "This installation needs activation.": "Αυτή η εγκατάσταση χρειάζεται ενεργοποίηση.",

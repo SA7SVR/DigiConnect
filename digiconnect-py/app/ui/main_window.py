@@ -111,8 +111,21 @@ class MainWindow(W.QMainWindow):
         for n in NETS: self.pages.addWidget(self.ws[n])
         self.mixer = Mixer(self.ctx); self.dock = Dock(self.ctx, lambda: None)
         col.addWidget(self.mixer); col.addWidget(self._pad(self.dock))
-        foot = W.QFrame(); foot.setObjectName("footer"); foot.setFixedHeight(28); fh = hbox(foot, m=(24, 0, 24, 0))
-        self.foot_l = label("DigiConnect · HELLAS Zone · Public activity depends on information available from each network. Engine: " + self.ctx.engine.name); fh.addWidget(self.foot_l); fh.addStretch()
+        foot = W.QFrame(); foot.setObjectName("footer"); foot.setFixedHeight(52); fh = hbox(foot, m=(24, 0, 24, 0), s=10)
+        # licence card: logo, program + version, installation number, licence, callsign, this computer (the same facts as in the HAM Digi bottom bar)
+        flogo = W.QLabel(); flogo.setFixedSize(34, 34); flogo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if LOGO.exists(): flogo.setPixmap(QtGui.QPixmap(str(LOGO)).scaled(34, 34, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        fh.addWidget(flogo)
+        from ..version import APP_VERSION
+        bv = vbox(s=0); bt = label("DigiConnect " + APP_VERSION, brand=True); bv.addWidget(bt); bv.addWidget(label("HELLAS Zone Net · SA7SVR")); fh.addLayout(bv); fh.addSpacing(8)
+        def chip(title):
+            f = W.QFrame(); f.setObjectName("chip"); cv = vbox(f, m=(10, 3, 10, 3), s=0); t = label(title.upper(), chipt=True); v = label("—", chipv=True); cv.addWidget(t); cv.addWidget(v); fh.addWidget(f); return v
+        self.chip_no = chip("Installation"); self.chip_lic = chip("Licence"); self.chip_call = chip("Callsign"); self.chip_pc = chip("Computer")
+        try:
+            from .. import hwid; self.chip_pc.setText(hwid.get()[:8])
+        except Exception: pass
+        fh.addStretch()
+        self.foot_l = label("Engine: " + self.ctx.engine.name); fh.addWidget(self.foot_l)
         self.lang = label(self.ctx.store.settings["language"]); fh.addWidget(self.lang); outer.addWidget(foot)
         self.toast = Toast(root); self.ctx.toast.connect(self.toast.show_msg)
         # wiring
@@ -146,6 +159,11 @@ class MainWindow(W.QMainWindow):
 
     def _license_changed(self, v):
         self.license_url = v.donate or ""
+        i = v.info or {}; self.chip_no.setText(i.get("no") or "—")
+        tone, txt = {"full": ("green", "Licensed"), "free": ("green", "Free"), "demo": ("amber", "Demo")}.get(v.state, ("red", v.state or "—"))
+        if v.allowed and v.state == "demo" and v.left: txt = tr("Demo") + " · " + tr(v.left)
+        else: txt = tr(txt)
+        self.chip_lic.setText(txt); self.chip_lic.setProperty("tone", tone if v.allowed else "red"); repolish(self.chip_lic)
         offer = (v.info or {}).get("offer", "donate"); self.donate_btn.setVisible(offer != "none")
         self.donate_btn.setText("♥ Buy a licence" if offer == "buy" else "♥ Donate")
         self.demo_lbl.setVisible(v.allowed and v.state == "demo"); self.demo_lbl.setText(tr("Demo") + " · " + tr(v.left) if v.left else tr("Demo"))
@@ -193,7 +211,7 @@ class MainWindow(W.QMainWindow):
         if ws: self.title.setText(f"{tr('Radio workspace')} <span style='color:{__import__('app.theme', fromlist=['NET_COLOR']).NET_COLOR[net]}'>{net}</span>")
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
         for t, b in self.tabs.items():
-            if t != "favorites": b.setText(t); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
+            if t != "favorites": b.setText("EchoLink · soon" if t == "EchoLink" else t); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
         self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else "Choose a station, then Listen. Connect transmission separately to participate.")
         self.h_add.setVisible(k == "favorites")
         self.tabs["favorites"].setText(f"My favorites   {len(self.ctx.store.favorites)}")
@@ -202,7 +220,7 @@ class MainWindow(W.QMainWindow):
         self.dock.setVisible(not ws and k != "favorites" or k in ("favorites", "log")); self.dock.parentWidget().setVisible(k in ("favorites", "log"))
         self.h_nq.setVisible(ws or k == 'favorites'); self.h_set.setVisible(ws)
         n = len(getattr(self.ctx.engine, "links", {}))
-        self.foot_l.setText("DigiConnect · HELLAS Zone · Public activity depends on information available from each network. Engine: " + self.ctx.engine.name + (f" · {n} link{'s' if n != 1 else ''}" if n else ""))
+        self.foot_l.setText("Engine: " + self.ctx.engine.name + (f" · {n} link{'s' if n != 1 else ''}" if n else ""))
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -245,7 +263,7 @@ class MainWindow(W.QMainWindow):
         self.brand.setStyleSheet("font-size:24px; font-weight:800; letter-spacing:1px;")
 
     def apply_settings(self):
-        s = self.ctx.store.settings; self.callsign.setText(s.get("callsign") or "—"); self.lang.setText(s["language"])
+        s = self.ctx.store.settings; self.callsign.setText(s.get("callsign") or "—"); self.lang.setText(s["language"]); self.chip_call.setText(s.get("callsign") or "—")
         theme.set_theme(s.get("theme", "dark")); i18n.set_language(s.get("language", "English")); i18n.retranslate()
         self.heard.retranslate()
         for _w in self.ws.values(): _w.fill()          # list rows are built from text, so they are rebuilt in the new language

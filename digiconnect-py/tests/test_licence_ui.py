@@ -75,3 +75,13 @@ def test_block_dialog_has_code_and_contact_buttons_and_other_pc_message(srv, win
     assert not d.code.isHidden() and not d.contact.isHidden() and d.code.text() and d.contact.text()
     off = LD.BlockDialog(L.Verdict("offline", msg="no server"), clone.evaluate)
     assert off.code.isHidden() and off.contact.isHidden()                      # without a connection neither can work
+
+
+def test_bottom_licence_card_shows_number_licence_callsign_and_computer(srv, win):
+    w, ctx, app = win; l = lic(srv); l.register(PERSON)
+    w._license_changed(l.verdict(l.check()))
+    assert w.chip_no.text().startswith("DC-") and "Demo" in w.chip_lic.text() and w.chip_lic.property("tone") == "amber"
+    assert w.chip_call.text() == "SA7SVR" and len(w.chip_pc.text()) == 8
+    srv.sql("UPDATE dc_installs SET state='full', demo_until=0, lic_by='admin' WHERE id='inst-1'")
+    w._license_changed(l.verdict(l.check()))
+    assert "Licensed" in w.chip_lic.text() and w.chip_lic.property("tone") == "green"

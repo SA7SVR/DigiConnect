@@ -62,6 +62,14 @@ QToolTip {{ background:{c['tip_bg']}; color:{c['tip_fg']}; border:1px solid {c['
 #topbar {{ background:{c['bg']}; border-bottom:1px solid {c['green_bd']}; }}
 #footer {{ background:{c['footer']}; border-top:1px solid {c['border']}; }}
 #footer QLabel {{ color:{c['muted']}; font-size:{font_px-4}px; }}
+#footer QFrame#chip {{ background:{c['panel']}; border:1px solid {c['border']}; border-radius:8px; }}
+#footer QFrame#chip QLabel {{ background:transparent; }}
+#footer QLabel[chipt="true"] {{ color:{c['muted']}; font-size:{font_px-6}px; font-weight:600; letter-spacing:1px; }}
+#footer QLabel[chipv="true"] {{ color:{c['text']}; font-size:{font_px-3}px; font-weight:700; }}
+#footer QLabel[chipv="true"][tone="green"] {{ color:{c['green']}; }}
+#footer QLabel[chipv="true"][tone="amber"] {{ color:{c['amber']}; }}
+#footer QLabel[chipv="true"][tone="red"] {{ color:{c['red']}; }}
+#footer QLabel[brand="true"] {{ color:{c['text']}; font-size:{font_px-1}px; font-weight:800; }}
 .muted, QLabel[muted="true"] {{ color:{c['muted']}; }}
 QLabel[h1="true"] {{ font-size:{font_px+10}px; font-weight:700; }}
 QLabel[eyebrow="true"] {{ color:{c['accent']}; font-size:{font_px-5}px; font-weight:700; letter-spacing:1px; }}
