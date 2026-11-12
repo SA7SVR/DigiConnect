@@ -140,6 +140,17 @@ jobs:
         continue-on-error: true
         run: |
           DC_ENGINE_STDERR=1 DC_SAMPLE_AFTER=12 python3 engine/tests/check_ysf_loopback.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 2>&1 | tail -150
+      - name: Engine loopback in a clean environment (Apple Silicon diagnostic)
+        if: matrix.arch == 'AppleSilicon'
+        continue-on-error: true
+        run: |
+          env -u QT_PLUGIN_PATH -u QML2_IMPORT_PATH -u QT_ROOT_DIR DC_ENGINE_STDERR=1 DC_SAMPLE_AFTER=12 python3 engine/tests/check_ysf_loopback.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 2>&1 | tail -120
+      - name: Jitter test standalone (Apple Silicon diagnostic)
+        if: matrix.arch == 'AppleSilicon'
+        continue-on-error: true
+        run: |
+          python3 engine/tests/check_ysf_jitter.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 70 2>&1 | tail -40
+          python3 engine/tests/check_iax_allstar.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 2>&1 | tail -40
       - name: Tests
         # Apple Silicon: the standalone engine loopback above passes, one end-to-end test does not yet (under investigation);
         # it is reported but must not keep the Apple Silicon program from being built. Intel runs the same tests and must pass.
