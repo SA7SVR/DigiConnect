@@ -68,12 +68,12 @@ class BlockDialog(W.QDialog):
         super().__init__(parent); self.verdict, self.check = verdict, check; self.result_verdict = None
         self.setWindowTitle("DigiConnect"); self.setModal(True); self.setMinimumWidth(480)
         v = vbox(self, m=(24, 20, 24, 20), s=10)
-        t = label(tr("DigiConnect cannot continue") if verdict.kind == "offline" else tr("DigiConnect is not active")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
+        t = label(tr("DigiConnect cannot continue") if verdict.kind == "offline" else tr("Waiting for approval") if verdict.state == "pending" else tr("DigiConnect is not active")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
         self.msg = label(tr(verdict.msg)); self.msg.setWordWrap(True); v.addWidget(self.msg)
         row = hbox(); self.quit = button(tr("Quit")); self.donate = button("♥ " + tr("Donate")); self.code = button(tr("Activation code…")); self.contact = button(tr("Contact the owner…")); self.retry = button(tr("Try again"), "primary")
         for b in (self.quit, self.donate, self.code, self.contact): row.addWidget(b)
         row.addStretch(); row.addWidget(self.retry); v.addLayout(row)
-        self.donate.setVisible((verdict.info or {}).get("offer", "donate") != "none"); self.code.setVisible(verdict.kind != "offline"); self.contact.setVisible(verdict.kind != "offline")
+        self.donate.setVisible((verdict.info or {}).get("offer", "donate") != "none" and verdict.state != "pending"); self.code.setVisible(verdict.kind != "offline"); self.contact.setVisible(verdict.kind != "offline")
         self.quit.clicked.connect(self.reject); self.donate.clicked.connect(lambda: open_donate(verdict.donate)); self.retry.clicked.connect(self._retry)
         self.code.clicked.connect(self._code); self.contact.clicked.connect(self._contact)
 

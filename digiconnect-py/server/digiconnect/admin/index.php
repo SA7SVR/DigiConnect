@@ -191,6 +191,8 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     $off = in_array($_POST['offline'] ?? '', ['require', 'grace', 'allow'], true) ? $_POST['offline'] : 'require';
     dc_kv_set('offline', $off); dc_kv_set('offline_days', max(1, (int)($_POST['offline_days'] ?? 7)));
     dc_kv_set('reinstall_id', !empty($_POST['reinstall_id']) ? '1' : '0');
+    dc_kv_set('reg_approval', !empty($_POST['reg_approval']) ? '1' : '0');
+    dc_kv_set('lic_scope', !empty($_POST['lic_scope']) ? 'major' : 'all'); dc_kv_set('lic_grandfather', max(1, (int)($_POST['lic_grandfather'] ?? 2)));
     // the demo length and the Donate address are set on the Licences page (default settings, as in HAM Digi)
     flash('ok', L('Ρυθμίσεις άδειας αποθηκεύτηκαν', 'Licence settings saved'));
   }
@@ -225,6 +227,13 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       elseif ($do === 'free') dc_lic_set($id, 'free', 0, 'panel');
       elseif ($do === 'default') { dc_q("UPDATE dc_installs SET state='', demo_until=0, lic_by='', enabled=1 WHERE id=?", [$id]); dc_event('licence', "$id|default"); }
       flash('ok', L('Η άδεια άλλαξε. Το πρόγραμμα την παίρνει στον επόμενο έλεγχο (το πολύ ' . $ceNow . ' λεπτά) ή στην επόμενη εκκίνηση.', 'Licence changed. The program picks it up at its next check (at most ' . $ceNow . ' minutes) or at its next start.'));
+    }
+  }
+  if ($a === 'reg_approve' || $a === 'reg_reject') {
+    $id = $_POST['id'] ?? ''; $cur = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
+    if ($cur && $cur['state'] === 'pending') {
+      if ($a === 'reg_approve') { dc_q("UPDATE dc_installs SET state='', demo_until=0, lic_by='', lic_set=? WHERE id=?", [time(), $id]); dc_event('reg_approve', $id . '|' . dc_inst_no($id) . '|' . $cur['call']); flash('ok', L('Εγκρίθηκε. Το πρόγραμμα ενεργοποιείται στον επόμενο έλεγχο (ή με «Δοκίμασε ξανά»).', 'Approved. The program activates at its next check (or with "Try again").')); }
+      else { dc_lic_set($id, 'locked', 0, 'panel (registration rejected)'); flash('ok', L('Απορρίφθηκε (κλειδωμένο).', 'Rejected (locked).')); }
     }
   }
   if ($a === 'hw_free') {
@@ -1233,6 +1242,9 @@ elseif ($p === 'settings') {
     . '<option value="allow"' . ($off['offline']==='allow'?' selected':'') . '>' . L('Να δουλεύει πάντα· η απενεργοποίηση ισχύει μόλις συνδεθεί','Always keep working; a block applies as soon as it is online again') . '</option></select></label>'
     . '<label>' . L('Ημέρες ανοχής (για την επιλογή «Ν ημέρες»)','Grace days (for the «N days» option)') . '<input type="number" name="offline_days" min="1" value="' . (int)$off['offline_days'] . '"></label>'
     . '<label class="chk"><input type="checkbox" name="reinstall_id" value="1"' . (dc_kv('reinstall_id', '1') === '1' ? ' checked' : '') . '> ' . L('Επανεγκατάσταση: η νέα εγκατάσταση παίρνει αυτόματα την άδεια του ίδιου χρήστη (ίδιο διακριτικό + email) και σου έρχεται ειδοποίηση', 'Reinstall: a new installation automatically takes the licence of the same user (same callsign + e-mail) and you get an alert') . '</label>'
+    . '<label class="chk"><input type="checkbox" name="reg_approval" value="1"' . (dc_kv('reg_approval', '0') === '1' ? ' checked' : '') . '> ' . L('Εγγραφές με έγκριση: ο νέος χρήστης περιμένει μέχρι να πατήσεις «Έγκριση» (Εγκαταστάσεις) και σου έρχεται ειδοποίηση', 'Registrations need approval: a new user waits until you press "Approve" (Installations) and you get an alert') . '</label>'
+    . '<label class="chk"><input type="checkbox" name="lic_scope" value="1"' . (dc_kv('lic_scope', 'all') === 'major' ? ' checked' : '') . '> ' . L('Άδειες ανά κύρια έκδοση: η μόνιμη άδεια ισχύει για την κύρια έκδοση που ενεργοποιήθηκε (π.χ. 2.x)· η επόμενη (3.0) ζητά νέα άδεια', 'Licences per major version: a permanent licence is for the major version it was activated on (e.g. 2.x); the next one (3.0) needs a new licence') . '</label>'
+    . '<label>' . L('Υπάρχουσες άδειες (χωρίς καταγεγραμμένη έκδοση) ισχύουν για την κύρια έκδοση','Existing licences (no recorded version) are valid for major version') . '<input type="number" name="lic_grandfather" min="1" value="' . (int)dc_kv('lic_grandfather', '2') . '"></label>'
     . '<p class="help">' . L('Το demo για νέες εγκαταστάσεις και το κουμπί Donate ορίζονται στις Άδειες / Κωδικοί.','The demo for new installations and the Donate button are set under Licences / Codes.') . '</p>'
     . '<button class="btn pri">' . L('Αποθήκευση','Save') . '</button></form></section></div>';
 }
@@ -1317,12 +1329,16 @@ function rail_html() {
 function dc_lic_label(array $r): string {
   if ((int)($r['enabled'] ?? 1) === 0 || ($r['state'] ?? '') === 'disabled') return '<span class="pill bad">' . L('Απενεργοποιημένη', 'Disabled') . '</span>';
   list($st, $exp) = dc_lic_effective($r); $x = $exp ? ' → ' . gmdate('Y-m-d H:i', $exp) . ' UTC' : '';
-  $m = ['free' => ['ok', L('Δωρεάν', 'Free')], 'full' => ['ok', L('Μόνιμη άδεια', 'Licensed')], 'demo' => ['o', 'Demo'], 'locked' => ['bad', L('Κλειδωμένο', 'Locked')], 'expired' => ['bad', L('Έληξε', 'Expired')]][$st] ?? ['', $st];
+  $m = ['free' => ['ok', L('Δωρεάν', 'Free')], 'full' => ['ok', L('Μόνιμη άδεια', 'Licensed')], 'demo' => ['o', 'Demo'], 'locked' => ['bad', L('Κλειδωμένο', 'Locked')], 'pending' => ['o', L('Αναμονή έγκρισης', 'Waiting for approval')], 'expired' => ['bad', L('Έληξε', 'Expired')]][$st] ?? ['', $st];
   return '<span class="pill ' . $m[0] . '">' . h($m[1]) . '</span>' . ($exp && $st !== 'free' ? ' <small class="muted">' . h($x) . '</small>' : '');
 }
 function hw_form(array $r, string $back): string {
   $hw = (string)($r['hw'] ?? '');
+  if (($r['state'] ?? '') === 'pending')
+    return '<form method="post" class="licf" style="margin-top:6px">' . csrf() . '<input type="hidden" name="p" value="' . h($back) . '"><input type="hidden" name="id" value="' . h($r['id']) . '">'
+      . '<button class="btn sm pri" name="a" value="reg_approve">' . L('Έγκριση', 'Approve') . '</button> <button class="btn sm danger" name="a" value="reg_reject">' . L('Απόρριψη', 'Reject') . '</button></form>';
   return '<form method="post" class="licf" style="margin-top:6px">' . csrf() . '<input type="hidden" name="p" value="' . h($back) . '"><input type="hidden" name="a" value="hw_free"><input type="hidden" name="id" value="' . h($r['id']) . '">'
+    . ((int)($r['lic_major'] ?? 0) > 0 ? '<small class="muted">' . L('Άδεια για έκδοση ', 'Licence for version ') . (int)$r['lic_major'] . '.x · </small>' : '')
     . '<small class="muted">' . L('Υπολογιστής: ', 'Computer: ') . ($hw !== '' ? '<span class="mono">' . h(substr($hw, 0, 8)) . '</span>' . ((int)($r['hw_set'] ?? 0) ? ' · ' . h(dc_dt((int)$r['hw_set'])) : '') : L('δεν δηλώθηκε ακόμη', 'not reported yet')) . '</small> '
     . ($hw !== '' ? '<button class="btn sm">' . L('Ελευθέρωση υπολογιστή', 'Free the computer') . '</button>' : '') . '</form>';
 }
@@ -1358,6 +1374,8 @@ function activity_rows($rows) {
       case 'chat_delete': $txt = L('Διαγραφή συνομιλίας', 'Chat deleted'); break;
       case 'reinstall_id': $txt = '⚠ ' . L('Επανεγκατάσταση (ίδιο διακριτικό + email): ', 'Reinstall (same callsign + e-mail): ') . $who($d[0]) . ' ' . L('πήρε αυτόματα την άδεια της ', 'automatically took the licence of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>' . (!empty($d[4]) ? ' (' . h($d[4]) . ')' : ''); $c = 'o'; break;
       case 'clone': $txt = '⚠ ' . L('Άδεια σε ΑΛΛΟΝ υπολογιστή: ', 'Licence on ANOTHER computer: ') . $who($d[0]) . (!empty($d[2]) ? ' · ' . h($d[2]) : '') . (!empty($d[3]) ? ' · ' . h($d[3]) : ''); $c = 'bad'; break;
+      case 'reg_pending': $txt = '⏳ ' . L('Εγγραφή σε αναμονή έγκρισης: ', 'Registration waiting for approval: ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? '') . ' · <a href="?p=installs&q=' . h(dc_inst_no($d[0] ?? '')) . '">' . L('έγκριση', 'approve') . '</a>'; $c = 'o'; break;
+      case 'reg_approve': $txt = L('Εγγραφή εγκρίθηκε: ', 'Registration approved: ') . '<b>' . h($d[1] ?? '') . '</b> ' . h($d[2] ?? ''); $c = 'g'; break;
       case 'hw_free': $txt = L('Ελευθερώθηκε ο υπολογιστής της ', 'Computer freed for ') . '<b>' . h($d[1] ?? '') . '</b>'; $c = 'b'; break;
       case 'reinstall': $txt = L('Επανεγκατάσταση: ', 'Reinstalled: ') . $who($d[0]) . ' ' . L('πήρε την κατάσταση της ', 'took the state of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>'; $c = 'b'; break;
       case 'payment':   $txt = L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? ''); $c = 'g'; break;

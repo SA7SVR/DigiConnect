@@ -73,7 +73,7 @@ function dc_db(): PDO {
   ");
   // additive migration: presence columns (what the station reports with ping.php)
   $have = array_column($pdo->query('PRAGMA table_info(dc_installs)')->fetchAll(), 'name');
-  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT'] as $c => $t)
+  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT'] as $c => $t)
     if (!in_array($c, $have, true)) $pdo->exec("ALTER TABLE dc_installs ADD COLUMN $c $t");
   // messages to the users as in HAM Digi: Greek + English title and text, link, end date, to everyone or to one installation (target = installation id)
   $mc = array_column($pdo->query('PRAGMA table_info(dc_messages)')->fetchAll(), 'name');
@@ -138,13 +138,19 @@ function dc_lic_msg(array $in, string $base = ''): string {
 function dc_lic_set(string $id, string $st, int $exp, string $by, ?string $code = null): void {
   dc_q('UPDATE dc_installs SET state=?, demo_until=?, lic_set=?, lic_by=? WHERE id=?', [$st, $exp, time(), $by, $id]);
   if ($st !== 'locked') dc_q('UPDATE dc_installs SET enabled=1 WHERE id=?', [$id]);
-  if ($st === 'full') dc_q('UPDATE dc_installs SET lic_since=COALESCE(NULLIF(lic_since,0),?) WHERE id=?', [time(), $id]);
+  if ($st === 'full') {
+    dc_q('UPDATE dc_installs SET lic_since=COALESCE(NULLIF(lic_since,0),?) WHERE id=?', [time(), $id]);
+    $mj = dc_major((string)dc_scalar('SELECT version FROM dc_installs WHERE id=?', [$id]));       // a licence is for the version line it was activated on (when "per version" is on)
+    if ($mj > 0) dc_q('UPDATE dc_installs SET lic_major=? WHERE id=?', [$mj, $id]);
+  }
   if ($code !== null) dc_q('UPDATE dc_installs SET lic_code=? WHERE id=?', [$code, $id]);
   dc_event('licence', "$id|$st|" . ($exp ? gmdate('Y-m-d H:i', $exp) : '') . "|$by");
 }
 // effective licence of one installation row (applies the default policy the first time it asks): [state, exp]
+function dc_major(string $v): int { return (int)explode('.', trim($v))[0]; }
 function dc_lic_effective(array $in): array {
   $st = (string)($in['state'] ?? ''); $exp = (int)($in['demo_until'] ?? 0); $now = time();
+  if ($st === 'pending') return ['pending', 0, 'pending'];                                      // registration waits for the administrator's approval
   if ($st === '') {
     $S = dc_lic_settings(); $st = $S['mode'] === 'demo' ? 'demo' : ($S['mode'] === 'locked' ? 'locked' : 'free');
     $exp = $st === 'demo' ? dc_lic_add($now, $S['n'], $S['unit']) : 0;
@@ -161,6 +167,12 @@ function dc_state(array $in): array {
   if ((int)($in['enabled'] ?? 1) === 0 || ($in['state'] ?? '') === 'disabled')
     return ['locked', '', 'This installation is disabled. Contact SA7SVR.'];
   list($st, $exp, $was) = dc_lic_effective($in); $now = time();
+  if ($st === 'pending') return ['pending', '', "Η εγγραφή σου περιμένει έγκριση από τον διαχειριστή. Θα ενεργοποιηθεί σύντομα — δοκίμασε ξανά αργότερα.\nYour registration is waiting for approval by the administrator. It will be activated soon — try again later."];
+  if ($st === 'full' && dc_kv('lic_scope', 'all') === 'major') {                                // licence per major version (panel setting)
+    $pm = dc_major((string)($in['version'] ?? '')); $lm = (int)($in['lic_major'] ?? 0);
+    if ($lm === 0) { $lm = max(1, (int)dc_kv('lic_grandfather', '2')); if (!empty($in['id'])) dc_q('UPDATE dc_installs SET lic_major=? WHERE id=? AND COALESCE(lic_major,0)=0', [$lm, $in['id']]); }
+    if ($pm > 0 && $pm > $lm) return ['locked', '', dc_lic_msg($in, "Η άδειά σου ισχύει για την έκδοση $lm.x. Η έκδοση $pm.x χρειάζεται νέα άδεια.\nYour licence is for version $lm.x. Version $pm.x needs a new licence.")];
+  }
   if ($st === 'free' || $st === 'full') return ['full', '', ''];
   if ($st === 'locked') return ['locked', '', dc_lic_msg($in, trim((string)($in['note'] ?? '')) ?: 'This installation needs activation. Contact SA7SVR.')];
   if ($st === 'expired') return ['locked', '', dc_lic_msg($in, $was === 'full' ? 'Your licence has ended. Contact SA7SVR.' : 'Your demo period has ended. Contact SA7SVR to activate.')];
@@ -189,7 +201,7 @@ function dc_inst_no($id): string { $n = (int)(dc_one('SELECT rowid n FROM dc_ins
 function dc_no_filter(string $q): ?int { return preg_match('/^\s*(?:DC-?)?0*(\d{1,6})\s*$/i', $q, $m) ? (int)$m[1] : null; }
 
 // ---- e-mail + alerts (same as HAM Digi): this server sends no e-mail unless "mail_on" is switched on ----
-const DC_ALERTS = ['reinstall_id', 'clone', 'pay_unmatched', 'pay_refund', 'pay_auto', 'code_reuse'];
+const DC_ALERTS = ['reinstall_id', 'clone', 'reg_pending', 'pay_unmatched', 'pay_refund', 'pay_auto', 'code_reuse'];
 function dc_base_url(): string {
   $s = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') ? 'https' : 'http';
   $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
@@ -426,8 +438,8 @@ function dc_inherit_hw(string $id): ?string {
   if (!($st === '' || ($by === 'default' && $st !== 'full'))) return null;
   $p = dc_one("SELECT * FROM dc_installs WHERE hw=? AND id<>? AND COALESCE(state,'')<>'' ORDER BY CASE state WHEN 'full' THEN 0 ELSE 1 END, lic_set DESC LIMIT 1", [$r['hw'], $id]);
   if (!$p || ($st !== '' && $p['state'] !== 'full')) return null;
-  dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=?, owner=COALESCE(NULLIF(owner,\'\'),?), lic_code=?, lic_since=? WHERE id=?',
-    [$p['state'], $p['demo_until'], $p['enabled'], $p['note'], 'reinstall ' . dc_inst_no($p['id']), time(), $p['owner'], $p['lic_code'], $p['lic_since'], $id]);
+  dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=?, owner=COALESCE(NULLIF(owner,\'\'),?), lic_code=?, lic_since=?, lic_major=? WHERE id=?',
+    [$p['state'], $p['demo_until'], $p['enabled'], $p['note'], 'reinstall ' . dc_inst_no($p['id']), time(), $p['owner'], $p['lic_code'], $p['lic_since'], $p['lic_major'] ?? null, $id]);
   if ($p['state'] === 'full' && (string)$p['lic_code'] !== '') dc_q('UPDATE dc_codes SET last_install=? WHERE code=?', [$id, $p['lic_code']]);
   if ($p['state'] === 'full') {
     $who = trim(dc_inst_no($id) . ' ' . ($r['call'] ?? ''));

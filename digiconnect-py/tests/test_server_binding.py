@@ -102,3 +102,42 @@ def test_key_survives_deleting_the_folder_copy(srv):
     (srv.root / "license-key.php").unlink()                                          # e.g. the folder was replaced by an update
     a = call(srv, "manifest.php", id="k1", v="2.3.0", hw=HW1)
     assert sigverify.verify(srv.pub, a["payload"].encode(), a["sig"])
+
+
+def test_registration_approval_is_off_by_default_and_works_when_on(srv):
+    assert reg(srv, "a1", HW1)["state"] == "demo"                                       # default: nothing waits
+    srv.sql("INSERT INTO dc_kv(k,v) VALUES('reg_approval','1')")
+    r = reg(srv, "a2", HW2, mail="new@example.org")
+    assert r["state"] == "pending" and "approval" in r["msg"] and sigverify.verify(srv.pub, r["payload"].encode(), r["sig"])
+    assert call(srv, "manifest.php", id="a2", hw=HW2)["state"] == "pending"
+    a = Admin(srv.base)
+    assert "reg_approve" in a.page("installs") and "reg_pending" in [e["kind"] for e in srv.sql("SELECT kind FROM dc_events")]
+    assert srv.sql("SELECT state FROM dc_installs WHERE id='a1'")[0]["state"] == "demo"      # the one registered before is not touched
+    a.post("installs", "reg_approve", id="a2")
+    assert call(srv, "manifest.php", id="a2", hw=HW2)["state"] == "demo"                       # approved: the default demo starts now
+    r3 = reg(srv, "a3", "c" * 32, mail="third@example.org"); assert r3["state"] == "pending"
+    a.post("installs", "reg_reject", id="a3")
+    assert call(srv, "manifest.php", id="a3", hw="c" * 32)["state"] == "locked"
+
+
+def test_reinstall_on_the_same_computer_does_not_wait_for_approval(srv):
+    reg(srv, "old", HW1)
+    srv.sql("UPDATE dc_installs SET state='full', demo_until=0, lic_by='admin' WHERE id='old'")
+    srv.sql("INSERT INTO dc_kv(k,v) VALUES('reg_approval','1')")
+    assert reg(srv, "new", HW1)["state"] == "full"
+
+
+def test_licence_per_major_version(srv):
+    a = Admin(srv.base)
+    call(srv, "manifest.php", id="v1", v="2.3.0", hw=HW1)
+    srv.sql("UPDATE dc_installs SET state='full', demo_until=0, lic_by='admin' WHERE id='v1'")
+    assert call(srv, "manifest.php", id="v1", v="3.0.0", hw=HW1)["state"] == "full"            # off by default: a licence covers every version
+    srv.sql("INSERT INTO dc_kv(k,v) VALUES('lic_scope','major'),('lic_grandfather','2')")
+    assert call(srv, "manifest.php", id="v1", v="2.9.0", hw=HW1)["state"] == "full"            # existing licence = version 2.x
+    r = call(srv, "manifest.php", id="v1", v="3.0.0", hw=HW1)
+    assert r["state"] == "locked" and "3.x" in r["msg"] and srv.sql("SELECT lic_major FROM dc_installs WHERE id='v1'")[0]["lic_major"] == 2
+    a.post("installs", "lic_one", id="v1", do="full")                                           # a new licence for 3.x (code / payment / panel)
+    assert srv.sql("SELECT lic_major FROM dc_installs WHERE id='v1'")[0]["lic_major"] == 3
+    assert call(srv, "manifest.php", id="v1", v="3.1.0", hw=HW1)["state"] == "full"
+    srv.sql("UPDATE dc_installs SET state='free', lic_major=2 WHERE id='v1'")
+    assert call(srv, "manifest.php", id="v1", v="9.0.0", hw=HW1)["state"] == "full"            # a free (no limit) installation is never limited

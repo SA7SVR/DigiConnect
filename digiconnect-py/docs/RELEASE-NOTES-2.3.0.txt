@@ -15,6 +15,9 @@ DigiConnect 2.3.0 — Release notes / Σημειώσεις έκδοσης / Vers
   απαντήσεις και αποστολή μηνύματος προς τον ιδιοκτήτη. Στο παράθυρο «δεν είναι ενεργό» υπάρχουν επίσης «Κωδικός
   ενεργοποίησης…» και «Επικοινωνία με τον ιδιοκτήτη…».
 • Δωρεά / αγορά: το κουμπί ακολουθεί τη ρύθμιση του panel (κρύβεται, «Δωρεά» ή «Αγορά άδειας»).
+• Εγγραφές με έγκριση (προαιρετικό, εκτός από προεπιλογή): ο νέος χρήστης περιμένει μέχρι να τον εγκρίνεις από το panel και παίρνεις ειδοποίηση.
+• Άδειες ανά κύρια έκδοση (προαιρετικό, εκτός από προεπιλογή): η μόνιμη άδεια ισχύει για την έκδοση που ενεργοποιήθηκε (π.χ. 2.x), η 3.0 ζητά νέα· οι υπάρχουσες μένουν για την τρέχουσα.
+• Κάτω «κάρτα άδειας»: λογότυπο, έκδοση, νούμερο εγκατάστασης, άδεια, διακριτικό, υπολογιστής.
 • Server: προειδοποίηση στο panel αν λείπει το κλειδί υπογραφής· εφεδρικό αντίγραφο του κλειδιού στο data/.
 • EchoLink: υπό κατασκευή — έρχεται προσεχώς.
 
@@ -30,6 +33,9 @@ ENGLISH
 • "Licence" button in the top bar: status, activation code, messages from the owner (with an unread counter), replies and
   writing to the owner. The "not active" window also offers "Activation code…" and "Contact the owner…".
 • Donate / buy: the button follows the panel setting (hidden, "Donate" or "Buy a licence").
+• Registrations with approval (optional, off by default): a new user waits until you approve in the panel; you get an alert.
+• Licences per major version (optional, off by default): a permanent licence is for the version it was activated on (e.g. 2.x), 3.0 needs a new one; existing licences stay valid for the current one.
+• Bottom licence card: logo, version, installation number, licence, callsign, computer.
 • Server: panel warning when the signing key is missing; a safety copy of the key is kept in data/.
 • EchoLink: under construction - coming soon.
 
@@ -45,5 +51,8 @@ SVENSKA
 • Knappen «Licens» i översta raden: status, aktiveringskod, meddelanden från ägaren (med räknare för olästa), svar och att skriva
   till ägaren. Fönstret «inte aktivt» har också «Aktiveringskod…» och «Kontakta ägaren…».
 • Donera / köp: knappen följer inställningen i panelen (dold, «Donera» eller «Köp licens»).
+• Registrering med godkännande (valfritt, av som standard): en ny användare väntar tills du godkänner i panelen; du får en avisering.
+• Licens per huvudversion (valfritt, av som standard): en permanent licens gäller för den version den aktiverades på (t.ex. 2.x), 3.0 kräver ny; befintliga gäller för nuvarande.
+• Licenskort längst ner: logotyp, version, installationsnummer, licens, anropssignal, dator.
 • Server: varning i panelen om signeringsnyckeln saknas; en säkerhetskopia av nyckeln sparas i data/.
 • EchoLink: under uppbyggnad — kommer snart.

@@ -182,3 +182,11 @@ def test_panel_settings_reach_the_program(srv):
     l = lic(srv); l.register(PERSON)
     srv.sql("INSERT INTO dc_kv(k,v) VALUES('offline','grace'),('offline_days','3'),('donate_url','https://example.org/d')")
     l.check(); c = l.cache(); assert (c["offline"], c["offline_days"], c["donate"]) == ("grace", 3, "https://example.org/d")
+
+
+def test_registration_waiting_for_approval_blocks_with_the_servers_message_then_approval_lets_in(srv):
+    srv.sql("INSERT INTO dc_kv(k,v) VALUES('reg_approval','1')")
+    l = lic(srv); v = l.verdict(l.register(PERSON))
+    assert v.kind == "blocked" and v.state == "pending" and "approval" in v.msg
+    srv.sql("UPDATE dc_installs SET state='', demo_until=0, lic_by='' WHERE id='inst-1'")          # what the panel's Approve button does
+    assert l.verdict(l.check()).kind == "ok"
