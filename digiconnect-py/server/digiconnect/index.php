@@ -8,6 +8,7 @@ $LANG = $_SESSION['dc_wlang'] ?? (preg_match('/^el/i',$al)?'el':(preg_match('/^s
 $LANGS = ['el'=>'Ελληνικά','en'=>'English','sv'=>'Svenska','it'=>'Italiano'];
 function T($el,$en,$sv=null,$it=null){ global $LANG; return $LANG==='en'?$en:($LANG==='sv'?($sv??$en):($LANG==='it'?($it??$en):$el)); }
 function h($s){ return dc_h($s); }
+dc_track_visit('home', $LANG);          // visit statistics (panel › Statistics); robots and the owner's own IP are left out
 
 // ---- download registration ----
 $dlmsg=''; $dlok=false;
@@ -92,6 +93,8 @@ footer{border-top:1px solid var(--line);color:var(--muted);padding:26px 0;text-a
     <a class="mi" href="#shots"><?= T('Εικόνες','Screens','Bilder','Immagini') ?></a>
     <a class="mi" href="#licence"><?= T('Demo & Donate','Demo & Donate','Demo & Donate','Demo & Donate') ?></a>
     <a class="mi" href="#download"><?= T('Λήψη','Download','Hämta','Scarica') ?></a>
+    <a class="mi" href="#contact"><?= T('Επικοινωνία','Contact','Kontakt','Contatti') ?></a>
+    <a class="mi cta" href="talk.php?lang=<?= $LANG ?>">💬 <?= T('Ζωντανή συνομιλία','Live chat','Livechatt','Chat dal vivo') ?></a>
     <a class="mi" href="../hamdigi/?lang=<?= $LANG ?>">HAM Digi</a>
   </nav>
   <button class="hc" id="themebtn" type="button">🌙</button>
@@ -167,6 +170,41 @@ footer{border-top:1px solid var(--line);color:var(--muted);padding:26px 0;text-a
     </div>
   </section>
 </div>
+
+<section id="contact"><div class="wrap" style="max-width:720px">
+  <h2><?= T('Επικοινωνία με τον διαχειριστή','Contact the administrator','Kontakta administratören','Contatta l’amministratore') ?></h2>
+  <p class="sub"><?= T('Έχασες το installer, δεν ενεργοποιείται η άδεια ή βρήκες πρόβλημα; Στείλε μήνυμα απευθείας στον SA7SVR.','Lost the installer, a licence will not activate, or found a problem? Send a message straight to SA7SVR.','Förlorat installationsfilen, licensen aktiveras inte eller hittat ett fel? Skicka ett meddelande direkt till SA7SVR.','Hai perso l’installer, la licenza non si attiva o hai trovato un problema? Scrivi direttamente a SA7SVR.') ?></p>
+  <p><a class="btn" href="talk.php?lang=<?= $LANG ?>">💬 <?= T('Ζωντανή συνομιλία — παίρνεις απάντηση εδώ, χωρίς email','Live chat — get your reply right here, no e-mail','Livechatt — få svar här, ingen e-post','Chat dal vivo — la risposta arriva qui, senza e-mail') ?></a></p>
+  <p class="sub"><?= T('Ή συμπλήρωσε τη φόρμα:','Or fill in the form:','Eller fyll i formuläret:','Oppure compila il modulo:') ?></p>
+  <form id="ctf" class="ctf" onsubmit="return false">
+    <div class="ctrow">
+      <label><?= T('Θέμα','Topic','Ämne','Argomento') ?>
+        <select name="topic"><option value=""><?= T('— Επίλεξε —','— Choose —','— Välj —','— Scegli —') ?></option>
+          <option value="reinstall"><?= T('Επανεγκατάσταση / χάθηκε το installer','Reinstall / lost installer','Ominstallation / förlorad installerare','Reinstallazione / installer perso') ?></option>
+          <option value="activation"><?= T('Ενεργοποίηση άδειας','Licence activation','Licensaktivering','Attivazione licenza') ?></option>
+          <option value="bug"><?= T('Πρόβλημα / σφάλμα','Problem / bug','Problem / fel','Problema / errore') ?></option>
+          <option value="other"><?= T('Άλλο','Other','Annat','Altro') ?></option></select></label>
+      <label><?= T('Διακριτικό','Callsign','Anropssignal','Nominativo') ?><input name="call" style="text-transform:uppercase" maxlength="16"></label>
+      <label>Email<input name="email" type="email" maxlength="120" placeholder="you@example.com"></label>
+    </div>
+    <label><?= T('Μήνυμα','Message','Meddelande','Messaggio') ?><textarea name="body" rows="5" maxlength="4000" required></textarea></label>
+    <div class="ctrow2"><button class="btn pri" id="ctsend" type="submit"><?= T('Αποστολή','Send','Skicka','Invia') ?></button><span id="ctmsg" class="sub"></span></div>
+  </form>
+</div></section>
+<style>
+.ctf{display:flex;flex-direction:column;gap:12px;margin-top:14px}.ctf label{display:flex;flex-direction:column;gap:5px;font-size:13.5px;color:var(--text2)}
+.ctf input,.ctf select,.ctf textarea{min-width:0;width:100%;box-sizing:border-box;font:inherit;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;background:var(--card);color:var(--text)}
+.ctrow{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.4fr);gap:12px}.ctrow2{display:flex;align-items:center;gap:12px}
+@media(max-width:640px){.ctrow{grid-template-columns:1fr}}
+</style>
+<script>
+(function(){var f=document.getElementById('ctf');if(!f)return;var b=document.getElementById('ctsend'),m=document.getElementById('ctmsg');
+f.addEventListener('submit',function(){var body=f.body.value.trim();if(!body){m.textContent='<?= T('Γράψε μήνυμα','Write a message','Skriv ett meddelande','Scrivi un messaggio') ?>';return;}
+b.disabled=true;m.textContent='<?= T('Αποστολή…','Sending…','Skickar…','Invio…') ?>';
+fetch('inbox.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({src:'web',lang:'<?= $LANG ?>',topic:f.topic.value,call:f.call.value.trim(),email:f.email.value.trim(),body:body,subject:(f.topic.options[f.topic.selectedIndex]||{}).text||'Message'})})
+.then(function(r){return r.json();}).then(function(j){b.disabled=false;if(j&&j.ok){f.reset();m.textContent='<?= T('✓ Στάλθηκε — θα απαντήσουμε σύντομα.','✓ Sent — we will reply soon.','✓ Skickat — vi svarar snart.','✓ Inviato — risponderemo presto.') ?>';}else m.textContent=(j&&j.error==='too_many')?'<?= T('Πολλά μηνύματα — δοκίμασε αργότερα.','Too many messages — try later.','För många meddelanden — försök senare.','Troppi messaggi — riprova più tardi.') ?>':'<?= T('Δεν στάλθηκε.','Not sent.','Skickades inte.','Non inviato.') ?>';})
+.catch(function(){b.disabled=false;m.textContent='<?= T('Σφάλμα σύνδεσης.','Connection error.','Anslutningsfel.','Errore di connessione.') ?>';});});})();
+</script>
 
 <footer><div class="wrap">DigiConnect · © 2026 SA7SVR · HELLAS Zone Net · <a href="../hamdigi/?lang=<?= $LANG ?>">HAM Digi</a> · <a href="privacy.php?lang=<?= $LANG ?>"><?= T('Απόρρητο','Privacy','Integritet','Privacy') ?></a></div></footer>
 <script>

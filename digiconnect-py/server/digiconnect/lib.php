@@ -58,6 +58,15 @@ function dc_db(): PDO {
     CREATE TABLE IF NOT EXISTS dc_events (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, kind TEXT, detail TEXT);
     CREATE TABLE IF NOT EXISTS dc_kv (k TEXT PRIMARY KEY, v TEXT);
     CREATE TABLE IF NOT EXISTS dc_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, txn TEXT UNIQUE, status TEXT, amount REAL, currency TEXT, payer_email TEXT, payer_name TEXT, memo TEXT, custom TEXT, install TEXT, code TEXT, matched_by TEXT, note TEXT, raw TEXT);
+    CREATE TABLE IF NOT EXISTS dc_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, install TEXT, call TEXT, email TEXT, name TEXT, os TEXT, version TEXT, topic TEXT, subject TEXT, body TEXT, ip TEXT, lang TEXT, src TEXT, status TEXT DEFAULT 'new', reply TEXT, reply_t INT, read_t INT);
+    CREATE INDEX IF NOT EXISTS i_dc_inbox_t ON dc_inbox(t);
+    CREATE TABLE IF NOT EXISTS dc_visits (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, ip TEXT, page TEXT, lang TEXT, ua TEXT, ref TEXT, bot INT DEFAULT 0, br TEXT, os TEXT, dev TEXT);
+    CREATE INDEX IF NOT EXISTS i_dc_vis_t ON dc_visits(t);
+    CREATE INDEX IF NOT EXISTS i_dc_vis_ip ON dc_visits(ip);
+    CREATE TABLE IF NOT EXISTS dc_chat (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT, t INT, who TEXT, body TEXT, call TEXT, email TEXT, name TEXT, ip TEXT, read_owner INT DEFAULT 0, read_user INT DEFAULT 0, img TEXT DEFAULT '', del INT DEFAULT 0);
+    CREATE INDEX IF NOT EXISTS i_dc_chat_token ON dc_chat(token, t);
+    CREATE TABLE IF NOT EXISTS dc_daily (day TEXT, id TEXT, version TEXT, os TEXT, PRIMARY KEY(day, id));
+    CREATE TABLE IF NOT EXISTS dc_chat_th (token TEXT PRIMARY KEY, arch INT DEFAULT 0, pin INT DEFAULT 0, note TEXT DEFAULT '', typ_u INT DEFAULT 0, typ_o INT DEFAULT 0, seen_u INT DEFAULT 0);
     CREATE INDEX IF NOT EXISTS i_dc_pay_t ON dc_payments(t);
     CREATE INDEX IF NOT EXISTS i_dc_inst_last ON dc_installs(last_seen);
     CREATE INDEX IF NOT EXISTS i_dc_inst_call ON dc_installs(call);
@@ -180,7 +189,7 @@ function dc_inst_no($id): string { $n = (int)(dc_one('SELECT rowid n FROM dc_ins
 function dc_no_filter(string $q): ?int { return preg_match('/^\s*(?:DC-?)?0*(\d{1,6})\s*$/i', $q, $m) ? (int)$m[1] : null; }
 
 // ---- e-mail + alerts (same as HAM Digi): this server sends no e-mail unless "mail_on" is switched on ----
-const DC_ALERTS = ['pay_unmatched', 'pay_refund', 'pay_auto', 'code_reuse'];
+const DC_ALERTS = ['reinstall_id', 'pay_unmatched', 'pay_refund', 'pay_auto', 'code_reuse'];
 function dc_base_url(): string {
   $s = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') ? 'https' : 'http';
   $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
@@ -303,4 +312,84 @@ function dc_messages_for(string $id, int $firstSeen): array {
     $out[] = ['id' => 'm' . $m['id'], 't' => (int)$m['t'], 'title_el' => (string)($m['title_el'] ?: $m['title']), 'title_en' => (string)($m['title_en'] ?: $m['title']), 'el' => (string)$el, 'en' => (string)$en, 'link' => (string)($m['link'] ?? '')];
   }
   return $out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Helpers shared by the new pages (same as HAM Digi): scalar query, upsert, who-is-who, site statistics, live chat, reinstall
+// ---------------------------------------------------------------------------------------------
+// one row per installation and day it was seen (Demo page: how many days a demo user really used the program)
+function dc_daily_mark(string $id, string $v, string $os): void { dc_upsert('dc_daily', ['day' => gmdate('Y-m-d'), 'id' => $id], ['version' => $v, 'os' => $os]); }
+function dc_scalar(string $sql, array $a = []) { return dc_q($sql, $a)->fetchColumn(); }
+function dc_upsert(string $table, array $keys, array $vals): void {
+  $cols = array_merge(array_keys($keys), array_keys($vals));
+  dc_q('INSERT OR IGNORE INTO ' . $table . '(' . implode(',', $cols) . ') VALUES(' . implode(',', array_fill(0, count($cols), '?')) . ')', array_merge(array_values($keys), array_values($vals)));
+  if ($vals) { $set = []; foreach ($vals as $k => $v) $set[] = "$k=?"; $w = []; foreach ($keys as $k => $v) $w[] = "$k=?";
+    dc_q('UPDATE ' . $table . ' SET ' . implode(',', $set) . ' WHERE ' . implode(' AND ', $w), array_merge(array_values($vals), array_values($keys))); }
+}
+// the latest installation that matches a callsign or an e-mail address, or false
+function dc_inst_for($call, $email) {
+  if (!$call && !$email) return false;
+  return dc_q('SELECT id,version FROM dc_installs WHERE (("call"=? AND "call"<>\'\') OR (lower(mail)=? AND mail<>\'\')) ORDER BY last_seen DESC LIMIT 1', [(string)$call, strtolower((string)$email)])->fetch();
+}
+
+// ---- site visits (statistics page of the panel): robots, browser, system and device type from the visitor's own browser ----
+function dc_ua_info(string $ua): array {
+  $bot = (int)preg_match('/bot|crawl|spider|slurp|curl|wget|python|java\/|httpclient|libwww|scrapy|facebookexternalhit|headless|preview|monitor|uptime|checker|fetch|pingdom|lighthouse|go-http|okhttp/i', $ua);
+  $br = preg_match('/Edg(e|A|iOS)?\//', $ua) ? 'Edge' : (preg_match('/OPR\/|Opera/', $ua) ? 'Opera' : (preg_match('/Firefox|FxiOS/', $ua) ? 'Firefox' : (preg_match('/Chrome|CriOS|Chromium/', $ua) ? 'Chrome' : (preg_match('/Safari/', $ua) ? 'Safari' : 'Other'))));
+  $os = preg_match('/Windows/', $ua) ? 'Windows' : (preg_match('/Android/', $ua) ? 'Android' : (preg_match('/iPhone|iPad|iPod/', $ua) ? 'iOS' : (preg_match('/Mac OS X|Macintosh/', $ua) ? 'macOS' : (preg_match('/Linux|X11/', $ua) ? 'Linux' : 'Other'))));
+  $dev = preg_match('/iPad|Tablet/', $ua) ? 'Tablet' : (preg_match('/Mobi|iPhone|Android/', $ua) ? 'Mobile' : 'Desktop');
+  return [$bot, $br, $os, $dev];
+}
+// once per page view of the public site (home, chat). Never breaks the page if anything fails.
+function dc_track_visit(string $page, string $lang = ''): void {
+  try {
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') return;
+    if (stripos((string)($_SERVER['HTTP_PURPOSE'] ?? $_SERVER['HTTP_SEC_PURPOSE'] ?? ''), 'prefetch') !== false) return;
+    $ip = dc_ip(); if ($ip === '') return;
+    $ign = array_filter(explode(',', (string)dc_kv('stats_ignore', ''))); if (in_array($ip, $ign, true)) return;      // the owner's own visits
+    if ((int)dc_scalar('SELECT COUNT(*) FROM dc_visits WHERE ip=? AND page=? AND t>?', [$ip, $page, time() - 30])) return; // a reload within 30 s counts once
+    $ua = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 250); list($bot, $br, $os, $dev) = dc_ua_info($ua);
+    $rh = strtolower((string)parse_url((string)($_SERVER['HTTP_REFERER'] ?? ''), PHP_URL_HOST)); $me = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($rh === $me || preg_replace('/^www\./', '', $rh) === preg_replace('/^www\./', '', $me)) $rh = '';              // moving around inside our own site is not a referrer
+    dc_q('INSERT INTO dc_visits(t,ip,page,lang,ua,ref,bot,br,os,dev) VALUES(?,?,?,?,?,?,?,?,?,?)', [time(), $ip, substr($page, 0, 20), substr($lang, 0, 4), $ua, substr($rh, 0, 80), $bot, $br, $os, $dev]);
+  } catch (Throwable $e) { /* statistics must never stop the site */ }
+}
+
+// ---- live chat: a visitor's private thread (talk.php) and the owner's messenger (panel). Pictures live in data/chat/ ----
+const DC_CHAT_MAX_IMG = 5242880; // 5 MB per picture
+function dc_chat_dir(): string { $d = dirname((string)dc_cfg()['db']) . '/chat'; if (!is_dir($d)) @mkdir($d, 0750, true); return $d; }
+// validates an uploaded picture ($_FILES[$key]) and stores it under a random name: file name, '' if none was sent, throws on a bad one
+function dc_chat_save_image(string $key): string {
+  if (empty($_FILES[$key]) || ($_FILES[$key]['error'] ?? 0) === UPLOAD_ERR_NO_FILE || ($_FILES[$key]['name'] ?? '') === '') return '';
+  $f = $_FILES[$key];
+  if ($f['error'] !== UPLOAD_ERR_OK) throw new Exception($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE ? 'too_big' : 'upload');
+  if ($f['size'] > DC_CHAT_MAX_IMG) throw new Exception('too_big');
+  if (!is_uploaded_file($f['tmp_name'])) throw new Exception('upload');
+  $info = @getimagesize($f['tmp_name']);
+  $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif', 'image/webp' => 'webp'][$info['mime'] ?? ''] ?? '';
+  if (!$info || $ext === '' || $info[0] < 1 || $info[1] < 1 || $info[0] > 12000 || $info[1] > 12000) throw new Exception('type');
+  $name = bin2hex(random_bytes(12)) . '.' . $ext;
+  if (!@move_uploaded_file($f['tmp_name'], dc_chat_dir() . '/' . $name)) throw new Exception('upload');
+  return $name;
+}
+// sends the picture of message $id; $tok = the visitor's token (visitor side) or null (the owner, already authenticated)
+function dc_chat_serve_image(int $id, ?string $tok): void {
+  $r = dc_one('SELECT token,img,del FROM dc_chat WHERE id=?', [$id]);
+  $fn = $r ? basename((string)$r['img']) : '';
+  if (!$r || $fn === '' || (int)$r['del'] || ($tok !== null && !hash_equals((string)$r['token'], (string)$tok)) || !is_file(dc_chat_dir() . '/' . $fn)) { http_response_code(404); exit; }
+  $mime = ['jpg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'][pathinfo($fn, PATHINFO_EXTENSION)] ?? 'application/octet-stream';
+  header('Content-Type: ' . $mime); header('Content-Length: ' . filesize(dc_chat_dir() . '/' . $fn));
+  header('X-Content-Type-Options: nosniff'); header("Content-Security-Policy: default-src 'none'; sandbox"); header('Cache-Control: private, max-age=86400');
+  readfile(dc_chat_dir() . '/' . $fn); exit;
+}
+function dc_chat_img_error(string $code, string $lang = 'en'): string {
+  $m = ['too_big' => ['Η φωτογραφία είναι πολύ μεγάλη (μέχρι 5 MB).', 'The picture is too big (max 5 MB).', 'Bilden är för stor (max 5 MB).'], 'type' => ['Μόνο εικόνες JPG, PNG, GIF ή WebP.', 'Only JPG, PNG, GIF or WebP pictures.', 'Endast JPG-, PNG-, GIF- eller WebP-bilder.'], 'upload' => ['Το ανέβασμα απέτυχε.', 'The upload failed.', 'Uppladdningen misslyckades.']][$code] ?? ['Σφάλμα.', 'Error.', 'Fel.'];
+  return $lang === 'el' ? $m[0] : ($lang === 'sv' ? $m[2] : $m[1]);
+}
+function dc_chat_row_out(array $r): array {
+  return ['id' => (int)$r['id'], 't' => (int)$r['t'], 'who' => $r['who'], 'body' => (int)($r['del'] ?? 0) ? '' : (string)$r['body'], 'img' => ((string)($r['img'] ?? '') !== '' && !(int)($r['del'] ?? 0)) ? 1 : 0, 'del' => (int)($r['del'] ?? 0), 'rd' => (int)($r['who'] === 'owner' ? $r['read_user'] : $r['read_owner'])];
+}
+function dc_chat_json(array $a): void { header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store'); echo json_encode($a, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
+function dc_chat_purge_old(): void { // pictures of deleted messages are removed; nothing else is ever deleted automatically
+  foreach (dc_q("SELECT id,img FROM dc_chat WHERE del=1 AND img<>''")->fetchAll() as $r) { @unlink(dc_chat_dir() . '/' . basename($r['img'])); dc_q("UPDATE dc_chat SET img='' WHERE id=?", [$r['id']]); }
 }

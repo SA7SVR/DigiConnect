@@ -49,6 +49,73 @@ function flash($k, $m) { global $flash; $flash = [$k, $m]; }
 $CSRF = dc_csrf();
 function csrf() { global $CSRF; return '<input type="hidden" name="csrf" value="' . $CSRF . '">'; }
 
+/* ---- live-chat API for the Chats page (JSON; admin only) ---- */
+if ($auth && (isset($_GET['chatapi']) || isset($_GET['chatimg']))) {
+  if (isset($_GET['chatimg'])) dc_chat_serve_image((int)$_GET['chatimg'], null);
+  $ca = (string)$_GET['chatapi']; $post = $_SERVER['REQUEST_METHOD'] === 'POST';
+  if ($post && !hash_equals($CSRF, (string)($_POST['csrf'] ?? ''))) dc_chat_json(['ok' => 0, 'err' => L('Η σελίδα ήταν παλιά — φόρτωσέ την ξανά.', 'The page was out of date — reload it.')]);
+  $tk = preg_replace('/[^a-f0-9]/', '', (string)($_POST['token'] ?? $_GET['t'] ?? '')); if (strlen($tk) !== 32) $tk = '';
+  if ((int)dc_kv('chat_owner_seen', 0) < time() - 5) dc_kv_set('chat_owner_seen', time());   // "SA7SVR is online" for the visitors
+  try {
+    if ($ca === 'threads') {
+      $arch = (int)($_GET['arch'] ?? 0) ? 1 : 0; $needle = mb_strtolower(trim((string)($_GET['q'] ?? '')));
+      $rows = dc_q("SELECT c.token, MAX(c.t) lt, SUM(c.who='user' AND c.read_owner=0 AND c.del=0) unread, COUNT(*) n,
+          (SELECT CASE WHEN c2.del=1 THEN '' WHEN c2.body='' AND c2.img<>'' THEN '\u{1F4F7}' ELSE c2.body END FROM dc_chat c2 WHERE c2.token=c.token ORDER BY c2.id DESC LIMIT 1) last,
+          (SELECT c2.who FROM dc_chat c2 WHERE c2.token=c.token ORDER BY c2.id DESC LIMIT 1) lastwho,
+          (SELECT \"call\" FROM dc_chat c3 WHERE c3.token=c.token AND \"call\"<>'' ORDER BY c3.id ASC LIMIT 1) callsign,
+          (SELECT name FROM dc_chat c4 WHERE c4.token=c.token AND name<>'' ORDER BY c4.id ASC LIMIT 1) name,
+          (SELECT email FROM dc_chat c5 WHERE c5.token=c.token AND email<>'' ORDER BY c5.id ASC LIMIT 1) email,
+          COALESCE(h.arch,0) arch, COALESCE(h.pin,0) pin, COALESCE(h.seen_u,0) seen_u, COALESCE(h.typ_u,0) typ_u
+        FROM dc_chat c LEFT JOIN dc_chat_th h ON h.token=c.token GROUP BY c.token ORDER BY COALESCE(h.pin,0) DESC, lt DESC LIMIT 400")->fetchAll();
+      $out = []; $unreadAll = 0; $archN = 0; $now = time();
+      foreach ($rows as $r) {
+        if ((int)$r['arch']) { $archN++; if ((int)$r['unread'] > 0) { dc_q('UPDATE dc_chat_th SET arch=0 WHERE token=?', [$r['token']]); $r['arch'] = 0; $archN--; } }   // a new message brings a chat back from the archive
+        $unreadAll += (int)$r['unread'];
+        if ((int)$r['arch'] !== $arch) continue;
+        $hay = mb_strtolower($r['name'] . ' ' . $r['callsign'] . ' ' . $r['email'] . ' ' . $r['last']);
+        if ($needle !== '' && mb_strpos($hay, $needle) === false) continue;
+        $out[] = ['token' => $r['token'], 'name' => (string)$r['name'], 'call' => (string)$r['callsign'], 'email' => (string)$r['email'], 'last' => mb_substr((string)$r['last'], 0, 90), 'lastwho' => $r['lastwho'], 'lt' => (int)$r['lt'], 'unread' => (int)$r['unread'], 'pin' => (int)$r['pin'], 'on' => $r['seen_u'] > $now - 15 ? 1 : 0, 'typ' => $r['typ_u'] > $now - 4 ? 1 : 0];
+      }
+      dc_chat_json(['ok' => 1, 'threads' => $out, 'unread' => $unreadAll, 'archived' => $archN, 'now' => $now]);
+    }
+    if ($ca === 'msgs') {
+      if (!$tk) dc_chat_json(['ok' => 0]);
+      $after = (int)($_GET['after'] ?? 0); $now = time();
+      $msgs = []; foreach (dc_q('SELECT * FROM dc_chat WHERE token=? AND id>? ORDER BY id ASC LIMIT 300', [$tk, $after]) as $r) $msgs[] = dc_chat_row_out($r);
+      $upd = []; foreach (dc_q("SELECT * FROM dc_chat WHERE token=? AND id<=? AND ((who='owner' AND read_user=1) OR del=1) ORDER BY id DESC LIMIT 60", [$tk, $after]) as $r) $upd[] = dc_chat_row_out($r);
+      dc_q("UPDATE dc_chat SET read_owner=1 WHERE token=? AND who='user' AND read_owner=0", [$tk]);
+      $th = dc_q('SELECT * FROM dc_chat_th WHERE token=?', [$tk])->fetch() ?: [];
+      $who = dc_q("SELECT \"call\",email,name FROM dc_chat WHERE token=? AND who='user' AND (\"call\"<>'' OR name<>'' OR email<>'') ORDER BY id ASC LIMIT 1", [$tk])->fetch() ?: [];
+      $first = (int)dc_scalar('SELECT MIN(t) FROM dc_chat WHERE token=?', [$tk]);
+      $inst = $who ? dc_inst_for($who['call'] ?? '', $who['email'] ?? '') : false;
+      dc_chat_json(['ok' => 1, 'msgs' => $msgs, 'upd' => $upd, 'on' => (int)($th['seen_u'] ?? 0) > $now - 15 ? 1 : 0, 'typ' => (int)($th['typ_u'] ?? 0) > $now - 4 ? 1 : 0, 'arch' => (int)($th['arch'] ?? 0), 'pin' => (int)($th['pin'] ?? 0), 'note' => (string)($th['note'] ?? ''),
+        'name' => (string)($who['name'] ?? ''), 'call' => (string)($who['call'] ?? ''), 'email' => (string)($who['email'] ?? ''), 'first' => $first, 'inst' => $inst ? $inst['id'] : '', 'now' => $now]);
+    }
+    if (!$post) dc_chat_json(['ok' => 0]);
+    if (!$tk) dc_chat_json(['ok' => 0]);
+    if ($ca === 'send') {
+      $body = trim((string)($_POST['body'] ?? '')); if (function_exists('mb_substr')) $body = mb_substr($body, 0, 4000);
+      try { $img = dc_chat_save_image('image'); } catch (Exception $e) { dc_chat_json(['ok' => 0, 'err' => dc_chat_img_error($e->getMessage(), $LANG)]); }
+      if ($body === '' && $img === '') dc_chat_json(['ok' => 0]);
+      dc_q("INSERT INTO dc_chat(token,t,who,body,img,read_owner,read_user) VALUES(?,?,'owner',?,?,1,0)", [$tk, time(), $body, $img]);
+      $id = (int)dc_db()->lastInsertId(); dc_q("UPDATE dc_chat SET read_owner=1 WHERE token=? AND who='user'", [$tk]); dc_q('UPDATE dc_chat_th SET typ_o=0 WHERE token=?', [$tk]);
+      dc_event('chat_reply', $tk . '|' . mb_substr($body !== '' ? $body : '[photo]', 0, 60));
+      dc_chat_json(['ok' => 1, 'msg' => dc_chat_row_out(dc_q('SELECT * FROM dc_chat WHERE id=?', [$id])->fetch())]);
+    }
+    if ($ca === 'typing') { dc_upsert('dc_chat_th', ['token' => $tk], ['typ_o' => time()]); dc_chat_json(['ok' => 1]); }
+    if ($ca === 'flag') { // archive / pin
+      $k = ($_POST['k'] ?? '') === 'pin' ? 'pin' : 'arch'; dc_upsert('dc_chat_th', ['token' => $tk], [$k => (int)($_POST['v'] ?? 0) ? 1 : 0]); dc_chat_json(['ok' => 1]);
+    }
+    if ($ca === 'note') { dc_upsert('dc_chat_th', ['token' => $tk], ['note' => mb_substr((string)($_POST['note'] ?? ''), 0, 2000)]); dc_chat_json(['ok' => 1]); }
+    if ($ca === 'delmsg') { dc_q('UPDATE dc_chat SET del=1, body=\'\' WHERE id=? AND token=?', [(int)($_POST['id'] ?? 0), $tk]); dc_chat_purge_old(); dc_chat_json(['ok' => 1]); }
+    if ($ca === 'delthread') {
+      foreach (dc_q("SELECT img FROM dc_chat WHERE token=? AND img<>''", [$tk])->fetchAll() as $r) @unlink(dc_chat_dir() . '/' . basename($r['img']));
+      dc_q('DELETE FROM dc_chat WHERE token=?', [$tk]); dc_q('DELETE FROM dc_chat_th WHERE token=?', [$tk]); dc_event('chat_delete', $tk); dc_chat_json(['ok' => 1]);
+    }
+  } catch (Throwable $e) { error_log((string)$e); dc_chat_json(['ok' => 0, 'err' => 'server']); }
+  dc_chat_json(['ok' => 0]);
+}
+
 /* ---- POST actions (auth + csrf) ---- */
 if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   $a = $_POST['a'] ?? $_POST['act'] ?? '';
@@ -123,6 +190,7 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   if ($a === 'set_lic') {
     $off = in_array($_POST['offline'] ?? '', ['require', 'grace', 'allow'], true) ? $_POST['offline'] : 'require';
     dc_kv_set('offline', $off); dc_kv_set('offline_days', max(1, (int)($_POST['offline_days'] ?? 7)));
+    dc_kv_set('reinstall_id', !empty($_POST['reinstall_id']) ? '1' : '0');
     // the demo length and the Donate address are set on the Licences page (default settings, as in HAM Digi)
     flash('ok', L('Ρυθμίσεις άδειας αποθηκεύτηκαν', 'Licence settings saved'));
   }
@@ -204,6 +272,32 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   if ($a === 'pay_ignore')  { dc_q("UPDATE dc_payments SET status='Ignored' WHERE id=? AND status='Completed' AND (install IS NULL OR install='')", [(int)$_POST['pid']]); flash('ok', L('Η πληρωμή αγνοήθηκε (δεν μετράει στα σύνολα).', 'Payment ignored (not counted in the totals).')); }
   if ($a === 'pay_restore') { dc_q("UPDATE dc_payments SET status='Completed' WHERE id=? AND status='Ignored'", [(int)$_POST['pid']]); flash('ok', L('Η πληρωμή επανήλθε.', 'Payment restored.')); }
 
+  // ---- messages from users (inbox) ----
+  if ($a === 'inbox_reply') {
+    $mid = (int)($_POST['iid_msg'] ?? 0); $m = dc_one('SELECT * FROM dc_inbox WHERE id=?', [$mid]); $rep = trim((string)($_POST['reply'] ?? ''));
+    if (!$m) flash('bad', L('Το μήνυμα δεν βρέθηκε.', 'Message not found.'));
+    elseif ($rep === '') flash('bad', L('Γράψε την απάντηση.', 'Write the reply.'));
+    else {
+      dc_q('UPDATE dc_inbox SET reply=?, reply_t=?, status=? WHERE id=?', [substr($rep, 0, 4000), time(), 'replied', $mid]);
+      if ($m['install']) {   // delivered through the server message system and the inbox poll
+        $ttl = L('Απάντηση', 'Reply') . ($m['subject'] ? ' · ' . $m['subject'] : '');
+        dc_q("INSERT INTO dc_messages(t,scope,target,title,body,title_el,title_en,body_el,body_en,link,until,active) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)",
+          [time(), 'one', $m['install'], substr($ttl, 0, 200), substr($rep, 0, 4000), substr($ttl, 0, 200), substr($ttl, 0, 200), substr($rep, 0, 4000), substr($rep, 0, 4000), '', 0]);
+      }
+      dc_event('inbox_reply', ($m['call'] ?: 'web') . '|' . $m['subject']);
+      flash('ok', $m['install'] ? L('Η απάντηση αποθηκεύτηκε και μπήκε στα μηνύματα της εγκατάστασης (το DigiConnect δεν τα εμφανίζει ακόμη μέσα στο πρόγραμμα).', 'Reply saved and queued as a message for the installation (DigiConnect does not show them inside the program yet).') : L('Η απάντηση αποθηκεύτηκε. Στείλ’ την με email στον χρήστη.', 'Reply saved. Send it to the user by e-mail.'));
+    }
+  }
+  if ($a === 'inbox_close') { dc_q("UPDATE dc_inbox SET status='closed' WHERE id=?", [(int)($_POST['iid_msg'] ?? 0)]); }
+  if ($a === 'inbox_del')   { dc_q('DELETE FROM dc_inbox WHERE id=?', [(int)($_POST['iid_msg'] ?? 0)]); }
+  // ---- site statistics: do not count my own visits ----
+  if ($a === 'stats_ignore') {
+    $ipx = dc_ip(); $l = array_values(array_filter(explode(',', (string)dc_kv('stats_ignore', ''))));
+    if (!empty($_POST['remove'])) $l = array_values(array_diff($l, [$ipx])); else $l[] = $ipx;
+    dc_kv_set('stats_ignore', implode(',', array_unique($l)));
+    flash('ok', !empty($_POST['remove']) ? L('Οι επισκέψεις σου μετριούνται ξανά.', 'Your own visits are counted again.') : L('Οι δικές σου επισκέψεις από αυτή την IP δεν θα μετριούνται.', 'Your own visits from this IP are no longer counted.'));
+  }
+
   if (!$flash) $flash = ['ok', 'OK'];
   $_SESSION['dc_flash'] = $flash;
   header('Location: ?p=' . ($_POST['p'] ?? 'dashboard')); exit;
@@ -213,12 +307,19 @@ if (!empty($_SESSION['dc_flash'])) { $flash = $_SESSION['dc_flash']; unset($_SES
 /* ---- page ---- */
 $p = $_GET['p'] ?? 'dashboard';
 $PAGES = ['dashboard' => L('Επισκόπηση','Overview','Översikt'), 'stats' => L('Στατιστικά','Statistics','Statistik'), 'releases' => L('Εκδόσεις','Releases','Versioner'),
-  'installs' => L('Εγκαταστάσεις','Installations','Installationer'), 'downloads' => L('Λήψεις / Εγγραφές','Downloads / Sign-ups','Nedladdningar'),
-  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Μηνύματα','Messages','Meddelanden'),
+  'installs' => L('Εγκαταστάσεις','Installations','Installationer'), 'demos' => L('Demo','Demo','Demo'), 'downloads' => L('Λήψεις / Εγγραφές','Downloads / Sign-ups','Nedladdningar'),
+  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Μηνύματα','Messages','Meddelanden'), 'inbox' => L('Μηνύματα χρηστών','From users','Från användare'), 'chat' => L('Συνομιλίες','Chats','Chattar'),
   'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
 if (!isset($PAGES[$p])) $p = 'dashboard';
 
 if (!$auth) { login_page($login_err ?? ''); exit; }
+if ($auth && $p === 'stats' && ($_GET['export'] ?? '') === 'csv') {
+  $R0 = (int)($_GET['r'] ?? 30); $R = in_array($R0, [1, 7, 30, 90, 365], true) ? $R0 : 30;
+  header('Content-Type: text/csv; charset=utf-8'); header('Content-Disposition: attachment; filename="digiconnect-visits-' . gmdate('Ymd') . '.csv"');
+  $o = fopen('php://output', 'w'); fwrite($o, "\xEF\xBB\xBF"); fputcsv($o, ['time_utc', 'ip', 'page', 'lang', 'browser', 'system', 'device', 'referrer', 'robot'], ';');
+  foreach (dc_q('SELECT * FROM dc_visits WHERE t>=? ORDER BY t DESC', [time() - $R * 86400]) as $r) fputcsv($o, [gmdate('Y-m-d H:i:s', $r['t']), $r['ip'], $r['page'], $r['lang'], $r['br'], $r['os'], $r['dev'], $r['ref'], $r['bot']], ';');
+  exit;
+}
 if (isset($_GET['rail'])) { header('Content-Type: text/html; charset=utf-8'); header('Cache-Control: no-store'); echo rail_html(); exit; }
 
 /* counts for the sidebar badges */
@@ -242,11 +343,17 @@ $icons = [
  'payments' => 'M3 6h18v12H3zM3 10h18M7 15h3',
  'servers' => 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
  'messages' => 'M4 5h16v11H8l-4 4z',
+ 'inbox' => 'M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5',
+ 'chat' => 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12zM8 11h8M8 14h5',
+ 'demos' => 'M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
  'activity' => 'M3 12h4l3 7 4-14 3 7h4',
  'settings' => 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z'];
 $seenA = (int)dc_kv('alerts_seen', 0); $phA = implode(',', array_fill(0, count(DC_ALERTS), '?'));
 $BADGE = ['dashboard' => [(int)dc_one("SELECT COUNT(*) c FROM dc_events WHERE kind IN ($phA) AND t>?", array_merge(DC_ALERTS, [$seenA]))['c'], 'o'],
   'payments' => [(int)dc_one("SELECT COUNT(*) c FROM dc_payments WHERE status='Completed' AND (install IS NULL OR install='')")['c'], 'o'],
+  'inbox' => [(int)dc_scalar("SELECT COUNT(*) FROM dc_inbox WHERE status='new'"), 'o'],
+  'chat' => [(int)dc_scalar("SELECT COUNT(*) FROM dc_chat WHERE who='user' AND read_owner=0 AND del=0"), 'o'],
+  'demos' => [(int)dc_scalar("SELECT COUNT(*) FROM dc_installs WHERE state='demo' AND demo_until>?", [time()]), 'g'],
   'installs' => [$onNow, 'g'], 'downloads' => [(int)dc_one("SELECT COUNT(*) c FROM dc_webdl WHERE t>=?", [time() - 7*86400])['c'], 'o']];
 echo '<aside><div class="logo"><b>DigiConnect</b><small>Control Panel · by SA7SVR · v' . DC_SERVER_VERSION . '</small></div><nav>';
 foreach ($PAGES as $k => $t)
@@ -269,6 +376,9 @@ $SUB = ['stats' => L('Νέες εγκαταστάσεις και λήψεις α
   'licenses' => L('Demo, άδειες και κωδικοί ενεργοποίησης.','Demo, licences and activation codes.'),
   'payments' => L('Δωρεές PayPal, ποιος πληρώνει και πόσα (€ και SEK ξεχωριστά) και αυτόματη ενεργοποίηση.','PayPal donations, who pays and how much (EUR and SEK separately) and automatic activation.'),
   'messages' => L('Μήνυμα σε όλους ή σε μία εγκατάσταση — εμφανίζεται μέσα στο πρόγραμμα.','A message to everyone or one installation — it shows inside the program.'),
+  'demos' => L('Ποιος δοκιμάζει το πρόγραμμα, πόσο χρόνο έχει ακόμη και αν το χρησιμοποίησε.','Who is trying the program, how much time is left and whether it was used.'),
+  'inbox' => L('Μηνύματα που στέλνουν οι χρήστες· απάντησε από εδώ.','Messages from users; reply from here.'),
+  'chat' => L('Ζωντανές συνομιλίες από τη σελίδα του DigiConnect.','Live chats from the DigiConnect website.'),
   'activity' => L('Όλα όσα έγιναν, με τη σειρά.','Everything that happened, in order.'),
   'settings' => L('Ενημερώσεις, έλεγχος άδειας και συντήρηση.','Updates, licence gate and maintenance.')];
 echo '<header class="ph"><div><h1>' . h($PAGES[$p]) . '</h1><p class="muted">' . h($SUB[$p] ?? '') . '</p></div><div class="strip">'
@@ -353,6 +463,71 @@ elseif ($p === 'stats') {
     return $o . ($rows ? '' : '<p class="muted">' . L('Καμία εγκατάσταση ακόμη.','No installations yet.') . '</p>') . '</div>'; };
   echo '<section class="card"><h2>' . L('Συστήματα','Systems') . '</h2>' . $split('os') . '</section>'
     . '<section class="card"><h2>' . L('Εκδόσεις σε χρήση','Versions in use') . '</h2>' . $split('version') . '</section></div>';
+  // ===== site visits (the public page and the live chat), same as HAM Digi =====
+  $R0 = (int)($_GET['r'] ?? 30); $R = in_array($R0, [1, 7, 30, 90, 365], true) ? $R0 : 30; $tV = time() - $R * 86400; $mine = dc_ip();
+  $ignored = in_array($mine, array_filter(explode(',', (string)dc_kv('stats_ignore', ''))), true);
+  $pgName = ['home' => L('Αρχική σελίδα','Home page','Startsida'), 'chat' => L('Συνομιλία','Live chat','Livechatt')];
+  $lgName = ['el' => 'Ελληνικά', 'en' => 'English', 'sv' => 'Svenska', 'it' => 'Italiano', '' => '—'];
+  $whoIp = []; // who is behind an IP: from website downloads and registrations (only IPs we already hold)
+  foreach (dc_q("SELECT ip, call, name FROM dc_webdl WHERE ip<>'' ORDER BY t")->fetchAll() as $r) $whoIp[$r['ip']] = trim($r['call'] . ' · ' . $r['name'], ' ·');
+  foreach (dc_q("SELECT ip, call, name FROM dc_installs WHERE ip<>'' AND call<>'' AND consent_at IS NOT NULL")->fetchAll() as $r) $whoIp[$r['ip']] = trim($r['call'] . ' · ' . $r['name'], ' ·');
+  $shr = function ($sql, $args, $map = null) { $o = []; foreach (dc_q($sql, $args)->fetchAll() as $r) { $k = $r['k'] === '' || $r['k'] === null ? '—' : $r['k']; $k = $map[$k] ?? $k; $o[$k] = ($o[$k] ?? 0) + (int)$r['n']; } return $o; };
+  $share = function ($m, $tot) { $mx = max(1, $m ? max($m) : 1); $o = '<div class="shares vw">'; foreach ($m as $k => $n) $o .= "<div class='sh'><span class='sl'>" . h($k) . "</span><span class='sb'><i style='width:" . round($n * 100 / $mx) . "%'></i></span><span class='sv'>" . (int)$n . ($tot ? ' · ' . round($n * 100 / $tot) . '%' : '') . '</span></div>'; return $o . ($m ? '' : '<p class="muted">—</p>') . '</div>'; };
+  $series = function ($lab, $val, $cls = '') { $mx = max(1, $val ? max($val) : 1); $o = '<div class="bars ' . $cls . '">'; foreach ($val as $i => $v) $o .= '<span title="' . h($lab[$i]) . ': ' . $v . '"><i style="height:' . ($v ? max(4, round($v * 100 / $mx)) : 0) . '%"></i></span>'; return $o . '</div><div class="bax"><span>' . h($lab[0] ?? '') . '</span><span>' . h($lab[count($lab) - 1] ?? '') . '</span></div>'; };
+  $dayser = function ($n, $sql) use ($tV) { $lab = []; $val = []; $map = []; foreach (dc_q($sql, [strtotime(gmdate('Y-m-d', time() - ($n - 1) * 86400))])->fetchAll() as $r) $map[$r['d']] = (int)$r['n']; for ($i = $n - 1; $i >= 0; $i--) { $d = gmdate('Y-m-d', time() - $i * 86400); $lab[] = substr($d, 5); $val[] = $map[$d] ?? 0; } return [$lab, $val]; };
+  echo '<style>.shares.vw .sh{grid-template-columns:minmax(80px,40%) 1fr auto}.shares.vw .sv{white-space:nowrap;text-align:right}</style>';
+  echo '<h2 style="margin:22px 4px 10px">' . L('Επισκέψεις στο site','Site visits','Webbplatsbesök') . '</h2>';
+  echo '<section class="card"><div class="filters" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+  foreach ([1 => L('24 ώρες','24 hours','24 timmar'), 7 => L('7 ημέρες','7 days','7 dagar'), 30 => L('30 ημέρες','30 days','30 dagar'), 90 => L('90 ημέρες','90 days','90 dagar'), 365 => L('1 έτος','1 year','1 år')] as $d => $lb) echo '<a class="btn sm' . ($R === $d ? ' pri' : '') . '" href="?p=stats&r=' . $d . '">' . $lb . '</a>';
+  echo '<span class="spacer" style="flex:1"></span><a class="btn sm" href="?p=stats&r=' . $R . '&export=csv">⇩ CSV</a>'
+    . '<form method="post" style="margin:0">' . csrf() . '<input type="hidden" name="p" value="stats"><input type="hidden" name="a" value="stats_ignore">' . ($ignored ? '<input type="hidden" name="remove" value="1">' : '') . '<button class="btn sm" title="' . h($mine) . '">' . ($ignored ? L('Μέτρα ξανά τις δικές μου επισκέψεις','Count my own visits again','Räkna mina egna besök igen') : L('Μην μετράς τις δικές μου επισκέψεις','Do not count my own visits','Räkna inte mina egna besök')) . '</button></form></div>'
+    . '<p class="muted" style="margin:8px 0 0">' . L('Μετριέται κάθε προβολή σελίδας του site (αρχική, συνομιλία), ανεξάρτητα από το αν κάποιος κατεβάσει το πρόγραμμα. Τα ρομπότ των μηχανών αναζήτησης δεν μετράνε στους αριθμούς.','Every page view of the site (home, chat) is counted, whether or not someone downloads the program. Search-engine robots are not in the numbers.','Varje sidvisning på webbplatsen (startsida, chatt) räknas, oavsett om någon laddar ner programmet. Sökmotorrobotar ingår inte i siffrorna.') . '</p></section>';
+  $vis = (int)dc_scalar('SELECT COUNT(*) FROM dc_visits WHERE bot=0 AND t>=?', [$tV]);
+  $uniq = (int)dc_scalar('SELECT COUNT(DISTINCT ip) FROM dc_visits WHERE bot=0 AND t>=?', [$tV]);
+  $ret = (int)dc_scalar("SELECT COUNT(*) FROM (SELECT ip FROM dc_visits WHERE bot=0 AND t>=? GROUP BY ip HAVING COUNT(DISTINCT strftime('%Y-%m-%d', t, 'unixepoch'))>1)", [$tV]);
+  $now5 = (int)dc_scalar('SELECT COUNT(DISTINCT ip) FROM dc_visits WHERE bot=0 AND t>=?', [time() - 300]);
+  $bots = (int)dc_scalar('SELECT COUNT(*) FROM dc_visits WHERE bot=1 AND t>=?', [$tV]);
+  $dls = (int)dc_scalar('SELECT COUNT(*) FROM dc_webdl WHERE t>=?', [$tV]);
+  $kp = function ($label, $val, $sub = '', $cls = '') { return "<div class='kpi $cls'><span>$label</span><b>$val</b><small>$sub</small></div>"; };
+  echo '<div class="kpis">' . $kp(L('Επισκέψεις σελίδων','Page views','Sidvisningar'), $vis, $uniq ? number_format($vis / $uniq, 1) . L(' σελίδες ανά επισκέπτη',' pages per visitor',' sidor per besökare') : '—')
+    . $kp(L('Μοναδικοί επισκέπτες','Unique visitors','Unika besökare'), $uniq, L('διαφορετικές IP','different IP addresses','olika IP-adresser'), 'g')
+    . $kp(L('Ξαναγύρισαν','Came back','Kom tillbaka'), $ret, L('σε περισσότερες από 1 ημέρα','on more than 1 day','på mer än 1 dag'))
+    . $kp(L('Τώρα στο site','On the site now','På webbplatsen nu'), $now5, L('τελευταία 5 λεπτά','last 5 minutes','senaste 5 minuterna'), $now5 ? 'g' : '')
+    . $kp(L('Λήψεις από το site','Downloads from the site','Nedladdningar från webbplatsen'), $dls, $uniq ? number_format($dls * 100 / $uniq, 1) . L('% των επισκεπτών','% of visitors','% av besökarna') : '—', 'g')
+    . $kp(L('Ρομπότ (εκτός αριθμών)','Robots (not counted)','Robotar (ej räknade)'), $bots, L('μηχανές αναζήτησης κ.λπ.','search engines etc.','sökmotorer m.m.')) . '</div>';
+  $nd = max($R, 7);
+  list($vl, $vv) = $dayser($nd, "SELECT strftime('%Y-%m-%d', t, 'unixepoch') d, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY d");
+  list($ul, $uv) = $dayser($nd, "SELECT d, COUNT(*) n FROM (SELECT DISTINCT strftime('%Y-%m-%d', t, 'unixepoch') d, ip FROM dc_visits WHERE bot=0 AND t>=?) GROUP BY d");
+  echo '<div class="grid2"><section class="card"><h2>' . L('Επισκέψεις ανά ημέρα (προβολές σελίδων)','Visits per day (page views)','Besök per dag (sidvisningar)') . '</h2>' . $series($vl, $vv) . '</section>'
+    . '<section class="card"><h2>' . L('Μοναδικοί επισκέπτες ανά ημέρα','Unique visitors per day','Unika besökare per dag') . '</h2>' . $series($ul, $uv, 'g') . '</section></div>';
+  $hr = array_fill(0, 24, 0); foreach (dc_q("SELECT CAST(strftime('%H', t, 'unixepoch') AS INTEGER) k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k", [$tV])->fetchAll() as $r) $hr[(int)$r['k']] = (int)$r['n'];
+  $wk = array_fill(0, 7, 0); foreach (dc_q("SELECT CAST(strftime('%w', t, 'unixepoch') AS INTEGER) k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k", [$tV])->fetchAll() as $r) $wk[(int)$r['k']] = (int)$r['n'];
+  $wn = $LANG === 'el' ? ['Κυρ','Δευ','Τρί','Τετ','Πέμ','Παρ','Σάβ'] : ($LANG === 'sv' ? ['Sön','Mån','Tis','Ons','Tor','Fre','Lör'] : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']);
+  $wl = []; $wv = []; foreach ([1, 2, 3, 4, 5, 6, 0] as $k) { $wl[] = $wn[$k]; $wv[] = $wk[$k]; }
+  echo '<div class="grid2"><section class="card"><h2>' . L('Ώρα της ημέρας','Time of day','Tid på dygnet') . ' <small>UTC</small></h2>' . $series(array_map(function ($h) { return sprintf('%02d:00', $h); }, array_keys($hr)), array_values($hr), 'o') . '</section>'
+    . '<section class="card"><h2>' . L('Ημέρα της εβδομάδας','Day of the week','Veckodag') . '</h2>' . $series($wl, $wv, 'o') . '</section></div>';
+  echo '<div class="grid2"><section class="card"><h2>' . L('Σελίδες','Pages','Sidor') . '</h2>' . $share($shr('SELECT page k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k ORDER BY n DESC', [$tV], $pgName), $vis)
+    . '</section><section class="card"><h2>' . L('Γλώσσα σελίδας','Page language','Sidans språk') . '</h2>' . $share($shr('SELECT lang k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k ORDER BY n DESC', [$tV], $lgName), $vis) . '</section></div>';
+  echo '<div class="grid2"><section class="card"><h2>' . L('Από πού ήρθαν','Where they came from','Varifrån de kom') . '</h2>' . $share($shr("SELECT CASE WHEN ref='' THEN '" . L('Απευθείας / σελιδοδείκτης','Direct / bookmark','Direkt / bokmärke') . "' ELSE ref END k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k ORDER BY n DESC LIMIT 12", [$tV]), $vis)
+    . '</section><section class="card"><h2>Browser · ' . L('σύστημα · συσκευή','system · device','system · enhet') . '</h2>' . $share($shr('SELECT br k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k ORDER BY n DESC', [$tV]), $vis) . '<div style="height:12px"></div>'
+    . $share($shr('SELECT os k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k ORDER BY n DESC', [$tV]), $vis) . '<div style="height:12px"></div>' . $share($shr('SELECT dev k, COUNT(*) n FROM dc_visits WHERE bot=0 AND t>=? GROUP BY k ORDER BY n DESC', [$tV]), $vis) . '</section></div>';
+  // who: the most active visitors and the latest visits
+  $fip = trim((string)($_GET['ip'] ?? ''));
+  $top = dc_q("SELECT ip, COUNT(*) n, COUNT(DISTINCT strftime('%Y-%m-%d', t, 'unixepoch')) days, MIN(t) f, MAX(t) l, GROUP_CONCAT(DISTINCT page) pg, MAX(br) br, MAX(os) os FROM dc_visits WHERE bot=0 AND t>=? GROUP BY ip ORDER BY n DESC, l DESC LIMIT 30", [$tV])->fetchAll();
+  echo '<section class="card"><h2>' . L('Επισκέπτες','Visitors','Besökare') . ' <small>' . L('οι 30 πιο ενεργοί · το όνομα φαίνεται μόνο αν η ίδια IP έκανε λήψη ή εγγραφή','the 30 most active · a name shows only when the same IP made a download or registration','de 30 mest aktiva · ett namn visas bara om samma IP gjort en nedladdning eller registrering') . '</small></h2>';
+  if (!$top) echo '<div class="muted">' . L('Δεν υπάρχουν επισκέψεις ακόμη σε αυτή την περίοδο.','No visits in this period yet.','Inga besök under perioden ännu.') . '</div>';
+  else { echo '<div class="tw"><table class="tbl"><tr><th>IP</th><th>' . L('Ποιος','Who','Vem') . '</th><th>' . L('Προβολές','Views','Visningar') . '</th><th>' . L('Ημέρες','Days','Dagar') . '</th><th>' . L('Σελίδες','Pages','Sidor') . '</th><th>Browser · ' . L('σύστημα','system','system') . '</th><th>' . L('Πρώτη','First','Första') . '</th><th>' . L('Τελευταία','Last','Senaste') . '</th></tr>';
+    foreach ($top as $r) echo '<tr><td class="mono"><a href="?p=stats&r=' . $R . '&ip=' . urlencode($r['ip']) . '">' . h($r['ip']) . '</a></td><td>' . (isset($whoIp[$r['ip']]) ? '<b>' . h($whoIp[$r['ip']]) . '</b>' : '<span class="muted">—</span>') . '</td><td>' . (int)$r['n'] . '</td><td>' . (int)$r['days'] . '</td><td>' . h(implode(', ', array_map(function ($x) use ($pgName) { return $pgName[$x] ?? $x; }, explode(',', (string)$r['pg'])))) . '</td><td>' . h($r['br'] . ' · ' . $r['os']) . '</td><td>' . dc_dt($r['f']) . '</td><td>' . dc_dt($r['l']) . '</td></tr>';
+    echo '</table></div>'; }
+  echo '</section>';
+  $wh = $fip !== '' ? 'bot=0 AND ip=?' : 'bot=0 AND t>=?'; $arg = $fip !== '' ? [$fip] : [$tV];
+  $rec = dc_q("SELECT * FROM dc_visits WHERE $wh ORDER BY t DESC LIMIT 100", $arg)->fetchAll();
+  echo '<section class="card"><h2>' . ($fip !== '' ? L('Επισκέψεις της IP ','Visits of IP ','Besök från IP ') . '<span class="mono">' . h($fip) . '</span> <small><a href="?p=stats&r=' . $R . '">' . L('← όλες','← all','← alla') . '</a></small>' : L('Τελευταίες επισκέψεις','Latest visits','Senaste besöken')) . '</h2>';
+  if (!$rec) echo '<div class="muted">' . L('Καμία ακόμη.','None yet.','Inga ännu.') . '</div>';
+  else { echo '<div class="tw"><table class="tbl"><tr><th>' . L('Ώρα','Time','Tid') . '</th><th>IP</th><th>' . L('Ποιος','Who','Vem') . '</th><th>' . L('Σελίδα','Page','Sida') . '</th><th>' . L('Γλώσσα','Lang','Språk') . '</th><th>Browser · ' . L('σύστημα','system','system') . '</th><th>' . L('Ήρθε από','Came from','Kom från') . '</th></tr>';
+    foreach ($rec as $r) echo '<tr><td>' . dc_dt($r['t']) . '</td><td class="mono"><a href="?p=stats&r=' . $R . '&ip=' . urlencode($r['ip']) . '">' . h($r['ip']) . '</a></td><td>' . (isset($whoIp[$r['ip']]) ? '<b>' . h($whoIp[$r['ip']]) . '</b>' : '<span class="muted">—</span>') . '</td><td>' . h($pgName[$r['page']] ?? $r['page']) . '</td><td>' . h($lgName[$r['lang']] ?? $r['lang']) . '</td><td>' . h($r['br'] . ' · ' . $r['os'] . ' · ' . $r['dev']) . '</td><td>' . h($r['ref'] ?: '—') . '</td></tr>';
+    echo '</table></div>'; }
+  echo '</section>';
 }
 
 /* ===================== RELEASES ===================== */
@@ -605,6 +780,422 @@ elseif ($p === 'messages') {
   echo '</table></div></section>';
 }
 
+/* ===================== DEMO ===================== */
+elseif ($p === 'demos') {
+  $now = time(); $IDLE = 86400;   // a running demo that shows no sign of life for 24 h = probably stopped
+  $f = ['s' => $_GET['s'] ?? 'all', 'q' => trim($_GET['q'] ?? '')];
+  if (!in_array($f['s'], ['all', 'run', 'soon', 'stopped', 'exp', 'rep'], true)) $f['s'] = 'all';
+  $seenC = 'MAX(COALESCE(i.last_ping,0), COALESCE(i.last_seen,0))';
+  // "the same person again": another demo installation with the same e-mail, callsign or DMR ID
+  $repW = "EXISTS (SELECT 1 FROM dc_installs o WHERE o.id<>i.id AND o.state='demo' AND ((COALESCE(i.mail,'')<>'' AND lower(o.mail)=lower(i.mail)) OR (COALESCE(i.call,'')<>'' AND upper(o.call)=upper(i.call)) OR (COALESCE(i.dmr_id,'')<>'' AND o.dmr_id=i.dmr_id)))";
+  $runW = "(COALESCE(i.demo_until,0)=0 OR i.demo_until>$now)";
+  $cnt = function ($w) { return (int)dc_scalar("SELECT COUNT(*) FROM dc_installs i WHERE i.state='demo'" . ($w ? " AND $w" : '')); };
+  $nRun = $cnt($runW); $nSoon = $cnt("i.demo_until>$now AND i.demo_until<=" . ($now + 86400)); $nStop = $cnt("$runW AND $seenC<" . ($now - $IDLE));
+  $nExp = $cnt("i.demo_until>0 AND i.demo_until<=$now"); $nRep = $cnt($repW);
+  $kp = function ($label, $val, $sub, $cls = '') { return "<div class='kpi $cls'><span>$label</span><b>$val</b><small>$sub</small></div>"; };
+  echo '<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(168px,1fr))">'
+    . $kp(L('Τρέχουν τώρα','Running now','Pågår nu'), $nRun, L('demo που δεν έχουν λήξει','demos that have not ended','demo som inte har gått ut'), 'g')
+    . $kp(L('Λήγουν σε 24 ώρες','Ending within 24 h','Slutar inom 24 h'), $nSoon, L('σύντομα χωρίς άδεια','soon without a licence','snart utan licens'), $nSoon ? 'o' : '')
+    . $kp(L('Σταμάτησαν να το χρησιμοποιούν','Stopped using it','Slutade använda'), $nStop, L('τρέχει demo αλλά καμία δραστηριότητα 24+ ώρες','demo running but no activity for 24 h+','demo pågår men ingen aktivitet på 24 h+'), $nStop ? 'r' : '')
+    . $kp(L('Έληξαν','Ended','Slut'), $nExp, L('ο χρόνος τους τελείωσε','their time is over','tiden är slut'))
+    . $kp(L('Επαναλαμβανόμενα','Repeated','Upprepade'), $nRep, L('ίδιο email, call ή DMR ID σε περισσότερα demo','same e-mail, callsign or DMR ID in more demos','samma e-post, signal eller DMR-ID i flera demo'), $nRep ? 'r' : '') . '</div>';
+  $w = ["i.state='demo'"]; $a = [];
+  if ($f['s'] === 'run') $w[] = $runW; elseif ($f['s'] === 'soon') $w[] = "i.demo_until>$now AND i.demo_until<=" . ($now + 86400);
+  elseif ($f['s'] === 'stopped') $w[] = "$runW AND $seenC<" . ($now - $IDLE); elseif ($f['s'] === 'exp') $w[] = "i.demo_until>0 AND i.demo_until<=$now"; elseif ($f['s'] === 'rep') $w[] = $repW;
+  if ($f['q'] !== '') {
+    $no = dc_no_filter($f['q']); $like = '%' . $f['q'] . '%';
+    $cols = ['i.id', 'i.call', 'i.name', 'i.mail', 'i.dmr_id', 'i.ip', 'i.note'];
+    $w[] = '(' . ($no !== null ? 'i.rowid=? OR ' : '') . implode(' OR ', array_map(function ($c) { return "$c LIKE ?"; }, $cols)) . ')';
+    if ($no !== null) $a[] = $no; foreach ($cols as $c) $a[] = $like;
+  }
+  $where = ' WHERE ' . implode(' AND ', $w);
+  $total = (int)dc_scalar('SELECT COUNT(*) FROM dc_installs i' . $where, $a); $pg = max(1, (int)($_GET['pg'] ?? 1)); $per = 50; $off = ($pg - 1) * $per;
+  $opt = function ($v, $t) use ($f) { return '<option value="' . $v . '"' . ($f['s'] === $v ? ' selected' : '') . '>' . $t . '</option>'; };
+  echo '<section class="card"><form class="filters" method="get"><input type="hidden" name="p" value="demos"><select name="s">'
+    . $opt('all', L('Όλα τα demo','All demos','Alla demo')) . $opt('run', L('Τρέχουν τώρα','Running now','Pågår nu')) . $opt('soon', L('Λήγουν σε 24 ώρες','Ending within 24 h','Slutar inom 24 h')) . $opt('stopped', L('Σταμάτησαν να το χρησιμοποιούν','Stopped using it','Slutade använda'))
+    . $opt('exp', L('Έληξαν','Ended','Slut')) . $opt('rep', L('Επαναλαμβανόμενα','Repeated','Upprepade')) . '</select>'
+    . '<input name="q" value="' . h($f['q']) . '" placeholder="' . L('Αναζήτηση: DC-…, call, όνομα, email, IP, σημείωση','Search: DC-…, call, name, e-mail, IP, note','Sök: DC-…, signal, namn, e-post, IP, anteckning') . '"><button class="btn">' . L('Φίλτρο','Filter','Filter') . '</button><span class="spacer"></span><span class="muted">' . $total . L(' demo',' demos',' demo') . '</span></form>';
+  $rows = dc_q("SELECT i.rowid AS rno, i.*,
+      (SELECT COUNT(*) FROM dc_events e WHERE e.kind='dl_pkg' AND e.detail LIKE i.id || '|%') AS dl_upd,
+      (SELECT COUNT(*) FROM dc_webdl w WHERE (w.call<>'' AND upper(w.call)=upper(i.call)) OR (w.email<>'' AND lower(w.email)=lower(i.mail))) AS dl_web,
+      (SELECT COUNT(*) FROM dc_daily dd WHERE dd.id=i.id) AS days
+    FROM dc_installs i" . $where . " ORDER BY (CASE WHEN i.demo_until>0 AND i.demo_until<=$now THEN 1 ELSE 0 END), (CASE WHEN i.demo_until>$now THEN i.demo_until END) ASC, i.demo_until DESC LIMIT $per OFFSET $off", $a)->fetchAll();
+  $osn = function ($o, $a = '') { $n = ['windows' => 'Windows', 'macos' => 'macOS', 'linux' => 'Linux'][$o] ?? $o; return trim($n . ' ' . $a); };
+  echo '<div class="tw"><table class="tbl demot"><tr><th>' . L('Αρ. εγκατάστασης','Installation no.','Install.nr') . '</th><th>Call</th><th>' . L('Κατάσταση','Status','Status') . '</th><th>' . L('Αντίστροφη μέτρηση','Countdown','Nedräkning') . '</th><th>' . L('Ξεκίνησε','Started','Startade') . '</th><th>' . L('Λήγει','Ends','Slutar') . '</th>'
+    . '<th>' . L('Λήψεις','Downloads','Nedladdningar') . '</th><th>' . L('Ημέρες χρήσης','Days in use','Dagar i bruk') . '</th><th>' . L('Τελευταία δραστηριότητα','Last activity','Senaste aktivitet') . '</th><th>' . L('Ίδιος χρήστης','Same user','Samma användare') . '</th><th>' . L('Σύστημα','System','System') . '</th></tr>';
+  foreach ($rows as $r) {
+    $start = (int)($r['lic_set'] ?: $r['first_seen']); $end = (int)$r['demo_until']; $last = max((int)$r['last_ping'], (int)$r['last_seen']);
+    $ended = $end > 0 && $end <= $now; $live = $last >= $now - 900; $idle = !$ended && $last < $now - $IDLE;
+    if ($ended) $st = '<span class="pill dim">' . L('Έληξε','Ended','Slut') . '</span>';
+    elseif ($live) $st = '<span class="pill ok onl"><i></i>' . L('Σε χρήση τώρα','In use now','Används nu') . '</span>';
+    elseif ($idle) $st = '<span class="pill bad">' . L('Σταμάτησε;','Stopped?','Slutat?') . '</span>';
+    else $st = '<span class="pill o">' . L('Τρέχει','Running','Pågår') . '</span>';
+    $others = dc_q("SELECT o.rowid AS rno, o.id, o.lic_set FROM dc_installs o WHERE o.id<>? AND o.state='demo' AND ((COALESCE(?,'')<>'' AND lower(o.mail)=lower(?)) OR (COALESCE(?,'')<>'' AND upper(o.call)=upper(?)) OR (COALESCE(?,'')<>'' AND o.dmr_id=?)) ORDER BY o.lic_set LIMIT 8",
+      [$r['id'], $r['mail'], $r['mail'], $r['call'], $r['call'], $r['dmr_id'], $r['dmr_id']])->fetchAll();
+    $pct = ($end > $start) ? max(0, min(100, round(($now - $start) / ($end - $start) * 100))) : ($ended ? 100 : 0);
+    $left = $end > 0 ? max(0, $end - $now) : 0;
+    $cd = $end > 0
+      ? '<div class="cd" data-s="' . $start . '" data-e="' . $end . '"><b class="cd-t">' . ($ended ? L('έληξε','ended','slut') : (intdiv($left, 86400) ? intdiv($left, 86400) . ' ' . L('ημ.','d','d') . ' ' : '') . gmdate('H:i:s', $left % 86400)) . '</b><div class="prog"><i style="width:' . $pct . '%"></i></div><small class="muted cd-p">' . $pct . '%</small></div>'
+      : '<span class="muted">' . L('χωρίς λήξη','no end','inget slut') . '</span>';
+    $rep = '';
+    foreach ($others as $o) $rep .= '<a class="mono" href="?p=installs&q=' . sprintf('DC-%05d', $o['rno']) . '" title="' . h(dc_dt((int)$o['lic_set'])) . '">' . h(sprintf('DC-%05d', $o['rno'])) . '</a> ';
+    $call = $r['call'];
+    echo '<tr><td class="mono" style="white-space:nowrap"><a href="?p=installs&q=' . sprintf('DC-%05d', $r['rno']) . '"><b>' . sprintf('DC-%05d', $r['rno']) . '</b></a></td>'
+      . '<td><a href="?p=installs&q=' . sprintf('DC-%05d', $r['rno']) . '"><b>' . h($call ?: substr($r['id'], 0, 8)) . '</b></a>' . ($r['name'] || $r['mail'] ? '<br><small>' . h($r['name']) . '</small><br><small class="muted">' . h($r['mail']) . '</small>' : '') . ($r['ip'] ? '<br><small class="mono muted">' . h($r['ip']) . '</small>' : '') . '</td>'
+      . '<td>' . $st . ($others ? '<br><span class="pill bad" style="margin-top:4px">↻ ' . L('Επανάληψη demo','Repeated demo','Upprepad demo') . ' ×' . (count($others) + 1) . '</span>' : '') . '</td>'
+      . '<td style="min-width:150px">' . $cd . '</td><td style="white-space:nowrap">' . dc_dt($start) . '</td><td style="white-space:nowrap">' . ($end ? dc_dt($end) : '—') . '</td>'
+      . '<td style="white-space:nowrap" title="' . h(L('σελίδα · αυτόματες ενημερώσεις','website · automatic updates','webbplats · automatiska uppdateringar')) . '"><b>' . (int)$r['dl_web'] . '</b> · ' . (int)$r['dl_upd'] . '</td>'
+      . '<td>' . (int)$r['days'] . '</td><td style="white-space:nowrap">' . ($last ? dc_dt($last) . '<br><small class="' . ($idle ? 'bad' : 'muted') . '">' . h(ago($last)) . '</small>' : '—') . '</td>'
+      . '<td>' . ($rep !== '' ? $rep : '<span class="muted">—</span>') . '</td><td><small>' . h($osn($r['os'], $r['arch'])) . '<br>v' . h($r['version']) . '</small></td></tr>';
+  }
+  if (!$rows) echo '<tr><td colspan="11" class="muted" style="text-align:center;padding:22px">' . L('Κανένα demo με αυτά τα κριτήρια.','No demo matches these filters.','Inget demo matchar filtret.') . '</td></tr>';
+  $pages = max(1, (int)ceil($total / $per)); $pgr = '';
+  if ($pages > 1) { $pgr = '<div class="filters" style="justify-content:center;margin-top:10px">'; for ($i = 1; $i <= $pages; $i++) $pgr .= '<a class="btn sm' . ($i === $pg ? ' pri' : '') . '" href="?p=demos&s=' . urlencode($f['s']) . '&q=' . urlencode($f['q']) . '&pg=' . $i . '">' . $i . '</a>'; $pgr .= '</div>'; }
+  echo '</table></div>' . $pgr
+    . '<p class="help">' . L('Το ρολόι μετράει από τη στιγμή που ξεκίνησε το demo (πρώτη επαφή της εγκατάστασης με τον server). «Σταμάτησε;» = το demo τρέχει αλλά το πρόγραμμα δεν έδωσε σημείο ζωής πάνω από 24 ώρες — ίσως κάτι πήγε στραβά. «Επανάληψη demo» = ίδιο email, call ή DMR ID σε περισσότερα demo.',
+        'The clock counts from when the demo started (the installation’s first contact with the server). “Stopped?” = the demo is running but the program has shown no sign of life for over 24 hours — maybe something went wrong. “Repeated demo” = the same e-mail, callsign or DMR ID in more than one demo.',
+        'Klockan räknar från att demot startade (installationens första kontakt med servern). ”Slutat?” = demot pågår men programmet har inte visat livstecken på över 24 timmar. ”Upprepat demo” = samma e-post, signal eller DMR-ID i fler än ett demo.') . '</p></section>';
+  echo '<script>(function(){var off=' . $now . '*1000-Date.now(),D=' . json_encode(L('ημ.','d','d')) . ',E=' . json_encode(L('έληξε','ended','slut')) . ';function p(n){return(n<10?"0":"")+n}'
+    . 'function tick(){var t=Math.floor((Date.now()+off)/1000);document.querySelectorAll(".cd").forEach(function(c){var s=+c.dataset.s,e=+c.dataset.e,l=e-t,b=c.querySelector(".cd-t"),i=c.querySelector(".prog i"),q=c.querySelector(".cd-p");'
+    . 'var pc=e>s?Math.max(0,Math.min(100,Math.round((t-s)/(e-s)*100))):100;i.style.width=pc+"%";q.textContent=pc+"%";'
+    . 'if(l<=0){b.textContent=E;c.classList.add("done");return}var d=Math.floor(l/86400),h=Math.floor(l%86400/3600),m=Math.floor(l%3600/60),x=l%60;'
+    . 'b.textContent=(d?d+" "+D+" ":"")+p(h)+":"+p(m)+":"+p(x);c.classList.toggle("soon",l<86400)})}tick();setInterval(tick,1000)})();</script>'
+    . '<style>.cd-t{font-family:var(--mono);font-size:17px;font-variant-numeric:tabular-nums}.cd.soon .cd-t{color:var(--tx)}.cd.done .cd-t{color:var(--muted)}.cd .prog{margin:4px 0 2px;height:8px;border-radius:5px;background:var(--line);overflow:hidden}.cd .prog i{display:block;height:100%;background:var(--acc)}.demot td{vertical-align:top}</style>';
+}
+
+/* ===================== MESSAGES FROM USERS ===================== */
+elseif ($p === 'inbox') {
+  // ---- incoming: messages from users (program + website) ----
+  echo '<div class="help" style="margin-bottom:12px">' . L('Μηνύματα που στέλνουν οι χρήστες — είτε από το site είτε από το πρόγραμμα. Απάντα: η απάντηση μπαίνει στο μηχανισμό μηνυμάτων του server προς την εγκατάσταση του χρήστη· αν έγραψε από το site χωρίς εγκατάσταση, απάντα με email (σύνδεσμος ✉). Σημείωση: το DigiConnect δεν εμφανίζει ακόμη τα μηνύματα του server μέσα στο πρόγραμμα.',
+      'Messages that users send — from the website or from the program. Reply: the reply goes into the server’s message system for the user’s installation; if they wrote from the website without an installation, reply by e-mail (✉ link). Note: DigiConnect does not show server messages inside the program yet.',
+      'Meddelanden från användare — från webbplatsen eller programmet. Svara: svaret läggs i serverns meddelandesystem för användarens installation; om de skrev från webbplatsen utan installation, svara med e-post (✉). Obs: DigiConnect visar ännu inte servermeddelanden i programmet.') . '</div>';
+  $inbox = dc_q("SELECT * FROM dc_inbox WHERE status!='closed' ORDER BY (reply IS NOT NULL AND reply<>''), t DESC LIMIT 200")->fetchAll();
+  $newN = (int)dc_scalar("SELECT COUNT(*) FROM dc_inbox WHERE status='new'");
+  dc_q('UPDATE dc_inbox SET read_t=? WHERE read_t IS NULL', [time()]);
+  echo '<section class="card"><h2>📥 ' . L('Εισερχόμενα από χρήστες','Incoming from users','Inkommande från användare') . ($newN ? ' <span class="pill o">' . $newN . ' ' . L('νέα','new','nya') . '</span>' : '') . '</h2>';
+  if (!$inbox) echo '<div class="muted">' . L('Δεν υπάρχουν μηνύματα από χρήστες ακόμη.','No messages from users yet.','Inga meddelanden från användare ännu.') . '</div>';
+  $topics = ['reinstall' => L('Επανεγκατάσταση / χάθηκε το installer','Reinstall / lost installer','Ominstallation / förlorad installerare'), 'activation' => L('Ενεργοποίηση','Activation','Aktivering'), 'bug' => L('Πρόβλημα','Bug','Problem'), 'other' => L('Άλλο','Other','Annat')];
+  foreach ($inbox as $m) {
+    $who = h($m['call'] ?: ($m['name'] ?: ($m['email'] ?: ($m['src'] === 'web' ? L('ιστοσελίδα','website','webbplats') : L('άγνωστος','unknown','okänd')))));
+    $tp = $topics[$m['topic']] ?? ($m['topic'] ? h($m['topic']) : '');
+    $meta = [];
+    if ($m['email']) $meta[] = '✉ <a href="mailto:' . h($m['email']) . '">' . h($m['email']) . '</a>';
+    if ($m['install']) { $no = dc_inst_no($m['install']); if ($no) $meta[] = '<a href="?p=installs&q=' . $no . '">' . h($no) . '</a>'; }
+    if ($m['version']) $meta[] = 'v' . h($m['version']);
+    if ($m['os']) $meta[] = h($m['os']);
+    $meta[] = '<span class="muted">' . h($m['src'] === 'web' ? L('από το site','from site','från webbplatsen') : L('από το πρόγραμμα','from app','från programmet')) . '</span>';
+    echo '<div class="card" style="margin:10px 0;border-left:3px solid ' . ($m['status'] === 'new' ? 'var(--tx)' : 'var(--line)') . '">'
+      . '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>' . $who . '</b>' . ($tp ? ' <span class="pill">' . $tp . '</span>' : '') . ($m['status'] === 'replied' ? ' <span class="pill ok">' . L('απαντήθηκε','replied','besvarat') . '</span>' : '') . '<span class="spacer" style="flex:1"></span><small class="muted">' . dc_dt($m['t']) . '</small></div>'
+      . '<div class="muted" style="font-size:12px;margin:2px 0 8px">' . implode(' · ', $meta) . '</div>'
+      . ($m['subject'] ? '<b>' . h($m['subject']) . '</b><br>' : '') . '<div style="white-space:pre-wrap;margin:4px 0 10px;user-select:text">' . h($m['body']) . '</div>'
+      . ($m['reply'] ? '<div style="background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:8px;padding:8px 10px;margin:0 0 10px"><small class="muted">' . L('Η απάντησή σου','Your reply','Ditt svar') . ' · ' . dc_dt($m['reply_t']) . '</small><br><div style="white-space:pre-wrap">' . h($m['reply']) . '</div></div>' : '')
+      . '<form method="post" class="form"><input type="hidden" name="p" value="inbox"><input type="hidden" name="iid_msg" value="' . (int)$m['id'] . '">' . csrf()
+      . '<textarea name="reply" rows="3" style="width:100%" placeholder="' . L('Γράψε απάντηση…','Write a reply…','Skriv ett svar…') . '">' . h($m['reply'] ?: '') . '</textarea>'
+      . '<div style="display:flex;gap:6px;margin-top:6px"><button class="btn pri sm" name="a" value="inbox_reply">' . ($m['install'] ? L('Αποστολή απάντησης','Send reply','Skicka svar') : L('Αποθήκευση','Save','Spara')) . '</button>'
+      . '<button class="btn sm" name="a" value="inbox_close" formnovalidate>' . L('Κλείσιμο','Close','Stäng') . '</button>'
+      . '<button class="btn sm danger" name="a" value="inbox_del" formnovalidate onclick="return confirm(\'' . L('Διαγραφή;','Delete?','Radera?') . '\')">' . L('Διαγραφή','Delete','Radera') . '</button></div></form></div>';
+  }
+  echo '</section>';
+}
+
+/* ===================== LIVE CHATS ===================== */
+elseif ($p === 'chat') {
+  // ---- live chats from the website (talk.php): two-pane messenger, pictures, formatting, emoji, archive — everything stays on this server ----
+  $LB = ['title' => L('Συνομιλίες', 'Chats'), 'pick' => L('Διάλεξε μια συνομιλία από τα αριστερά.', 'Pick a chat from the list.'), 'drop' => L('Άφησε τη φωτογραφία εδώ', 'Drop the picture here'),
+    'hint' => L('Enter = αποστολή · Shift+Enter = νέα γραμμή', 'Enter = send · Shift+Enter = new line'), 'send' => L('Αποστολή', 'Send'), 'det' => L('Στοιχεία', 'Details'), 'note' => L('Ιδιωτική σημείωση', 'Private note'),
+    'notehint' => L('Τη βλέπεις μόνο εσύ — δεν φαίνεται στον επισκέπτη.', 'Only you see this — never shown to the visitor.'), 'search' => L('Αναζήτηση…', 'Search…'), 'active' => L('Ενεργές', 'Active'), 'archived' => L('Αρχείο', 'Archive'),
+    'ph' => L('Γράψε μήνυμα…', 'Write a message…'), 'newmsg' => L('νέα μηνύματα', 'new messages'), 'info' => L('Στοιχεία επισκέπτη', 'Visitor details'), 'pin' => L('Καρφίτσωμα', 'Pin'), 'archive' => L('Αρχειοθέτηση', 'Archive'), 'unarchive' => L('Επαναφορά από το αρχείο', 'Restore from archive'),
+    'delthread' => L('Διαγραφή συνομιλίας', 'Delete chat'), 'photo' => L('Φωτογραφία', 'Photo'), 'bold' => L('έντονα', 'bold'), 'ital' => L('πλάγια', 'italic'), 'code' => L('κώδικας', 'code'), 'visitor' => L('Επισκέπτης', 'Visitor'), 'you' => L('Εσύ', 'You'),
+    'typing' => L('γράφει…', 'typing…'), 'visitor_typing' => L('Ο επισκέπτης γράφει…', 'The visitor is typing…'), 'online' => L('στη σελίδα τώρα', 'on the page now'), 'offline' => L('εκτός σελίδας', 'not on the page'),
+    'noarch' => L('Το αρχείο είναι άδειο.', 'The archive is empty.'), 'nores' => L('Κανένα αποτέλεσμα.', 'No results.'), 'nochats' => L('Καμία συνομιλία ακόμη. Οι χρήστες γράφουν από τη σελίδα επικοινωνίας.', 'No chats yet. Users write from the contact page.'),
+    'today' => L('Σήμερα', 'Today'), 'yest' => L('Χθες', 'Yesterday'), 'now' => L('τώρα', 'now'), 'min' => L('λ.', 'min'), 'removed' => L('Το μήνυμα αφαιρέθηκε', 'This message was removed'), 'copy' => L('Αντιγραφή', 'Copy'), 'del' => L('Διαγραφή', 'Delete'),
+    'seen' => L('Διαβάστηκε', 'Read'), 'sent' => L('Στάλθηκε', 'Sent'), 'name' => L('Όνομα', 'Name'), 'call' => L('Διακριτικό', 'Callsign'), 'started' => L('Ξεκίνησε', 'Started'), 'install' => L('Εγκατάσταση', 'Installation'), 'open' => L('Άνοιγμα', 'Open'),
+    'errtype' => L('Μόνο εικόνες JPG, PNG, GIF ή WebP.', 'Only JPG, PNG, GIF or WebP pictures.'), 'errbig' => L('Η φωτογραφία είναι πολύ μεγάλη (μέχρι 5 MB).', 'The picture is too big (max 5 MB).'), 'errsend' => L('Δεν στάλθηκε — ξαναδοκίμασε.', 'Not sent — please try again.'),
+    'delmsgq' => L('Να αφαιρεθεί αυτό το μήνυμα και για τους δύο;', 'Remove this message for both of you?'), 'delthreadq' => L('Να διαγραφεί ΟΡΙΣΤΙΚΑ όλη η συνομιλία (και οι φωτογραφίες της);', 'Permanently delete the whole chat (and its pictures)?')];
+  $tpl = <<<'HTMLCHAT'
+<style>
+body{grid-template-columns:230px minmax(0,1fr)!important}.rail{display:none!important}main{max-width:none!important;padding-bottom:18px}
+@media (max-width:1250px){.hc-tool small{display:none}}
+.hc{display:grid;grid-template-columns:330px minmax(0,1fr);height:calc(100vh - 128px);min-height:520px;background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow,none)}
+.hc *{box-sizing:border-box}
+.hc button{font:inherit;color:inherit;cursor:pointer}
+.hc-l{display:flex;flex-direction:column;border-right:1px solid var(--line);min-height:0;background:var(--bg2)}
+.hc-lh{padding:14px 14px 10px;display:flex;flex-direction:column;gap:10px}
+.hc-lh h2{margin:0;font-size:17px;display:flex;align-items:center;gap:8px}
+.hc-lh h2 .bd{background:var(--bad);color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px}
+.hc-srch{position:relative}.hc-srch input{width:100%;padding:9px 12px 9px 34px;border-radius:10px;background:var(--bg)}
+.hc-srch svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;stroke:var(--muted);fill:none;stroke-width:2}
+.hc-tabs{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px}
+.hc-tabs button{flex:1;border:0;background:transparent;padding:6px 8px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted)}
+.hc-tabs button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.hc-list{flex:1;overflow-y:auto;overscroll-behavior:contain;min-height:0}
+.hc-th{display:flex;gap:11px;padding:11px 14px;cursor:pointer;border-bottom:1px solid var(--line);position:relative;align-items:center}
+.hc-th:hover{background:color-mix(in srgb,var(--acc) 7%,transparent)}
+.hc-th.on{background:color-mix(in srgb,var(--acc) 15%,transparent)}
+.hc-th.on:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc)}
+.hc-av{flex:0 0 auto;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff;position:relative;letter-spacing:.02em}
+.hc-av i{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:50%;background:var(--muted);border:2px solid var(--bg2)}
+.hc-av i.on{background:var(--rx)}
+.hc-tb{flex:1;min-width:0}
+.hc-t1{display:flex;gap:8px;align-items:baseline}
+.hc-t1 b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.hc-t1 small{color:var(--muted);font-size:11.5px;white-space:nowrap}
+.hc-t2{display:flex;gap:8px;align-items:center;margin-top:2px}
+.hc-t2 span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:13px}
+.hc-t2 span.typ{color:var(--rx);font-style:italic}
+.hc-t2 em{font-style:normal;background:var(--acc);color:#04142e;font-size:11px;font-weight:800;border-radius:999px;min-width:20px;text-align:center;padding:1px 6px}
+.hc-pin{width:13px;height:13px;stroke:var(--muted);fill:var(--muted)}
+.hc-none{padding:30px 18px;color:var(--muted);text-align:center;font-size:13.5px}
+.hc-r{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg)}
+.hc-rh{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.hc-back{display:none;border:1px solid var(--line2);background:transparent;border-radius:9px;width:36px;height:36px;font-size:18px}
+.hc-who{flex:1;min-width:0}
+.hc-who b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hc-who small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hc-who small.on{color:var(--rx)}
+.hc-ic{display:flex;gap:4px}
+.hc-ib{width:36px;height:36px;border:1px solid transparent;background:transparent;border-radius:9px;display:grid;place-items:center;color:var(--muted)}
+.hc-ib:hover{background:var(--line);color:var(--text)}.hc-ib.on{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 40%,transparent)}
+.hc-ib svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hc-body{flex:1;display:flex;min-height:0}
+.hc-feedw{flex:1;position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
+.hc-feed{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:16px 18px;display:flex;flex-direction:column;gap:3px;min-height:0;scroll-behavior:auto}
+.hc-day{align-self:center;margin:12px 0 6px;font-size:12px;color:var(--muted);background:var(--bg2);border:1px solid var(--line);border-radius:999px;padding:2px 12px}
+.hc-m{display:flex;gap:8px;max-width:78%;align-items:flex-end}
+.hc-m.me{align-self:flex-end;flex-direction:row-reverse}
+.hc-m.first{margin-top:8px}
+.hc-bub{position:relative;padding:7px 11px 5px;border-radius:16px;line-height:1.45;word-wrap:break-word;overflow-wrap:anywhere;min-width:64px}
+.hc-m.them .hc-bub{background:var(--card);border:1px solid var(--line2);border-bottom-left-radius:5px}
+.hc-m.me .hc-bub{background:#1f6feb;color:#fff;border-bottom-right-radius:5px}
+.hc-m.me .hc-bub a{color:#fff;text-decoration:underline}
+.hc-bub .tx{white-space:normal}
+.hc-bub code{font:12.5px var(--mono);background:rgba(127,127,127,.25);border-radius:5px;padding:1px 5px}
+.hc-bub pre{margin:6px 0;padding:8px 10px;background:rgba(0,0,0,.3);border-radius:9px;font:12.5px/1.45 var(--mono);white-space:pre-wrap;overflow-x:auto;color:#e8eef5}
+.hc-bub img.ph{display:block;padding:0!important;width:240px;max-width:100%;height:auto;border-radius:11px;margin:2px 0 4px;cursor:zoom-in;background:var(--line)}
+.hc-bub .ft{display:flex;gap:5px;justify-content:flex-end;align-items:center;font-size:11px;opacity:.7;margin-top:1px;white-space:nowrap}
+.hc-bub .tk{font-size:12px;letter-spacing:-3px}.hc-bub .tk.rd{color:#7ff0b0;opacity:1}
+.hc-bub .del{font-style:italic;opacity:.65}
+.hc-act{position:absolute;top:-12px;right:6px;display:none;gap:2px;background:var(--card);border:1px solid var(--line2);border-radius:9px;padding:2px;box-shadow:0 4px 14px rgba(0,0,0,.35);z-index:2}
+.hc-m.me .hc-act{right:auto;left:6px}
+.hc-bub:hover .hc-act{display:flex}
+.hc-act button{border:0;background:transparent;width:26px;height:26px;border-radius:6px;color:var(--text);font-size:13px}.hc-act button:hover{background:var(--line)}
+.hc-mav{flex:0 0 auto;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff}
+.hc-typ{height:22px;padding:0 20px;color:var(--rx);font-size:12.5px;font-style:italic}
+.hc-new{position:absolute;right:18px;bottom:10px;border:0;background:var(--acc);color:#04142e;font-weight:700;border-radius:999px;padding:6px 14px;box-shadow:0 6px 18px rgba(0,0,0,.4);display:none;z-index:3}
+.hc-comp{border-top:1px solid var(--line);background:var(--bg2);padding:8px 14px 12px;position:relative}
+.hc-tool{display:flex;gap:2px;margin-bottom:6px;align-items:center}
+.hc-tool button{border:0;background:transparent;border-radius:8px;min-width:32px;height:30px;color:var(--muted);font-size:14px;padding:0 6px}
+.hc-tool button:hover{background:var(--line);color:var(--text)}
+.hc-tool .sp{flex:1}.hc-tool small{color:var(--muted);font-size:11.5px}
+.hc-row{display:flex;gap:10px;align-items:flex-end}
+.hc-row textarea{flex:1;resize:none;min-height:44px;max-height:170px;border-radius:12px;padding:11px 13px;line-height:1.4;background:var(--bg)}
+.hc-send{border:0;background:var(--acc);color:#04142e;font-weight:700;border-radius:12px;height:44px;padding:0 20px;display:flex;align-items:center;gap:7px}
+.hc-send:disabled{opacity:.45;cursor:default}
+.hc-send svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.hc-att{display:none;margin:0 0 8px;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line2);border-radius:11px;padding:6px 10px}
+.hc-att img{height:54px;border-radius:8px}.hc-att span{flex:1;font-size:12.5px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hc-att button{border:0;background:var(--line);border-radius:50%;width:26px;height:26px}
+.hc-err{color:var(--bad);font-size:12.5px;min-height:0;margin-bottom:4px}
+.hc-side{width:270px;flex:0 0 auto;border-left:1px solid var(--line);background:var(--bg2);padding:14px;display:none;flex-direction:column;gap:10px;overflow-y:auto}
+.hc-side.open{display:flex}
+.hc-side h4{margin:0;font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.hc-side textarea{width:100%;min-height:140px;resize:vertical;border-radius:10px}
+.hc-side dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:5px 10px;font-size:13px}.hc-side dt{color:var(--muted)}.hc-side dd{margin:0;overflow-wrap:anywhere}
+.hc-empty{flex:1;display:grid;place-items:center;color:var(--muted);text-align:center;padding:30px}
+.hc-empty svg{width:56px;height:56px;stroke:var(--line2);fill:none;stroke-width:1.5;margin-bottom:10px}
+.hc-lb{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100;display:none;align-items:center;justify-content:center;cursor:zoom-out;padding:20px}
+.hc-lb.on{display:flex}.hc-lb img{max-width:100%;max-height:100%;border-radius:8px}
+.hc-drop{position:absolute;inset:0;background:color-mix(in srgb,var(--acc) 22%,transparent);border:3px dashed var(--acc);border-radius:12px;display:none;place-items:center;font-weight:700;font-size:18px;z-index:5;pointer-events:none}
+.hc-feedw.drag .hc-drop{display:grid}
+@media (max-width:980px){.hc-side.open{position:absolute;right:0;top:0;bottom:0;z-index:6;box-shadow:-10px 0 30px rgba(0,0,0,.4)}.hc-r{position:relative}}
+@media (max-width:820px){
+ .hc{grid-template-columns:1fr;height:calc(100vh - 20px)}
+ .hc-r{display:none}.hc.open .hc-l{display:none}.hc.open .hc-r{display:flex}.hc-back{display:inline-block}
+ .hc-m{max-width:92%}
+}
+</style>
+<div class="hc" id="hc">
+ <div class="hc-l">
+  <div class="hc-lh">
+   <h2>💬 <span id="L_title"></span> <span class="bd" id="hcBadge" style="display:none"></span></h2>
+   <div class="hc-srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="hcQ" type="search" autocomplete="off"></div>
+   <div class="hc-tabs"><button id="tabA" class="on"></button><button id="tabB"></button></div>
+  </div>
+  <div class="hc-list" id="hcList"></div>
+ </div>
+ <div class="hc-r" id="hcR">
+  <div class="hc-empty" id="hcEmpty"><div><svg viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg><div id="L_pick"></div></div></div>
+  <div id="hcConv" style="display:none;flex-direction:column;flex:1;min-height:0">
+   <div class="hc-rh">
+    <button class="hc-back" id="hcBack" type="button">←</button>
+    <div class="hc-av" id="hAv"></div>
+    <div class="hc-who"><b id="hName"></b><small id="hSub"></small></div>
+    <div class="hc-ic">
+     <button class="hc-ib" id="bInfo" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></svg></button>
+     <button class="hc-ib" id="bPin" type="button"><svg viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4z"/></svg></button>
+     <button class="hc-ib" id="bArch" type="button"><svg viewBox="0 0 24 24"><path d="M3 4h18v4H3zM5 8v12h14V8M10 12h4"/></svg></button>
+     <button class="hc-ib" id="bDel" type="button"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button>
+    </div>
+   </div>
+   <div class="hc-body">
+    <div class="hc-feedw" id="hcFW">
+     <div class="hc-feed" id="hcFeed"></div>
+     <div class="hc-typ" id="hcTyp"></div>
+     <button class="hc-new" id="hcNew" type="button"></button>
+     <div class="hc-drop" id="L_drop"></div>
+     <div class="hc-comp">
+      <div class="hc-err" id="hcErr"></div>
+      <div class="hc-att" id="hcAtt"><img id="hcAttImg" alt=""><span id="hcAttName"></span><button type="button" id="hcAttX">✕</button></div>
+      <div class="hc-tool">
+       <button type="button" id="tB"><b>B</b></button><button type="button" id="tI"><i>I</i></button><button type="button" id="tS"><s>S</s></button><button type="button" id="tC" style="font-family:monospace">&lt;/&gt;</button>
+       <button type="button" id="tE">😀</button><button type="button" id="tP" title="">📎</button>
+       <span class="sp"></span><small id="L_hint"></small>
+      </div>
+      <div class="hc-row"><textarea id="hcTa" rows="1"></textarea><button class="hc-send" id="hcSend" type="button"><span id="L_send"></span><svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button></div>
+      <input type="file" id="hcFile" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none">
+     </div>
+    </div>
+    <div class="hc-side" id="hcSide">
+     <h4 id="L_det"></h4><dl id="hcDl"></dl>
+     <h4 id="L_note"></h4><textarea id="hcNote"></textarea><small class="muted" id="L_notehint"></small>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+<div class="hc-lb" id="hcLb"><img alt=""></div>
+<script src="../chat.js"></script>
+<script>
+(function(){
+var C=window.DCChat, CSRF=__CSRF__, LB=__LBL__, OPEN=__TOKEN__;
+var $=function(i){return document.getElementById(i);};
+var cur='', last=0, arch=0, threads=[], lastUnread=-1, stick=true, pendingFile=null, sending=false, lastDay='', lastWho='', typSent=0, srch='', loadedFirst=false, now=Math.floor(Date.now()/1000), seenIds={}, info={};
+['title','pick','drop','hint','send','det','note','notehint'].forEach(function(k){var e=$('L_'+k);if(e)e.textContent=LB[k];});
+$('hcQ').placeholder=LB.search;$('tabA').textContent=LB.active;$('hcTa').placeholder=LB.ph;$('hcNew').textContent='↓ '+LB.newmsg;
+$('bInfo').title=LB.info;$('bPin').title=LB.pin;$('bArch').title=LB.archive;$('bDel').title=LB.delthread;$('tP').title=LB.photo;$('tB').title='**'+LB.bold+'**';$('tI').title='*'+LB.ital+'*';$('tC').title=LB.code;
+function api(a,fd){var u='?chatapi='+a;if(!fd)return fetch(u,{credentials:'same-origin'}).then(function(r){return r.json();});return fetch(u,{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();});}
+function post(a,o){var fd=new FormData();fd.append('csrf',CSRF);fd.append('token',cur);for(var k in o)fd.append(k,o[k]);return api(a,fd);}
+function hue(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))%360;return 'hsl('+h+',52%,42%)';}
+function nm(t){return (t.name+' '+t.call).trim()||LB.visitor;}
+function ini(t){var n=(t.call||t.name||'?').replace(/[^A-Za-z0-9Ͱ-Ͽ]/g,'');return (n.slice(0,2)||'?').toUpperCase();}
+function setBadge(n){var b=$('hcBadge');b.style.display=n?'':'none';b.textContent=n;document.title=(n?'('+n+') ':'')+document.title.replace(/^\(\d+\) /,'');
+ var nav=document.querySelector('nav a[href*="p=chat"] .cnt, nav a[href*="p=chat"] .badge');if(nav)nav.textContent=n||'';}
+/* ---------- thread list ---------- */
+function renderList(){
+ var L=$('hcList');L.innerHTML='';
+ if(!threads.length){L.innerHTML='<div class="hc-none">'+C.esc(arch?LB.noarch:(srch?LB.nores:LB.nochats))+'</div>';return;}
+ threads.forEach(function(t){
+  var d=document.createElement('div');d.className='hc-th'+(t.token===cur?' on':'');d.dataset.t=t.token;
+  var pv=t.typ?'<span class="typ">'+C.esc(LB.typing)+'</span>':'<span>'+(t.lastwho==='owner'?C.esc(LB.you)+': ':'')+C.esc(t.last.replace(/[*`_~]/g,''))+'</span>';
+  d.innerHTML='<div class="hc-av" style="background:'+hue(t.token)+'">'+C.esc(ini(t))+'<i class="'+(t.on?'on':'')+'"></i></div><div class="hc-tb"><div class="hc-t1"><b>'+C.esc(nm(t))+'</b>'+(t.pin?'<svg class="hc-pin" viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4z"/></svg>':'')+'<small>'+C.ago(t.lt,now,LB)+'</small></div><div class="hc-t2">'+pv+(t.unread?'<em>'+t.unread+'</em>':'')+'</div></div>';
+  d.addEventListener('click',function(){openThread(t.token);});
+  L.appendChild(d);});
+}
+var listBusy=false;
+function loadList(){if(listBusy)return;listBusy=true;
+ api('threads&arch='+arch+'&q='+encodeURIComponent(srch)).then(function(j){listBusy=false;if(!j||!j.ok)return;
+  now=j.now;threads=j.threads;renderList();setBadge(j.unread);$('tabB').textContent=LB.archived+(j.archived?' ('+j.archived+')':'');
+  if(lastUnread>=0&&j.unread>lastUnread){C.beep();}lastUnread=j.unread;
+  var t=threads.filter(function(x){return x.token===cur;})[0];if(t&&cur){$('hSub').className=t.on?'on':'';}
+ }).catch(function(){listBusy=false;});}
+/* ---------- conversation ---------- */
+function openThread(tk){
+ cur=tk;last=0;lastDay='';lastWho='';seenIds={};stick=true;info={};$('hcFeed').innerHTML='';$('hcErr').textContent='';clearAtt();
+ $('hcEmpty').style.display='none';$('hcConv').style.display='flex';$('hc').classList.add('open');
+ try{history.replaceState(null,'','?p=chat&t='+tk);}catch(e){}
+ renderList();loadMsgs(true);setTimeout(function(){$('hcTa').focus();},50);}
+function closeThread(){cur='';$('hc').classList.remove('open');$('hcConv').style.display='none';$('hcEmpty').style.display='';try{history.replaceState(null,'','?p=chat');}catch(e){}renderList();}
+function tickHtml(m){return m.who==='owner'?'<span class="tk'+(m.rd?' rd':'')+'" title="'+C.esc(m.rd?LB.seen:LB.sent)+'">'+(m.rd?'✓✓':'✓')+'</span>':'';}
+function buildMsg(m){
+ var me=m.who==='owner',row=document.createElement('div');row.className='hc-m '+(me?'me':'them')+(lastWho!==m.who?' first':'');row.dataset.id=m.id;
+ var dk=C.dayKey(m.t),sep=null;if(dk!==lastDay){lastDay=dk;sep=document.createElement('div');sep.className='hc-day';sep.textContent=C.dayLabel(m.t,LB.today,LB.yest);}
+ lastWho=m.who;
+ var b='';
+ if(m.del)b='<div class="tx del">'+C.esc(LB.removed)+'</div>';
+ else{if(m.img)b+='<img class="ph" src="?chatimg='+m.id+'" alt="" onload="this.style.width=Math.min(320,this.naturalWidth)+\'px\';var f=document.getElementById(\'hcFeed\');if(f&&f.dataset.stick!==\'0\')f.scrollTop=f.scrollHeight">';if(m.body)b+='<div class="tx">'+C.fmt(m.body)+'</div>';}
+ var av=me?'':'<div class="hc-mav" style="background:'+hue(cur)+'">'+C.esc(ini(info))+'</div>';
+ row.innerHTML=av+'<div class="hc-bub">'+(m.del?'':'<div class="hc-act"><button type="button" data-a="copy" title="'+C.esc(LB.copy)+'">⧉</button><button type="button" data-a="del" title="'+C.esc(LB.del)+'">🗑</button></div>')+b+'<div class="ft"><span>'+C.hm(m.t)+'</span>'+(m.del?'':tickHtml(m))+'</div></div>';
+ row._m=m;return [sep,row];}
+function addMsgs(ms){
+ var f=$('hcFeed');ms.forEach(function(m){if(seenIds[m.id])return;seenIds[m.id]=1;if(m.id>last)last=m.id;var p=buildMsg(m);if(p[0])f.appendChild(p[0]);f.appendChild(p[1]);});
+ if(stick)f.scrollTop=f.scrollHeight;else if(ms.length)$('hcNew').style.display='block';}
+function loadMsgs(first){
+ if(!cur)return;var tk=cur;
+ api('msgs&t='+tk+'&after='+last).then(function(j){if(!j||!j.ok||tk!==cur)return;now=j.now;
+  info={name:j.name,call:j.call,email:j.email};
+  var nw=j.msgs.filter(function(m){return m.who==='user'&&!seenIds[m.id];}).length;
+  addMsgs(j.msgs);
+  if(nw&&!first&&(document.hidden||!document.hasFocus()))C.beep();
+  j.upd.forEach(function(u){var el=document.querySelector('.hc-m[data-id="'+u.id+'"]');if(!el)return;if(u.del&&!el._m.del){var p=buildMsg(u);/* replace in place */el.innerHTML=p[1].innerHTML;el._m=u;}else if(u.rd&&!el._m.rd){el._m.rd=1;var tk2=el.querySelector('.tk');if(tk2){tk2.className='tk rd';tk2.textContent='✓✓';tk2.title=LB.seen;}}});
+  var t={name:j.name,call:j.call};$('hName').textContent=nm(t);$('hAv').style.background=hue(tk);$('hAv').textContent=ini(t);
+  $('hSub').className=j.on?'on':'';$('hSub').textContent=(j.on?'● '+LB.online:LB.offline)+(j.email?' · '+j.email:'');
+  $('hcTyp').textContent=j.typ?LB.visitor_typing:'';
+  $('bPin').classList.toggle('on',!!j.pin);$('bArch').classList.toggle('on',!!j.arch);$('bArch').title=j.arch?LB.unarchive:LB.archive;
+  if(document.activeElement!==$('hcNote'))$('hcNote').value=j.note;
+  var dl='<dt>'+LB.name+'</dt><dd>'+C.esc(j.name||'—')+'</dd><dt>'+LB.call+'</dt><dd>'+C.esc(j.call||'—')+'</dd><dt>Email</dt><dd>'+(j.email?'<a href="mailto:'+C.esc(j.email)+'">'+C.esc(j.email)+'</a>':'—')+'</dd><dt>'+LB.started+'</dt><dd>'+new Date(j.first*1000).toLocaleString()+'</dd>';
+  if(j.inst)dl+='<dt>'+LB.install+'</dt><dd><a href="?p=installs&id='+encodeURIComponent(j.inst)+'">'+LB.open+' →</a></dd>';
+  $('hcDl').innerHTML=dl;
+  if(first){$('hcFeed').scrollTop=$('hcFeed').scrollHeight;}
+ }).catch(function(){});}
+/* ---------- sending ---------- */
+function setErr(t){$('hcErr').textContent=t||'';}
+function clearAtt(){pendingFile=null;$('hcAtt').style.display='none';$('hcFile').value='';}
+function setFile(f){
+ if(!f)return;if(!/^image\/(jpeg|png|gif|webp)$/.test(f.type)){setErr(LB.errtype);return;}if(f.size>5242880){setErr(LB.errbig);return;}
+ setErr('');pendingFile=f;var r=new FileReader();r.onload=function(){$('hcAttImg').src=r.result;};r.readAsDataURL(f);$('hcAttName').textContent=f.name+' · '+Math.round(f.size/1024)+' KB';$('hcAtt').style.display='flex';$('hcTa').focus();}
+function send(){
+ if(sending||!cur)return;var body=$('hcTa').value.trim();if(!body&&!pendingFile)return;
+ sending=true;$('hcSend').disabled=true;setErr('');
+ var fd=new FormData();fd.append('csrf',CSRF);fd.append('token',cur);fd.append('body',body);if(pendingFile)fd.append('image',pendingFile,pendingFile.name);
+ api('send',fd).then(function(j){sending=false;$('hcSend').disabled=false;
+  if(!j||!j.ok){setErr((j&&j.err)||LB.errsend);return;}
+  $('hcTa').value='';$('hcTa').style.height='';clearAtt();stick=true;addMsgs([j.msg]);loadList();$('hcTa').focus();
+ }).catch(function(){sending=false;$('hcSend').disabled=false;setErr(LB.errsend);});}
+/* ---------- events ---------- */
+var ta=$('hcTa');
+ta.addEventListener('input',function(){this.style.height='44px';this.style.height=Math.min(170,this.scrollHeight)+'px';if(cur&&Date.now()-typSent>2500&&this.value){typSent=Date.now();post('typing',{});}});
+ta.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send();}
+ if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();C.wrap(ta,'**','**');}if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();C.wrap(ta,'*','*');}});
+ta.addEventListener('paste',function(e){var it=(e.clipboardData||{}).items||[];for(var i=0;i<it.length;i++)if(it[i].kind==='file'&&/^image\//.test(it[i].type)){setFile(it[i].getAsFile());e.preventDefault();return;}});
+$('hcSend').addEventListener('click',send);
+$('tB').onclick=function(){C.wrap(ta,'**','**');};$('tI').onclick=function(){C.wrap(ta,'*','*');};$('tS').onclick=function(){C.wrap(ta,'~~','~~');};
+$('tC').onclick=function(){var v=ta.value.slice(ta.selectionStart,ta.selectionEnd);if(v.indexOf('\n')>=0)C.wrap(ta,'```\n','\n```');else C.wrap(ta,'`','`');};
+$('tE').onclick=function(e){e.stopPropagation();C.picker($('tE'),function(x){C.insert(ta,x);});};
+$('tP').onclick=function(){$('hcFile').click();};$('hcFile').onchange=function(){setFile(this.files[0]);};$('hcAttX').onclick=clearAtt;
+var fw=$('hcFW');['dragenter','dragover'].forEach(function(ev){fw.addEventListener(ev,function(e){if(e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types,'Files')>=0){e.preventDefault();fw.classList.add('drag');}});});
+['dragleave','drop'].forEach(function(ev){fw.addEventListener(ev,function(e){e.preventDefault();fw.classList.remove('drag');if(ev==='drop'&&e.dataTransfer.files[0])setFile(e.dataTransfer.files[0]);});});
+var feed=$('hcFeed');feed.addEventListener('scroll',function(){stick=feed.scrollHeight-feed.scrollTop-feed.clientHeight<60;feed.dataset.stick=stick?'1':'0';if(stick)$('hcNew').style.display='none';});
+$('hcNew').onclick=function(){feed.scrollTop=feed.scrollHeight;$('hcNew').style.display='none';};
+feed.addEventListener('click',function(e){
+ var im=e.target.closest('img.ph');if(im){$('hcLb').querySelector('img').src=im.src;$('hcLb').classList.add('on');return;}
+ var bt=e.target.closest('.hc-act button');if(!bt)return;var row=bt.closest('.hc-m'),m=row._m;
+ if(bt.dataset.a==='copy'){try{navigator.clipboard.writeText(m.body||'');}catch(x){}}
+ if(bt.dataset.a==='del'&&confirm(LB.delmsgq)){post('delmsg',{id:m.id}).then(function(){m.del=1;m.body='';m.img=0;var p=buildMsg(m);row.innerHTML=p[1].innerHTML;row._m=m;});}});
+$('hcLb').onclick=function(){this.classList.remove('on');};document.addEventListener('keydown',function(e){if(e.key==='Escape')$('hcLb').classList.remove('on');});
+$('bInfo').onclick=function(){$('hcSide').classList.toggle('open');this.classList.toggle('on');};
+$('bPin').onclick=function(){post('flag',{k:'pin',v:$('bPin').classList.contains('on')?0:1}).then(function(){loadMsgs();loadList();});};
+$('bArch').onclick=function(){var v=$('bArch').classList.contains('on')?0:1;post('flag',{k:'arch',v:v}).then(function(){if(v)closeThread();loadList();});};
+$('bDel').onclick=function(){if(confirm(LB.delthreadq)){post('delthread',{}).then(function(){closeThread();loadList();});}};
+$('hcBack').onclick=closeThread;
+$('hcNote').addEventListener('blur',function(){if(cur)post('note',{note:this.value});});
+$('tabA').onclick=function(){arch=0;$('tabA').classList.add('on');$('tabB').classList.remove('on');loadList();};
+$('tabB').onclick=function(){arch=1;$('tabB').classList.add('on');$('tabA').classList.remove('on');loadList();};
+var qt;$('hcQ').addEventListener('input',function(){clearTimeout(qt);var v=this.value;qt=setTimeout(function(){srch=v.trim();loadList();},250);});
+/* ---------- live updates ---------- */
+loadList();if(OPEN)openThread(OPEN);
+setInterval(function(){loadList();},document.hidden?10000:4000);
+setInterval(function(){if(cur&&!document.hidden)loadMsgs();},2500);
+setInterval(function(){if(cur&&document.hidden)loadMsgs();},10000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden){loadList();loadMsgs();}});
+window.addEventListener('focus',function(){loadMsgs();});
+})();
+</script>
+
+HTMLCHAT;
+  $openTok = preg_replace('/[^a-f0-9]/', '', (string)($_GET['t'] ?? '')); if (strlen($openTok) !== 32) $openTok = '';
+  echo str_replace(['__CSRF__', '__LBL__', '__TOKEN__'], [json_encode($CSRF), json_encode($LB, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP), json_encode($openTok)], $tpl);
+}
+
 /* ===================== ACTIVITY ===================== */
 elseif ($p === 'activity') {
   $ev = dc_q("SELECT * FROM dc_events ORDER BY t DESC LIMIT 300")->fetchAll();
@@ -630,6 +1221,7 @@ elseif ($p === 'settings') {
     . '<option value="grace"' . ($off['offline']==='grace'?' selected':'') . '>' . L('Να δουλεύει για Ν ημέρες από τον τελευταίο έλεγχο','Keep working for N days after the last check') . '</option>'
     . '<option value="allow"' . ($off['offline']==='allow'?' selected':'') . '>' . L('Να δουλεύει πάντα· η απενεργοποίηση ισχύει μόλις συνδεθεί','Always keep working; a block applies as soon as it is online again') . '</option></select></label>'
     . '<label>' . L('Ημέρες ανοχής (για την επιλογή «Ν ημέρες»)','Grace days (for the «N days» option)') . '<input type="number" name="offline_days" min="1" value="' . (int)$off['offline_days'] . '"></label>'
+    . '<label class="chk"><input type="checkbox" name="reinstall_id" value="1"' . (dc_kv('reinstall_id', '1') === '1' ? ' checked' : '') . '> ' . L('Επανεγκατάσταση: η νέα εγκατάσταση παίρνει αυτόματα την άδεια του ίδιου χρήστη (ίδιο διακριτικό + email) και σου έρχεται ειδοποίηση', 'Reinstall: a new installation automatically takes the licence of the same user (same callsign + e-mail) and you get an alert') . '</label>'
     . '<p class="help">' . L('Το demo για νέες εγκαταστάσεις και το κουμπί Donate ορίζονται στις Άδειες / Κωδικοί.','The demo for new installations and the Donate button are set under Licences / Codes.') . '</p>'
     . '<button class="btn pri">' . L('Αποθήκευση','Save') . '</button></form></section></div>';
 }
@@ -741,6 +1333,14 @@ function activity_rows($rows) {
       case 'install':   $txt = L('Νέα εγκατάσταση ', 'New installation ') . $who($d[0]) . ' · v' . h($d[1] ?? '') . ' · ' . h($osn($d[2] ?? '', $d[3] ?? '')); $c = 'g'; break;
       case 'demo':      $txt = L('Demo ', 'Demo ') . h($d[1] ?? '') . L(' ημέρες · ', ' days · ') . $who($d[0]); $c = 'b'; break;
       case 'licence':   $txt = L('Άδεια ', 'Licence ') . ($d[0] === 'default' || $d[0] === 'reset' ? '<b>' . h($d[0] === 'reset' ? L('προεπιλογή σε υπάρχουσες', 'default applied to existing') : L('νέα προεπιλογή', 'new default')) . '</b> · ' . h($d[1] ?? '') : $who($d[0]) . ' → <b>' . h($d[1] ?? '') . '</b>' . (!empty($d[2]) ? ' → ' . h($d[2]) : '') . (!empty($d[3]) ? ' · <span class="muted">' . h($d[3]) . '</span>' : '')); $c = 'b'; break;
+      case 'inbox':     $txt = '✉ ' . L('Μήνυμα από χρήστη: ', 'Message from a user: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · <a href="?p=inbox">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
+      case 'inbox_reply': $txt = L('Απάντηση σε χρήστη: ', 'Reply to a user: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'b'; break;
+      case 'chat_new':  $txt = '💬 ' . L('Νέα συνομιλία από τη σελίδα · ', 'New chat from the website · ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h(mb_substr((string)($d[2] ?? ''), 0, 80)) . ' · <a href="?p=chat&t=' . h($d[1] ?? '') . '">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
+      case 'chat_msg':  $txt = '💬 ' . L('Μήνυμα στη συνομιλία · ', 'Chat message · ') . h(mb_substr((string)($d[1] ?? ''), 0, 80)) . ' · <a href="?p=chat&t=' . h($d[0] ?? '') . '">' . L('άνοιγμα', 'open') . '</a>'; break;
+      case 'chat_reply': $txt = L('Απάντηση στη συνομιλία · ', 'Reply in the chat · ') . h(mb_substr((string)($d[1] ?? ''), 0, 80)); $c = 'b'; break;
+      case 'chat_delete': $txt = L('Διαγραφή συνομιλίας', 'Chat deleted'); break;
+      case 'reinstall_id': $txt = '⚠ ' . L('Επανεγκατάσταση (ίδιο διακριτικό + email): ', 'Reinstall (same callsign + e-mail): ') . $who($d[0]) . ' ' . L('πήρε αυτόματα την άδεια της ', 'automatically took the licence of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>' . (!empty($d[4]) ? ' (' . h($d[4]) . ')' : ''); $c = 'o'; break;
+      case 'reinstall': $txt = L('Επανεγκατάσταση: ', 'Reinstalled: ') . $who($d[0]) . ' ' . L('πήρε την κατάσταση της ', 'took the state of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>'; $c = 'b'; break;
       case 'payment':   $txt = L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? ''); $c = 'g'; break;
       case 'pay_auto':  $txt = '♥ ' . L('Αυτόματη ενεργοποίηση ', 'Automatic activation ') . $who($d[0]) . ' · ' . h($d[2] ?? '') . ' · <span class="mono">' . h($d[3] ?? '') . '</span>'; $c = 'g'; break;
       case 'pay_unmatched': $txt = '♥ ' . L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> ' . L('από ', 'from ') . h($d[2] ?? '') . ' — <a href="?p=payments">' . L('χρειάζεται ενεργοποίηση', 'needs activation') . '</a>'; $c = 'o'; break;

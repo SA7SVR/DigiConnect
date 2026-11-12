@@ -28,10 +28,18 @@ if (!$cur) {
   dc_q('INSERT INTO dc_installs(id,first_seen,last_seen,version,shell,os,arch,checks,state,demo_until,ip) VALUES(?,?,?,?,?,?,?,0,?,?,?)',
     [$id, $now, $now, $v, $shell, $os, $arch, '', 0, dc_ip()]);
   dc_event('install', "$id|$v|$os|$arch");
-  // reinstall by the same person: take over the earlier state, so a new installation id does not restart the demo
-  $old = dc_one("SELECT state, demo_until, enabled, note, lic_by, lic_set, owner, lic_code, lic_since FROM dc_installs WHERE call=? AND lower(mail)=? AND id<>? ORDER BY first_seen ASC LIMIT 1", [$call, $mail, $id]);
-  if ($old) dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=?, owner=?, lic_code=?, lic_since=? WHERE id=?',
-    [$old['state'], $old['demo_until'], $old['enabled'], $old['note'], $old['lic_by'], $old['lic_set'], $old['owner'], $old['lic_code'], $old['lic_since'], $id]);
+  // reinstall by the same person (same callsign + e-mail): take over the earlier state, so a new installation id does not restart the demo
+  // and a paid licence is not lost. Panel setting "reinstall_id" (Licences) switches this off; a taken-over FULL licence raises an alert in the panel.
+  $old = dc_kv('reinstall_id', '1') === '1' ? dc_one("SELECT id, state, demo_until, enabled, note, lic_by, lic_set, owner, lic_code, lic_since FROM dc_installs WHERE call=? AND lower(mail)=? AND id<>? ORDER BY first_seen ASC LIMIT 1", [$call, $mail, $id]) : null;
+  if ($old) {
+    dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=?, owner=?, lic_code=?, lic_since=? WHERE id=?',
+      [$old['state'], $old['demo_until'], $old['enabled'], $old['note'], $old['lic_by'], $old['lic_set'], $old['owner'], $old['lic_code'], $old['lic_since'], $id]);
+    if ($old['state'] === 'full') {
+      $who = trim(dc_inst_no($id) . ' ' . $call . ' ' . $name);
+      dc_alert('reinstall_id', "$id|{$old['id']}|" . dc_inst_no($old['id']) . "|full|$call",
+        "Νέα εγκατάσταση $who (ίδιο διακριτικό και email) πήρε αυτόματα την άδεια της " . dc_inst_no($old['id']) . ". Αν δεν είναι ο ίδιος χρήστης, κλείδωσε την στο panel.\nNew installation $who (same callsign and e-mail) automatically took the licence of " . dc_inst_no($old['id']) . ". If it is not the same user, lock it in the panel.");
+    } else dc_event('reinstall', "$id|{$old['id']}|" . dc_inst_no($old['id']) . "|{$old['state']}");
+  }
 }
 dc_q('UPDATE dc_installs SET name=?, call=?, dmr_id=?, mail=?, lang=?, consent_at=COALESCE(consent_at,?), last_seen=?, ip=? WHERE id=?',
   [$name, $call, $dmr, $mail, $lang, $now, $now, dc_ip(), $id]);

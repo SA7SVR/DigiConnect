@@ -25,6 +25,7 @@ if ($id) {
   }
 }
 
+if ($id) dc_daily_mark($id, $v, $os);
 $in = $id ? dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]) : null;
 list($state, $left, $msg) = $in ? dc_state($in) : ['full', '', ''];
 
