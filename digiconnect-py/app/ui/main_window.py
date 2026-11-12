@@ -85,6 +85,9 @@ class MainWindow(W.QMainWindow):
         self.clock = label(""); self.clock.setAlignment(Qt.AlignmentFlag.AlignRight); th.addWidget(self.clock)
         self.callsign = label(""); self.callsign.setProperty("tone", "accent"); th.addWidget(self.callsign)
         self.upd_btn = button("New version", "primary", "download"); self.upd_btn.setVisible(False); self.upd_btn.clicked.connect(self.show_updates); th.addWidget(self.upd_btn)
+        self.demo_lbl = label("", tone="amber"); self.demo_lbl.setVisible(False); th.addWidget(self.demo_lbl)
+        self.donate_btn = button("♥ Donate", "", tip="Support the development of DigiConnect"); self.donate_btn.clicked.connect(lambda: self._donate()); th.addWidget(self.donate_btn)
+        self.license_url = ""
         self.theme_btn = button("", ""); th.addWidget(self.theme_btn); self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top); col.addWidget(top)
         # head (page title + tabs) – used by workspace pages
         self.head = W.QWidget(); hv = vbox(self.head, m=(24, 14, 24, 8), s=8)
@@ -118,6 +121,28 @@ class MainWindow(W.QMainWindow):
         QtGui.QShortcut(QtGui.QKeySequence("F4"), self, activated=self._mute_all)
         QtGui.QShortcut(QtGui.QKeySequence("F2"), self, activated=self._f2)
         self.current = "net:DMR"; self.apply_settings(); self.nav("net:DMR"); self._clock()
+
+    def _donate(self):
+        from .license_dialog import open_donate
+        open_donate(self.license_url)
+
+    def bind_license(self, watcher):
+        """Demo days in the top bar; when the server says this copy is locked (or the demo ended) the program stops and asks."""
+        self.watcher = watcher; watcher.changed.connect(self._license_changed)
+        if getattr(watcher.lic, "last", None) is not None: self._license_changed(watcher.lic.last)
+
+    def _license_changed(self, v):
+        self.license_url = v.donate or ""
+        self.demo_lbl.setVisible(v.allowed and v.state == "demo"); self.demo_lbl.setText(tr("Demo") + " · " + tr(v.left) if v.left else tr("Demo"))
+        if v.allowed or getattr(self, "_blocking", False): return
+        self._blocking = True
+        try:
+            from .license_dialog import BlockDialog
+            self.ctx.stop_all()
+            d = BlockDialog(v, self.watcher.lic.evaluate, self)
+            if not d.exec(): W.QApplication.quit()
+            elif d.result_verdict: self._license_changed(d.result_verdict)
+        finally: self._blocking = False
 
     @staticmethod
     def _pad(w):

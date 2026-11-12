@@ -17,7 +17,7 @@ if ($id) {
   $cur = dc_one('SELECT id FROM dc_installs WHERE id=?', [$id]);
   if (!$cur) {
     dc_q('INSERT INTO dc_installs(id,first_seen,last_seen,version,shell,os,arch,checks,state,demo_until,ip) VALUES(?,?,?,?,?,?,?,1,?,?,?)',
-      [$id, $now, $now, $v, $shell, $os, $arch, 'demo', $now + 86400 * (int)$cfg['demo_days'], dc_ip()]);
+      [$id, $now, $now, $v, $shell, $os, $arch, 'demo', $now + 86400 * (int)dc_opt('demo_days', $cfg['demo_days']), dc_ip()]);
     dc_event('install', "$id|$v|$os|$arch");
   } else {
     dc_q('UPDATE dc_installs SET last_seen=?, version=?, os=?, arch=?, shell=?, checks=checks+1, ip=? WHERE id=?',
@@ -28,9 +28,12 @@ if ($id) {
 $in = $id ? dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]) : null;
 list($state, $left, $msg) = $in ? dc_state($in) : ['full', '', ''];
 
-$out = ['ok' => true, 'checkEvery' => max(60, (int)$cfg['check_every']), 'state' => $state, 'left' => $left, 'msg' => $msg];
+$out = ['ok' => true, 'checkEvery' => max(60, (int)dc_opt('check_every', $cfg['check_every'])), 'state' => $state, 'left' => $left, 'msg' => $msg,
+        'registered' => ($in && !empty($in['consent_at']) && trim((string)$in['call']) !== '' && trim((string)$in['mail']) !== '') ? 1 : 0,
+        'offline' => dc_offline()['offline'], 'offline_days' => dc_offline()['offline_days'],
+        'donate' => (string)dc_opt('donate_url', $cfg['donate_url'] ?? '')];
 
-$rel = dc_active_release($id ?: null);
+$rel = dc_opt('paused', '0') === '1' ? null : dc_active_release($id ?: null);
 if ($rel) {
   $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? '') . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
   $newer = ($v === '' || version_compare($rel['version'], $v, '>'));

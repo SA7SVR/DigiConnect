@@ -76,6 +76,7 @@ void NXDN::process_udp()
     }
 	if(buf.size() == 17){
 		if(m_modeinfo.status == CONNECTING){
+			emit update_log("NXDN: the reflector answered the poll - connected");
 			m_modeinfo.status = CONNECTED_RW;
 			m_rxtimer = new QTimer();
 			connect(m_rxtimer, SIGNAL(timeout()), this, SLOT(process_rx_data()));
@@ -95,6 +96,7 @@ void NXDN::process_udp()
 		m_modeinfo.count++;
 	}
 	if(buf.size() == 43){
+		if(!m_logged_voice){ m_logged_voice = true; emit update_log("NXDN: first voice packet received from the reflector"); }
 		m_modeinfo.srcid = (uint16_t)((buf.data()[5] << 8) & 0xff00) | (buf.data()[6] & 0xff);
 		m_modeinfo.dstid = (uint16_t)((buf.data()[7] << 8) & 0xff00) | (buf.data()[8] & 0xff);
 		if(get_lich_fct(buf.data()[10U]) == NXDN_LICH_USC_SACCH_NS){

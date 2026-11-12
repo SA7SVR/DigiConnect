@@ -140,7 +140,7 @@ class SettingsDrawer(W.QFrame):
     def _saveprof(self):
         n = self.pname.text().strip()
         if not n: self.ctx.toast.emit("Enter a profile name first."); return
-        self._collect(); s = self.ctx.store.settings; prof = {k: v for k, v in s.items() if k not in ("profiles", "mic", "speakers")}
+        self._collect(); s = self.ctx.store.settings; prof = {k: v for k, v in s.items() if k not in ("profiles", "mic", "speakers", "lic", "registered")}
         s.setdefault("profiles", {})[n] = prof; self.ctx.store.save_settings()
         if self.prof.findText(n) < 0: self.prof.addItem(n)
         self.ctx.toast.emit(f"Profile '{n}' saved (passwords are never copied into profiles)")

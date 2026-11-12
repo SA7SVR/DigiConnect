@@ -184,6 +184,13 @@ void Engine::connect_to(const QJsonObject &c) {
         emit dmr_tg(c.value("tg").toInt());
     }
     m_thread->start();
+    // Connectionless protocols (C4FM, D-Star, NXDN, P25, M17 ...) only know they are connected when the server answers. When it never does,
+    // say so instead of showing a link that is not there.
+    Mode *started = m_mode;
+    QTimer::singleShot(15000, this, [this, started] {
+        if (m_mode == started && m_mode && m_status == Mode::CONNECTING)
+            teardown("error", "No answer from the server within 15 seconds - check the address and port, and that the network does not block UDP");
+    });
 }
 
 void Engine::teardown(const QString &state, const QString &msg) {

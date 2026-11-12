@@ -122,6 +122,13 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   // settings
   if ($a === 'set_check') { $m = max(1, (int)$_POST['mins']); dc_kv_set('check_every', $m * 60); flash('ok', L("Έλεγχος κάθε $m λεπτά", "Check every $m min")); }
   if ($a === 'set_gate')  { dc_kv_set('gate', ($_POST['gate'] ?? '') === '1' ? '1' : '0'); flash('ok', L('Έλεγχος άδειας ενημερώθηκε', 'Licence gate updated')); }
+  if ($a === 'set_lic') {
+    $off = in_array($_POST['offline'] ?? '', ['require', 'grace', 'allow'], true) ? $_POST['offline'] : 'require';
+    dc_kv_set('offline', $off); dc_kv_set('offline_days', max(1, (int)($_POST['offline_days'] ?? 7)));
+    dc_kv_set('demo_days', max(1, (int)($_POST['demo_days'] ?? 14)));
+    $du = trim((string)($_POST['donate_url'] ?? '')); dc_kv_set('donate_url', preg_match('~^https://~i', $du) ? $du : '');
+    flash('ok', L('Ρυθμίσεις άδειας αποθηκεύτηκαν', 'Licence settings saved'));
+  }
   if ($a === 'set_pause') { dc_kv_set('paused', ($_POST['paused'] ?? '') === '1' ? '1' : '0'); flash('ok', L('Κατάσταση ενημερώσεων ενημερώθηκε', 'Update pause updated')); }
 
   if (!$flash) $flash = ['ok', 'OK'];
@@ -145,6 +152,7 @@ if (isset($_GET['rail'])) { header('Content-Type: text/html; charset=utf-8'); he
 $ceMin = (int)round(((int)dc_kv('check_every', $cfg['check_every'])) / 60);
 $gate  = dc_kv('gate', $cfg['gate'] ? '1' : '0');
 $paused = dc_kv('paused', '0') === '1';
+$off = dc_offline();
 $act   = dc_one("SELECT * FROM dc_releases WHERE status='active' ORDER BY published DESC LIMIT 1");
 $onNow = (int)dc_one('SELECT COUNT(*) c FROM dc_installs WHERE last_ping>=?', [time() - DC_ONLINE_S])['c'];
 
@@ -289,7 +297,7 @@ elseif ($p === 'releases') {
 elseif ($p === 'installs') {
   $qf = trim($_GET['q'] ?? ''); $sf = $_GET['st'] ?? '';
   $w = []; $args = [];
-  if ($qf !== '') { $no = dc_no_filter($qf); $w[] = '(call LIKE ? OR id LIKE ? OR name LIKE ? OR mail LIKE ?' . ($no !== null ? ' OR rowid=' . $no : '') . ')'; array_push($args, "%$qf%", "%$qf%", "%$qf%", "%$qf%"); }
+  if ($qf !== '') { $no = dc_no_filter($qf); $w[] = '(call LIKE ? OR id LIKE ? OR name LIKE ? OR mail LIKE ? OR dmr_id LIKE ?' . ($no !== null ? ' OR rowid=' . $no : '') . ')'; array_push($args, "%$qf%", "%$qf%", "%$qf%", "%$qf%", "%$qf%"); }
   if (in_array($sf, ['demo','full','locked','disabled'], true)) { $w[] = 'state=?'; $args[] = $sf; }
   $where = $w ? ('WHERE ' . implode(' AND ', $w)) : '';
   $rows = dc_q("SELECT rowid AS rno, * FROM dc_installs $where ORDER BY MAX(COALESCE(last_ping,0),COALESCE(last_seen,0)) DESC LIMIT 500", $args)->fetchAll();
@@ -303,7 +311,9 @@ elseif ($p === 'installs') {
     list($st, $lf) = dc_state($r);
     $online = dc_online($r);
     echo '<tr><td><b>' . h($r['call'] ?: '—') . '</b><br><span class="muted mono" style="font-size:12px"><b>' . sprintf('DC-%05d', $r['rno']) . '</b></span>'
-       . ($r['name'] ? '<br><span class="muted" style="font-size:11px">' . h($r['name']) . '</span>' : '') . '</td>'
+       . ($r['name'] ? '<br><span class="muted" style="font-size:11px">' . h($r['name']) . '</span>' : '')
+       . ($r['mail'] ? '<br><span class="muted" style="font-size:11px">' . h($r['mail']) . '</span>' : '')
+       . ($r['dmr_id'] ? '<br><span class="muted" style="font-size:11px">DMR ID ' . h($r['dmr_id']) . '</span>' : '') . '</td>'
        . '<td>' . h($r['version'] ?: '—') . '</td><td>' . h($r['os'] ?: '—') . '</td>'
        . '<td><span class="pill onl ' . ($online?'ok':'') . '"><i></i>' . h($st) . ($lf ? ' · ' . h($lf) : '') . '</span></td>'
        . '<td class="muted">' . dc_dt(dc_last($r)) . '</td><td><div class="acts">'
@@ -421,6 +431,15 @@ elseif ($p === 'settings') {
     . '<form class="form" method="post">' . csrf() . '<input type="hidden" name="p" value="settings"><input type="hidden" name="a" value="set_gate">'
     . '<label class="chk"><input type="checkbox" name="gate" value="1"' . ($gate==='1'?' checked':'') . '> ' . L('Έλεγχος demo/άδειας ενεργός','Enforce demo/licence gate') . '</label>'
     . '<p class="help">' . L('Αν το ξεκλειδώσεις, το πρόγραμμα είναι δωρεάν για όλους χωρίς demo.','If unchecked, the app is free for everyone with no demo.') . '</p>'
+    . '<button class="btn pri">' . L('Αποθήκευση','Save') . '</button></form>'
+    . '<form class="form" method="post" style="margin-top:14px">' . csrf() . '<input type="hidden" name="p" value="settings"><input type="hidden" name="a" value="set_lic">'
+    . '<label>' . L('Ημέρες demo για νέες εγκαταστάσεις','Demo days for new installations') . '<input type="number" name="demo_days" min="1" value="' . (int)dc_opt('demo_days', $cfg['demo_days']) . '"></label>'
+    . '<label>' . L('Όταν ο server δεν είναι προσβάσιμος','When this server cannot be reached') . '<select name="offline">'
+    . '<option value="require"' . ($off['offline']==='require'?' selected':'') . '>' . L('Να απαιτεί πάντα σύνδεση (δεν ξεκινά χωρίς απάντηση)','Always require a connection (does not start without an answer)') . '</option>'
+    . '<option value="grace"' . ($off['offline']==='grace'?' selected':'') . '>' . L('Να δουλεύει για Ν ημέρες από τον τελευταίο έλεγχο','Keep working for N days after the last check') . '</option>'
+    . '<option value="allow"' . ($off['offline']==='allow'?' selected':'') . '>' . L('Να δουλεύει πάντα· η απενεργοποίηση ισχύει μόλις συνδεθεί','Always keep working; a block applies as soon as it is online again') . '</option></select></label>'
+    . '<label>' . L('Ημέρες ανοχής (για την επιλογή «Ν ημέρες»)','Grace days (for the «N days» option)') . '<input type="number" name="offline_days" min="1" value="' . (int)$off['offline_days'] . '"></label>'
+    . '<label>' . L('Διεύθυνση του κουμπιού Donate (https)','Address of the Donate button (https)') . '<input type="url" name="donate_url" value="' . h((string)dc_opt('donate_url', $cfg['donate_url'] ?? '')) . '" placeholder="https://www.paypal.com/donate/?hosted_button_id=…"></label>'
     . '<button class="btn pri">' . L('Αποθήκευση','Save') . '</button></form></section></div>';
 }
 

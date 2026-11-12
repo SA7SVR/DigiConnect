@@ -18,7 +18,7 @@ $now = time(); $cfg = dc_cfg();
 $cur = dc_one('SELECT id, call FROM dc_installs WHERE id=?', [$id]);
 if (!$cur) {
   dc_q('INSERT INTO dc_installs(id,first_seen,last_seen,version,os,arch,checks,state,demo_until,ip,call,grid,eq,rx,tx,ptt,last_ping) VALUES(?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?)',
-    [$id, $now, $now, $v, $os, $arch, 'demo', $now + 86400 * (int)$cfg['demo_days'], dc_ip(), $call, $grid, $eq, $rx, $tx, $ptt, $now]);
+    [$id, $now, $now, $v, $os, $arch, 'demo', $now + 86400 * (int)dc_opt('demo_days', $cfg['demo_days']), dc_ip(), $call, $grid, $eq, $rx, $tx, $ptt, $now]);
   dc_event('install', "$id|$v|$os|$arch");
 } else {
   // the callsign typed in the program fills the row; one that the admin has set by hand is not overwritten by an empty value

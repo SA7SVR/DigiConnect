@@ -74,7 +74,7 @@ void P25::process_udp()
     }
 	if(buf.size() == 11){
 		if(m_modeinfo.status == CONNECTING){
-			m_modeinfo.status = CONNECTED_RW;
+			emit update_log("P25: the reflector answered the poll - connected");
 			m_modeinfo.status = CONNECTED_RW;
 			m_dstid = m_refname.toInt();
 			m_txtimer = new QTimer();

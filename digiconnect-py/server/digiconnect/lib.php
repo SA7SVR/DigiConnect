@@ -15,9 +15,12 @@ function dc_cfg(): array {
       'pkg_dir'   => __DIR__ . '/pkg',
       'admin_user'=> 'admin',
       'admin_pass'=> 'change-me',        // change in config.php
-      'demo_days' => 7,                  // default demo length for a new install
+      'demo_days' => 14,                 // default demo length for a new install
+      'donate_url'=> '',                 // the Donate button of the program opens this address (set in config.php)
       'check_every'=> 3600,             // app update-check interval (seconds); min 60
-      'gate'      => true               // true = enforce demo/licence; false = everyone allowed
+      'gate'      => true,              // true = enforce demo/licence; false = everyone allowed
+      'offline'   => 'require',         // require | grace | allow  (what the program does when it cannot reach this server)
+      'offline_days' => 7               // days the program keeps working offline when offline = grace
     ];
   }
   return $c;
@@ -59,7 +62,7 @@ function dc_db(): PDO {
   ");
   // additive migration: presence columns (what the station reports with ping.php)
   $have = array_column($pdo->query('PRAGMA table_info(dc_installs)')->fetchAll(), 'name');
-  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT'] as $c => $t)
+  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT'] as $c => $t)
     if (!in_array($c, $have, true)) $pdo->exec("ALTER TABLE dc_installs ADD COLUMN $c $t");
   return $pdo;
 }
@@ -67,6 +70,8 @@ function dc_db(): PDO {
 function dc_q(string $sql, array $a = []): PDOStatement { $st = dc_db()->prepare($sql); $st->execute($a); return $st; }
 function dc_one(string $sql, array $a = []) { return dc_q($sql, $a)->fetch(); }
 function dc_kv(string $k, $d = null) { $r = dc_one('SELECT v FROM dc_kv WHERE k=?', [$k]); return $r ? $r['v'] : $d; }
+// a value set in the admin panel (Settings) wins over config.php
+function dc_opt(string $k, $default = null) { $v = dc_kv($k, null); return $v === null ? $default : $v; }
 function dc_kv_set(string $k, $v): void { dc_q('INSERT INTO dc_kv(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v', [$k, (string)$v]); }
 function dc_event(string $kind, string $detail = ''): void { dc_q('INSERT INTO dc_events(t,kind,detail) VALUES(?,?,?)', [time(), $kind, $detail]); }
 function dc_ip(): string { foreach (['HTTP_CF_CONNECTING_IP','HTTP_X_FORWARDED_FOR','REMOTE_ADDR'] as $h) if (!empty($_SERVER[$h])) return trim(explode(',', $_SERVER[$h])[0]); return ''; }
@@ -87,18 +92,26 @@ function dc_active_release(?string $installId = null): ?array {
 // evaluate the licence/demo state for an install row; returns [state, left_text, msg]
 function dc_state(array $in): array {
   $cfg = dc_cfg();
-  if (!$cfg['gate']) return ['full', '', ''];
+  if (dc_opt('gate', $cfg['gate'] ? '1' : '0') !== '1') return ['full', '', ''];
   if ((int)($in['enabled'] ?? 1) === 0 || ($in['state'] ?? '') === 'disabled')
     return ['locked', '', 'This installation is disabled. Contact SA7SVR.'];
   if (($in['state'] ?? '') === 'full') return ['full', '', ''];
   if (($in['state'] ?? '') === 'locked') return ['locked', '', $in['note'] ?: 'This installation needs activation. Contact SA7SVR.'];
   // demo
   $until = (int)($in['demo_until'] ?? 0);
-  if ($until <= 0) { $until = time() + 86400 * (int)$cfg['demo_days']; dc_q('UPDATE dc_installs SET demo_until=? WHERE id=?', [$until, $in['id']]); }
+  if ($until <= 0) { $until = time() + 86400 * (int)dc_opt('demo_days', $cfg['demo_days']); dc_q('UPDATE dc_installs SET demo_until=? WHERE id=?', [$until, $in['id']]); }
   $left = $until - time();
   if ($left <= 0) return ['locked', '', 'Your demo period has ended. Contact SA7SVR to activate.'];
   $d = (int)ceil($left / 86400);
   return ['demo', $d . ' day' . ($d === 1 ? '' : 's') . ' left', ''];
+}
+
+// what the program does when it cannot reach this server: require = never start without an answer, grace = keep working for
+// offline_days after the last good answer, allow = keep working (a block set here is applied as soon as the program is online again)
+function dc_offline(): array {
+  $cfg = dc_cfg(); $m = (string)dc_opt('offline', $cfg['offline'] ?? 'require');
+  if (!in_array($m, ['require', 'grace', 'allow'], true)) $m = 'require';
+  return ['offline' => $m, 'offline_days' => max(1, (int)dc_opt('offline_days', $cfg['offline_days'] ?? 7))];
 }
 
 // ---- presence: a station counts as online while its program keeps sending ping.php (every ~60 s) ----

@@ -70,6 +70,7 @@ private:
 	void encode_crc6(uint8_t *, uint8_t);
 	void deinterleave_ambe(uint8_t *);
 	void interleave(uint8_t *ambe);
+	bool m_logged_voice = false;
 };
 
 #endif // NXDN_H

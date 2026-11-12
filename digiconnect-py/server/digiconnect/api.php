@@ -14,7 +14,7 @@ if (!$in) {
   // first contact outside manifest: create as demo
   $cfg = dc_cfg(); $now = time();
   dc_q('INSERT INTO dc_installs(id,first_seen,last_seen,state,demo_until,ip) VALUES(?,?,?,?,?,?)',
-    [$id, $now, $now, 'demo', $now + 86400 * (int)$cfg['demo_days'], dc_ip()]);
+    [$id, $now, $now, 'demo', $now + 86400 * (int)dc_opt('demo_days', $cfg['demo_days']), dc_ip()]);
   $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
 }
 

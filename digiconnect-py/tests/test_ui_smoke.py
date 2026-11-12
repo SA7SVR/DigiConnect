@@ -170,3 +170,70 @@ def test_allstar_page_lists_stations_connected_to_the_node(win):
         dict(node="63938", callsign="DL4LGV", owner="DL4LGV", location="JO42tk", site="DL4LGV", mode="T", status="Active")]))
     assert ws.asl_list.count() == 2 and "SV1GGF" in ws.asl_list.item(0).text() and "Piraeus" in ws.asl_list.item(0).text()
     assert "2" in ws.asl_head.text() and "transmitting" in ws.asl_head.text()
+
+
+class _FakeLic:
+    """Stands in for app.license.License (no network)."""
+    def __init__(self, answers): self.answers = list(answers); self.sent = []; self.last = None
+    def register(self, d, lang=""): self.sent.append(d); return dict(ok=True, state="demo", left="14 days left", registered=1, donate="https://example.org/d")
+    def verdict(self, m): 
+        from app import license as L
+        return L.Verdict("ok", m["state"], m.get("left", ""), "", m.get("donate", ""))
+    def evaluate(self):
+        from app import license as L
+        return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+
+
+def test_registration_dialog_requires_all_fields_and_consent(win):
+    from app.ui.license_dialog import RegistrationDialog
+    w, ctx, app = win; lic = _FakeLic([])
+    d = RegistrationDialog(lic, ctx.store)
+    d._send(); assert "name" in d.err.text().lower() and not lic.sent
+    d.name.setText("Panagiotis"); d.call.setText("sa7svr"); d.dmr.setText("12"); d._send(); assert "DMR ID" in d.err.text() and not lic.sent
+    d.dmr.setText("2400123"); d.mail.setText("nope"); d._send(); assert "email" in d.err.text().lower() and not lic.sent
+    d.mail.setText("a@b.se"); d._send(); assert "agree" in d.err.text().lower() and not lic.sent
+    d.agree.setChecked(True); d._send()
+    import time
+    for _ in range(100):
+        app.processEvents()
+        if d.answer is not None: break
+        time.sleep(0.02)
+    assert lic.sent and lic.sent[0]["call"] == "sa7svr" and d.answer["state"] == "demo"
+    s = ctx.store.settings; assert (s["callsign"], s["dmr_id"], s["op_name"], s["email"], s["registered"]) == ("SA7SVR", "2400123", "Panagiotis", "a@b.se", True)
+
+
+def test_window_shows_demo_days_and_blocks_when_locked(win, monkeypatch):
+    from app import license as L
+    from app.qt import QtWidgets as W
+    w, ctx, app = win
+    w._license_changed(L.Verdict("ok", "demo", "12 days left", "", "https://example.org/d"))
+    assert not w.demo_lbl.isHidden() and "12" in w.demo_lbl.text() and w.license_url == "https://example.org/d"
+    w._license_changed(L.Verdict("ok", "full"));  assert w.demo_lbl.isHidden()
+    shown = {}
+    class D:
+        def __init__(self, v, check, parent=None): shown["v"] = v; self.result_verdict = None
+        def exec(self): return 0
+    import app.ui.license_dialog as LD
+    monkeypatch.setattr(LD, "BlockDialog", D); quits = []
+    monkeypatch.setattr(W.QApplication, "quit", staticmethod(lambda: quits.append(1)))
+    w.watcher = type("Wt", (), {"lic": _FakeLic([L.Verdict("blocked", "locked", "", "locked")])})()
+    w._license_changed(L.Verdict("blocked", "locked", "", "This installation needs activation. Contact SA7SVR."))
+    assert shown["v"].kind == "blocked" and quits == [1]                                  # the program asked, the person chose Quit
+
+
+def test_run_gate_registers_then_continues_and_blocks_when_refused(win, monkeypatch):
+    from app import license as L
+    import app.ui.license_dialog as LD
+    w, ctx, app = win
+    seq = {"reg": 0, "block": 0}
+    class R:
+        def __init__(self, *a, **k): self.answer = dict(state="demo", left="14 days left", registered=1)
+        def exec(self): seq["reg"] += 1; return 1
+    class B:
+        def __init__(self, v, check, parent=None): self.result_verdict = None
+        def exec(self): seq["block"] += 1; return 0
+    monkeypatch.setattr(LD, "RegistrationDialog", R); monkeypatch.setattr(LD, "BlockDialog", B)
+    lic = _FakeLic([L.Verdict("register")]); lic.verdict = lambda m: L.Verdict("ok", m["state"], m.get("left", ""))
+    assert LD.run_gate(lic, ctx.store) is True and seq == {"reg": 1, "block": 0}
+    lic2 = _FakeLic([L.Verdict("blocked", "locked", "", "x")]); assert LD.run_gate(lic2, ctx.store) is False and seq["block"] == 1       # Quit
+    lic3 = _FakeLic([L.Verdict("offline", msg="no server")]); assert LD.run_gate(lic3, ctx.store) is False
