@@ -196,3 +196,9 @@ def test_messages_like_hamdigi_are_offered_to_everyone_or_one_installation(srv):
     a.post("messages", "msg_off", mid=str(srv.sql("SELECT id FROM dc_messages WHERE body_en='New version'")[0]["id"])); assert [m["el"] for m in ask("inst-1")] == []
     a.post("messages", "msg_del", mid=str(srv.sql("SELECT id FROM dc_messages WHERE body_en=''")[0]["id"])); assert ask("inst-2") == []
     assert len(srv.sql("SELECT * FROM dc_messages")) == 1
+
+
+def test_public_site_describes_the_licence_system_in_every_language(srv):
+    for lang, word in (("el", "Δοκιμαστική περίοδος"), ("en", "Demo, licence and Donate"), ("sv", "Demoperiod"), ("it", "Periodo di prova")):
+        html = urllib.request.urlopen(srv.base + f"index.php?lang={lang}").read().decode()
+        assert word in html and 'id="licence"' in html and "NXDN" in html and "AllStarLink" in html and "privacy.php" in html and "Fatal error" not in html, lang
