@@ -148,6 +148,7 @@ void YSF::process_udp()
 			m_modeinfo.sw_vocoder_loaded = load_vocoder_plugin();
 
 			m_rxtimer = new QTimer();
+			m_rxtimer->setTimerType(Qt::PreciseTimer);        // a coarse timer can fire up to 5 % late/early: audible as clicks
 			connect(m_rxtimer, SIGNAL(timeout()), this, SLOT(process_rx_data()));
 
 			m_audio = new AudioEngine(m_audioin, m_audioout);
@@ -1388,23 +1389,23 @@ void YSF::process_rx_data()
 		cnt = 0;
 	}
 
-	if((!m_tx) && (m_rximbecodecq.size() > 10)){
-		for(int i = 0; i < 11; ++i){
-			imbe[i] = m_rximbecodecq.dequeue();
+	// ---- playout with a small jitter buffer -------------------------------------------------------------------------
+	// A repeater/reflector sends one packet (5 voice frames = 100 ms) every 100 ms, but on the Internet the packets arrive
+	// unevenly. Playing a frame the moment it is available leaves no reserve, so every late packet is a gap in the sound.
+	// Therefore: wait until YSF_RX_PRIME_FRAMES frames are queued, then play one frame every 20 ms by the wall clock
+	// (exact long-term rate whatever the timer does); if the reserve runs dry anyway, re-fill it instead of stuttering.
+	auto play_one = [&]() {
+		if(m_rximbecodecq.size() > 10){
+			for(int i = 0; i < 11; ++i) imbe[i] = m_rximbecodecq.dequeue();
+			m_imbevocoder.decode_4400(pcm, imbe);
+			m_audio->write(pcm, 160);
+			emit update_output_level(m_audio->level());
+			return;
 		}
-        m_imbevocoder.decode_4400(pcm, imbe);
-		m_audio->write(pcm, 160);
-		emit update_output_level(m_audio->level());
-	}
-
-	else if((!m_tx) && (m_rxcodecq.size() > 6) ){
-		for(int i = 0; i < 7; ++i){
-			ambe[i] = m_rxcodecq.dequeue();
-		}
+		for(int i = 0; i < 7; ++i) ambe[i] = m_rxcodecq.dequeue();
 		if(m_hwrx){
 #if !defined(Q_OS_IOS)
 			m_ambedev->decode(ambe);
-
 			if(m_ambedev->get_audio(pcm)){
 				m_audio->write(pcm, 160);
 				emit update_output_level(m_audio->level());
@@ -1414,7 +1415,7 @@ void YSF::process_rx_data()
 		else{
 			if(m_modeinfo.sw_vocoder_loaded){
 #ifdef USE_MD380_VOCODER
-                md380_decode(ambe, pcm);
+				md380_decode(ambe, pcm);
 #else
 				m_mbevocoder->decode_2450(pcm, ambe);
 #endif
@@ -1425,9 +1426,28 @@ void YSF::process_rx_data()
 			m_audio->write(pcm, 160);
 			emit update_output_level(m_audio->level());
 		}
+	};
+	auto frames_queued = [&]() { return (int)(m_rxcodecq.size() / 7 + m_rximbecodecq.size() / 11); };
+	const bool ending = (m_modeinfo.stream_state == STREAM_END) || (m_modeinfo.stream_state == STREAM_LOST);
+	bool played = false;
+
+	if(!m_tx){
+		if(!m_rx_primed && (frames_queued() >= YSF_RX_PRIME_FRAMES || (ending && frames_queued() > 0))){
+			m_rx_primed = true; m_playclock.start(); m_rx_due = 0;           // reserve is full: start the playout clock
+		}
+		if(m_rx_primed){
+			const int64_t due = m_playclock.elapsed() / 20 + 1;               // frames that should have been played by now
+			for(int n = 0; n < 3 && m_rx_due < due && frames_queued() > 0; ++n){   // catch up after a late timer tick (max 3)
+				play_one(); ++m_rx_due; ++m_rx_played; played = true; m_rx_wasplaying = true;
+			}
+			if(!played && m_rx_due < due && frames_queued() == 0 && !ending){
+				m_rx_primed = false;                                          // ran dry: pause and refill the reserve
+				if(m_rx_wasplaying){ ++m_rx_gaps; m_rx_wasplaying = false; }
+			}
+		}
 	}
 
-	else if ( ((m_modeinfo.stream_state == STREAM_END) || (m_modeinfo.stream_state == STREAM_LOST)) && (m_rxmodemq.size() < 100) ){
+	if( !played && ending && (m_tx || frames_queued() == 0) && (m_rxmodemq.size() < 100) ){
 		m_rxtimer->stop();
 		m_audio->stop_playback();
 		m_rxwatchdog = 0;
@@ -1435,7 +1455,8 @@ void YSF::process_rx_data()
 		m_rxcodecq.clear();
 		m_rximbecodecq.clear();
 		//m_ambedev->clear_queue();
-		qDebug() << "YSF playback stopped";
+		qDebug() << "YSF playback stopped: frames played" << m_rx_played << ", gaps (interruptions)" << m_rx_gaps;
+		m_rx_played = 0; m_rx_gaps = 0; m_rx_wasplaying = false; m_rx_primed = false;
 		m_modeinfo.stream_state = STREAM_IDLE;
 		return;
 	}

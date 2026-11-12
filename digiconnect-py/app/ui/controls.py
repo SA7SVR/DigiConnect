@@ -133,7 +133,13 @@ class Mixer(W.QFrame):
         ctx.changed.connect(self.refresh); self.refresh()
 
     def _vol(self, n, v): self.ctx.rules.net_volume[n] = v / 100; self.refresh_caption()
-    def _mute(self, n, m): self.ctx.rules.net_muted[n] = m; self.refresh_caption(); self.ctx.changed.emit()
+    def _mute(self, n, m): self.ctx.rules.net_muted[n] = m; self._mute_look(n); self.refresh_caption(); self.ctx.changed.emit()
+
+    def _mute_look(self, n):
+        """The speaker button shows the state: open speaker with waves = sound on, red crossed speaker = muted."""
+        b = self.mutes[n]; off = self.ctx.rules.net_muted[n]; name = "speaker_off" if off else "speaker"
+        b.setProperty("icon_name", name); b.setIcon(icon(name))
+        b.setToolTip("Muted - click to turn the sound on" if off else "Sound on - click to mute")
 
     def refresh_caption(self):
         for n in NETS: self.caption[n].setText("Reception muted" if self.ctx.rules.net_muted[n] else "RX volume")
@@ -141,3 +147,5 @@ class Mixer(W.QFrame):
     def refresh(self):
         m = self.ctx.rules.mode
         self.single.setChecked(m is ListenMode.SINGLE); self.multi.setChecked(m is ListenMode.MULTIPLE); self.refresh_caption()
+        for n in NETS:                                   # keep the buttons in step with the rules (e.g. F4 = mute all)
+            b = self.mutes[n]; b.blockSignals(True); b.setChecked(bool(self.ctx.rules.net_muted[n])); b.blockSignals(False); self._mute_look(n)

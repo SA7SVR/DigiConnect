@@ -1,4 +1,4 @@
-﻿DigiConnect 2.0.4 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.0.5 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,15 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.0.4)
+What is new in this version (2.0.5)
+  • C4FM: reception is now smooth. The program keeps a short reserve (about 0.3 s) of
+    received speech and plays it at an exact pace, so late network packets no longer
+    cut the sound. (The sound is heard about 0.3 s later.)
+  • The speaker button now shows its state: a red crossed speaker = muted, an open
+    speaker = sound on (also when you press F4 = mute all).
+  • Notices (e.g. "Connected ...") now appear at the top of the window, fade out after a
+    few seconds and no longer cover the controls at the bottom.
+  Also new in 2.0.4:
   • Microphone volume knob (0-300%) next to the PTT buttons and in the bottom bar:
     drag, mouse wheel or arrow keys; double-click = 100%. Shows the live mic level.
   • Bigger logo and the "HELLAS ZONE NET - DIGICONNECT" title back in the top bar.

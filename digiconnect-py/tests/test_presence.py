@@ -19,7 +19,7 @@ def test_presence_sends_station_state(tmp_path):
     (tmp_path / "data").mkdir(); st = Store(tmp_path / "data"); st.settings["callsign"] = "sa7svr"; st.settings["locator"] = "jo77"
     ctx = Ctx(st)
     class U:
-        def params(self): return dict(id="abc123", v="2.0.4", os="linux", arch="x64", shell="2.0.0")
+        def params(self): return dict(id="abc123", v="2.0.5", os="linux", arch="x64", shell="2.0.0")
     p = Presence(ctx, U(), f"http://127.0.0.1:{srv.server_port}/ping.php")
     ctx.rules.listen(Target("DMR", "91", "Greece"))
     p.ping()

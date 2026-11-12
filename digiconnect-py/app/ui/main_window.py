@@ -32,13 +32,27 @@ RAIL = [("favorites", "grid", "My favorites"), ("newqso", "plus", "New QSO"), ("
 
 
 class Toast(W.QLabel):
+    """Short notice at the top of the window: fades in, stays a few seconds (longer for longer text), fades out. Never covers the controls."""
     def __init__(self, parent):
         super().__init__(parent); self.setObjectName("toast")
-        self.setWordWrap(True); self.hide(); self.t = QtCore.QTimer(self); self.t.setSingleShot(True); self.t.timeout.connect(self.hide)
+        self.setWordWrap(True); self.setAlignment(Qt.AlignmentFlag.AlignCenter); self.hide()
+        self.fx = W.QGraphicsOpacityEffect(self); self.fx.setOpacity(1.0); self.setGraphicsEffect(self.fx)
+        self.anim = QtCore.QPropertyAnimation(self.fx, b"opacity", self); self.anim.finished.connect(self._anim_done)
+        self.t = QtCore.QTimer(self); self.t.setSingleShot(True); self.t.timeout.connect(self._fade_out)
+        self._closing = False
 
     def show_msg(self, text):
-        self.setText(text); self.setFixedWidth(min(520, self.parent().width() - 40)); self.adjustSize()
-        self.move((self.parent().width() - self.width()) // 2, self.parent().height() - self.height() - 110); self.show(); self.raise_(); self.t.start(5000)
+        self.anim.stop(); self._closing = False
+        self.setText(text); self.setFixedWidth(min(440, self.parent().width() - 40)); self.adjustSize()
+        self.move((self.parent().width() - self.width()) // 2, 14); self.fx.setOpacity(0.0); self.show(); self.raise_()
+        self.anim.setDuration(180); self.anim.setStartValue(0.0); self.anim.setEndValue(1.0); self.anim.start()
+        self.t.start(min(6500, 2200 + 45 * len(text)))
+
+    def _fade_out(self):
+        self._closing = True; self.anim.stop(); self.anim.setDuration(700); self.anim.setStartValue(self.fx.opacity()); self.anim.setEndValue(0.0); self.anim.start()
+
+    def _anim_done(self):
+        if self._closing: self.hide(); self._closing = False
 
 
 class MainWindow(W.QMainWindow):

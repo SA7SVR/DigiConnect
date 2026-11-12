@@ -90,7 +90,7 @@ EL: dict[str, str] = {
     "Hold PTT": "Κράτημα PTT", "Latch PTT": "Μόνιμο PTT", "Stop TX": "Τέλος TX", "Limit": "Όριο", "Record audio": "Ηχογράφηση", "No station selected": "Δεν έχει επιλεγεί σταθμός",
     "RX — · lost — · TX —": "RX — · απώλειες — · TX —", "Hide  ✕": "Απόκρυψη  ✕", "Selected station": "Επιλεγμένος σταθμός", "MIC · —": "MIC · —", "Stop all": "Διακοπή όλων",
     "Up to 4 DMR TGs + 1 receiver on every other network. A click adds a receiver; on the same non-DMR network it replaces the previous one.": "Έως 4 DMR TG + 1 δέκτης σε κάθε άλλο δίκτυο. Ένα κλικ προσθέτει δέκτη· σε δίκτυο εκτός DMR αντικαθιστά τον προηγούμενο.",
-    "Audio recording needs a running receiver (engine step)": "Η ηχογράφηση χρειάζεται ενεργό δέκτη", "Reception muted": "Η λήψη σίγασε",
+    "Audio recording needs a running receiver (engine step)": "Η ηχογράφηση χρειάζεται ενεργό δέκτη", "Reception muted": "Η λήψη σίγασε", "Muted - click to turn the sound on": "Σε σίγαση - πάτα για να ανοίξει ο ήχος", "Sound on - click to mute": "Ο ήχος είναι ανοιχτός - πάτα για σίγαση",
     "Listening stopped": "Η ακρόαση σταμάτησε", "Listening · {} receiver": "Ακρόαση · {} δέκτης", "Listening · {} receivers": "Ακρόαση · {} δέκτες",
     "No TX destination": "Χωρίς προορισμό TX", "Connected": "Συνδέθηκε", "Connected · {}": "Συνδέθηκε · {}",
     "TX ended: time limit reached": "Τέλος TX: έφτασε το χρονικό όριο", "TX stopped: window lost focus": "Το TX σταμάτησε: το παράθυρο έχασε την εστίαση",

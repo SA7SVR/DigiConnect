@@ -2,7 +2,7 @@ from ..qt import QtGui, QtCore, Qt
 from ..theme import C
 
 def icon(name: str, color=None, size=22) -> QtGui.QIcon:
-    color = color or C["icon"]
+    color = color or (C["red"] if name == "speaker_off" else C["icon"])
     pm = QtGui.QPixmap(size * 2, size * 2); pm.fill(Qt.GlobalColor.transparent)
     p = QtGui.QPainter(pm); p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
     p.scale(2, 2)
@@ -56,6 +56,9 @@ def icon(name: str, color=None, size=22) -> QtGui.QIcon:
     elif name == "speaker":
         p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(4, 9), QtCore.QPointF(8, 9), QtCore.QPointF(12, 5), QtCore.QPointF(12, 17), QtCore.QPointF(8, 13), QtCore.QPointF(4, 13)]))
         p.drawArc(R(11, 7, 6, 8), -60 * 16, 120 * 16)
+    elif name == "speaker_off":                      # muted: the same speaker, no sound waves, a cross instead
+        p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(3, 9), QtCore.QPointF(7, 9), QtCore.QPointF(11, 5), QtCore.QPointF(11, 17), QtCore.QPointF(7, 13), QtCore.QPointF(3, 13)]))
+        p.drawLine(14, 8, 19, 14); p.drawLine(19, 8, 14, 14)
     p.end()
     return QtGui.QIcon(pm)
 

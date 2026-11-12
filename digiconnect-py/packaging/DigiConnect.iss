@@ -1,5 +1,5 @@
 ; DigiConnect installer (Inno Setup 6). Expects the app folder in ..\dist\DigiConnect (with engine\ inside).
-; Build: ISCC.exe /DAppVer=2.0.4 packaging\DigiConnect.iss   (the version comes from app/version.py in CI)
+; Build: ISCC.exe /DAppVer=2.0.5 packaging\DigiConnect.iss   (the version comes from app/version.py in CI)
 #ifndef AppVer
   #define AppVer "0.0.0"
 #endif

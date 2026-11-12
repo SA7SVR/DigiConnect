@@ -78,3 +78,20 @@ def test_listen_and_connect_buttons_are_visible(win):
     w, ctx, app = win; ws = pick(w, "DMR", 4); app.processEvents()
     for b in (ws.tx.listen, ws.tx.connect):
         img = b.grab().toImage(); assert img.pixelColor(img.width() - 8, img.height() // 2).lightness() > 110, b.text()
+
+
+def test_mute_button_shows_its_state(win):
+    w, ctx, app = win; b = w.mixer.mutes["C4FM"]
+    assert b.property("icon_name") == "speaker" and not ctx.rules.net_muted["C4FM"]
+    b.click(); assert ctx.rules.net_muted["C4FM"] and b.property("icon_name") == "speaker_off"     # muted: crossed speaker
+    b.click(); assert not ctx.rules.net_muted["C4FM"] and b.property("icon_name") == "speaker"
+    w._mute_all(); assert all(x.property("icon_name") == "speaker_off" for x in w.mixer.mutes.values())   # F4 follows too
+    w._mute_all(); assert all(x.property("icon_name") == "speaker" for x in w.mixer.mutes.values())
+
+
+def test_toast_is_at_the_top_and_goes_away(win):
+    w, ctx, app = win; t = w.toast
+    ctx.toast.emit("Connected · GR-HELLAS Zone B · DX Zone"); app.processEvents()
+    assert t.isVisible() and t.y() < 40 and t.y() + t.height() < 120            # top of the window, not over the bottom controls
+    t.t.stop(); t._fade_out(); t.anim.setCurrentTime(t.anim.duration()); app.processEvents()   # jump to the end of the fade
+    assert not t.isVisible()
