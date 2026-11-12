@@ -150,8 +150,14 @@ class EngineClient(QtCore.QObject, Engine):
                  capture=s.get("mic") or "", playback=s.get("speakers") or "")
         if proto == "DMR":
             if not str(s.get("dmr_id") or "").strip().isdigit(): return None, "A DMR ID is required for DMR (Settings › Radio networks)."
+            host = str(ep["host"]).lower(); pw = self.dmr_password
+            if not pw:
+                if "brandmeister" in host:               # BrandMeister: personal hotspot password (SelfCare > Hotspot Security); the list only has a placeholder
+                    return None, "BrandMeister needs your personal hotspot password: enter it in the Password field of the DMR server card (BrandMeister SelfCare › Hotspot Security), then connect again."
+                hosts = getattr(self.servers, "hosts", None)
+                pw = hosts.dmr_default_password(host) if hosts is not None else ""       # other masters: the password the host list gives, like Pi-Star
             p.update(dmrid=int(s["dmr_id"]), essid=int(s.get("essid") or 0) if str(s.get("essid") or "0").isdigit() else 0,
-                     password=self.dmr_password, tg=int(t.id) if t.id.isdigit() else 0, cc=int(s.get("cc") or 1), slot=int(s.get("slot") or 2))
+                     password=pw, tg=int(t.id) if t.id.isdigit() else 0, cc=int(s.get("cc") or 1), slot=int(s.get("slot") or 2))
         elif proto in ("REF", "XRF", "DCS", "M17"):
             ref, mod = split_dstar(t); p.update(name=ref, module=mod)
         elif proto == "IAX":

@@ -257,7 +257,11 @@ class Ctx(QtCore.QObject):
         elif state in ("error", "timeout"):
             for h in list(ln.rx): self.rules.stop_listening(h)
             if ln.tx: self.rules.disconnect_tx()
-            self.note_problem(f"{t.name or t.id}: {msg or state}"); self.toast.emit(f"{t.name or t.id}: {msg or state}")
+            from .i18n import tr
+            text = tr(msg or state)
+            if t.net == "DMR" and "no answer" in (msg or ""):
+                text += tr(" — DMR: check the master address, your DMR ID and your personal hotspot password (BrandMeister SelfCare › Hotspot Security).")
+            self.note_problem(f"{t.name or t.id}: {text}"); self.toast.emit(f"{t.name or t.id}: {text}")
         self.changed.emit()
 
     def _on_heard(self, ln, e: dict):

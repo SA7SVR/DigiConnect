@@ -170,3 +170,25 @@ def test_settings_follow_the_mode(tmp_path):
     d.set_mode(None); assert shown() == set(d.grp)                       # pages without a mode: every group, each with its heading
     assert "module" not in d.f and "radio_message" not in d.f             # settings that did nothing are gone
     d.set_mode("P25"); d.f["dmr_id"].setText("2401234"); assert d.grp["P25"][1].findChildren(W.QLineEdit)[0].text() == "2401234"
+
+
+def test_dmr_password_rules(tmp_path):
+    """BrandMeister without the user's personal hotspot password is refused with an explanation (the list only holds a placeholder);
+    other masters use the password column of the host list, like Pi-Star; the user's own password always wins."""
+    from app import hostlists as H
+    from app.store import Store
+    from app.engine_client import EngineClient
+    from app.rules import Target
+    st = Store(tmp_path); st.settings.update(callsign="SA7SVR", dmr_id="2407219")
+    eng = EngineClient("/nonexistent", st)
+    eng.servers.hosts._set(H.parse_dmr("BM_2402_Sweden\t\t\t2402\t2402.master.brandmeister.network\t\tpassw0rd\t62031\n"
+                                       "FreeDMR_Greece\t\t\t2021\t185.243.214.85\t\t\t\tpassw0rd\t62031\n"
+                                       "DMR+_X\t\t124734\t141.94.206.232\t\t\t\tPASSWORD\t55555\n"), {}, 1.0)
+    t = Target("DMR", "202")
+    st.settings.update(dmr_server="2402.master.brandmeister.network", dmr_port=62031)
+    p, err = eng._params(t); assert p is None and "personal hotspot password" in err
+    eng.dmr_password = "mine"; p, err = eng._params(t); assert p and p["password"] == "mine"
+    eng.dmr_password = ""; st.settings.update(dmr_server="185.243.214.85")
+    p, err = eng._params(t); assert p and p["password"] == "passw0rd"
+    st.settings.update(dmr_server="141.94.206.232", dmr_port=55555)
+    p, err = eng._params(t); assert p and p["password"] == "PASSWORD" and p["port"] == 55555

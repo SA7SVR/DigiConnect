@@ -159,6 +159,8 @@ def parse_dmr(text: str) -> list[dict]:
         country = (" ".join(parts[2:]) if parts[0] == "BM" and len(parts) >= 3 and parts[1].isdigit()          # real file: BM_2402_Sweden
                    else " ".join(parts[1:-1]) if len(parts) >= 3 and parts[-1].isdigit() else "")
         e = _entry("DMR", name, name, f"{tok[hi]}", tok[hi], _port_after(tok, hi + 2, DEFAULT_PORT["DMR"]), country)
+        after = [t for t in tok[hi + 1:] if t]
+        e["password"] = after[0] if len(after) >= 2 and not after[0].isdigit() else ""          # the list's own password column (public, shared by all users of that master)
         out.append(e)
     return out
 
@@ -267,6 +269,12 @@ class HostLists:
         order = {"YSF": "0", "FCS": "1"}                                   # C4FM: YSF reflectors first, then FCS rooms
         return sorted((e for e in self.entries if e["net"] == net and e["proto"] != "DMR"),
                       key=lambda e: (order.get(e["proto"], e["proto"]), 0, int(e["id"]), "") if e["id"].isdigit() else (order.get(e["proto"], e["proto"]), 1, 0, e["id"]))
+
+    def dmr_default_password(self, host: str) -> str:
+        """The password the host list gives for this DMR master ('' if none). BrandMeister's list entry is only a placeholder: every user has a personal hotspot password."""
+        for e in self.entries:
+            if e["proto"] == "DMR" and e["host"].lower() == (host or "").strip().lower() and e.get("password"): return e["password"]
+        return ""
 
     def dmr_masters(self) -> list[dict]: return sorted((e for e in self.entries if e["proto"] == "DMR"), key=lambda e: e["name"].lower())
 
