@@ -64,7 +64,11 @@ class Workspace(W.QWidget):
             sv.addWidget(field("Password (your BrandMeister hotspot password)", self.dm_pw))
             self.dm_rem = checkbox("Remember on this computer (enter it only once)"); self.dm_rem.setChecked(bool(ctx.store.settings.get("remember_pw", True))); sv.addWidget(self.dm_rem)
             self.dm_note = label("Needed to connect to a DMR master. When ticked, it is kept in this program's settings file on this computer (not encrypted).", muted=True); self.dm_note.setWordWrap(True); sv.addWidget(self.dm_note)
-            self.dm_pw.textChanged.connect(lambda: ctx.set_dmr_password(self.dm_pw.text(), self.dm_rem.isChecked())); self.dm_rem.toggled.connect(lambda: ctx.set_dmr_password(self.dm_pw.text(), self.dm_rem.isChecked()))
+            self.dm_state = label("", muted=True); self.dm_state.setWordWrap(True); sv.addWidget(self.dm_state)
+            def pw_changed(*_):
+                ctx.set_dmr_password(self.dm_pw.text(), self.dm_rem.isChecked())
+                self.dm_state.setText(tr("No password entered yet") if not self.dm_pw.text() else tr("✓ Password saved on this computer") if self.dm_rem.isChecked() else tr('Password kept only until you close the program ("Remember" is off)'))
+            self.dm_pw.textChanged.connect(pw_changed); self.dm_rem.toggled.connect(pw_changed); pw_changed()
         self.txname = label(""); self.txname.setVisible(False)
         mv.addWidget(self.srvcard)
         self.addfav = button("☆  Add favorite"); mv.addWidget(self.addfav, 0, Qt.AlignmentFlag.AlignLeft)

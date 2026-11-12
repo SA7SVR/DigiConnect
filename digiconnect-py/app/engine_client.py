@@ -150,7 +150,7 @@ class EngineClient(QtCore.QObject, Engine):
                  capture=s.get("mic") or "", playback=s.get("speakers") or "")
         if proto == "DMR":
             if not str(s.get("dmr_id") or "").strip().isdigit(): return None, "A DMR ID is required for DMR (Settings › Radio networks)."
-            host = str(ep["host"]).lower(); pw = self.dmr_password
+            host = str(ep["host"]).lower(); pw = (self.dmr_password or "").strip()          # a pasted password often carries a trailing space/newline: the master would refuse it
             if not pw:
                 if "brandmeister" in host:               # BrandMeister: personal hotspot password (SelfCare > Hotspot Security); the list only has a placeholder
                     return None, "BrandMeister needs your personal hotspot password: enter it in the Password field of the DMR server card (BrandMeister SelfCare › Hotspot Security), then connect again."

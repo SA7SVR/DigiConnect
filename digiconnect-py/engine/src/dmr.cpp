@@ -103,6 +103,8 @@ void DMR::process_udp()
 	// Handle MSTNAK - Master NAK (peer not recognized/rejected)
 	if((::memcmp(buf.data(), "MSTNAK", 6U) == 0)){
 		qDebug() << "Received MSTNAK from master - reconnecting...";
+		// Remember at which step of the login the master refused us (the app tells the user what to check)
+		m_modeinfo.netmsg = (m_modeinfo.status == CONNECTING) ? "DMR_NAK_ID" : (m_modeinfo.status == DMR_AUTH) ? "DMR_NAK_PASSWORD" : "DMR_NAK_CONFIG";
 		// Mark disconnected, stop timers and clean up socket
 		m_modeinfo.status = DISCONNECTED;
 		if(m_ping_timer && m_ping_timer->isActive()){

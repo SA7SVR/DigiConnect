@@ -97,3 +97,13 @@ def test_toast_is_at_the_top_and_goes_away(win):
     assert t.isVisible() and t.y() < 40 and t.y() + t.height() < 120            # top of the window, not over the bottom controls
     t.t.stop(); t._fade_out(); t.anim.setCurrentTime(t.anim.duration()); app.processEvents()   # jump to the end of the fade
     assert not t.isVisible()
+
+
+def test_dmr_password_shows_where_it_is_kept(win):
+    """Typing the BrandMeister password must give a visible answer: saved on this computer / kept only for this run / nothing entered."""
+    w, ctx, app = win; ws = pick(w, "DMR", 4)
+    assert "No password" in ws.dm_state.text()
+    ws.dm_rem.setChecked(True); ws.dm_pw.setText("abc123")
+    assert "saved on this computer" in ws.dm_state.text() and ctx.store.settings["dmr_pw"] == "abc123"
+    ws.dm_rem.setChecked(False)
+    assert "only until you close" in ws.dm_state.text() and ctx.store.settings["dmr_pw"] == "" and ctx.dmr_password == "abc123"

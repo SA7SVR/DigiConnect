@@ -7,6 +7,14 @@ from .hostlists import HostLists
 import threading
 
 
+# What the DMR master told us when it refused the login (the engine sends the code; the text says what to check)
+DMR_REFUSALS = {
+    "DMR_NAK_ID": "The DMR master did not accept your DMR ID. Check the DMR ID in Settings › Radio networks (your own ID from RadioID.net, digits only) and the ESSID (leave it empty if unsure).",
+    "DMR_NAK_PASSWORD": "The DMR master refused the password. On BrandMeister use your hotspot password (SelfCare › Hotspot Security), not your login password.",
+    "DMR_NAK_CONFIG": "The DMR master refused the connection settings after the password was accepted.",
+}
+
+
 class Ctx(QtCore.QObject):
     changed = Signal()
     toast = Signal(str)
@@ -258,7 +266,7 @@ class Ctx(QtCore.QObject):
             for h in list(ln.rx): self.rules.stop_listening(h)
             if ln.tx: self.rules.disconnect_tx()
             from .i18n import tr
-            text = tr(msg or state)
+            text = tr(DMR_REFUSALS.get(msg, msg or state))
             if t.net == "DMR" and "no answer" in (msg or ""):
                 text += tr(" — DMR: check the master address, your DMR ID and your personal hotspot password (BrandMeister SelfCare › Hotspot Security).")
             self.note_problem(f"{t.name or t.id}: {text}"); self.toast.emit(f"{t.name or t.id}: {text}")
