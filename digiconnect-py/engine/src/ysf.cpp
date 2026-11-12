@@ -140,6 +140,7 @@ void YSF::process_udp()
 		if(m_modeinfo.status == CONNECTING){
 			m_modeinfo.status = CONNECTED_RW;
 			m_txtimer = new QTimer();
+			m_txtimer->setTimerType(Qt::PreciseTimer);        // a coarse timer fires late (15 ms steps on Windows): speech was lost
 			connect(m_txtimer, SIGNAL(timeout()), this, SLOT(transmit()));
 			m_ping_timer = new QTimer();
 			connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
@@ -153,6 +154,7 @@ void YSF::process_udp()
 
 			m_audio = new AudioEngine(m_audioin, m_audioout);
 			m_audio->init();
+			m_audio->set_output_buffer_size(4800);            // 300 ms (was 80 ms): the playout clock fills it only as needed, so no extra delay, but a stalled thread no longer empties it
 
 			if(m_refname.left(3) == "FCS"){
 				char info[100U];
@@ -715,6 +717,17 @@ void YSF::process_modem_data(QByteArray d)
 
 void YSF::transmit()
 {
+	// The microphone is clocked by the sound card; this timer only collects what has arrived. A late timer tick must not lose speech:
+	// take every frame that is available (up to 5 = 100 ms) instead of exactly one per tick.
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
+	if(m_tx && m_tx_last_ms){ const uint32_t gap = (uint32_t)(now - m_tx_last_ms); if(gap > m_tx_max_gap_ms) m_tx_max_gap_ms = gap; }
+	m_tx_last_ms = now;
+	transmit_one();
+	if(m_tx && m_ttsid == 0) for(int n = 1; n < 5 && m_tx && m_audio->has_samples(160); ++n) transmit_one();
+}
+
+void YSF::transmit_one()
+{
 	uint8_t ambe_frame[88];
 	uint8_t ambe[7];
 	int16_t pcm[160];
@@ -800,7 +813,7 @@ void YSF::send_frame()
 		frame_size = ::memcmp(m_ysfFrame, "YSFD", 4) ? 130 : 155;
 		txdata.append((char *)m_ysfFrame, frame_size);
 		m_udp->writeDatagram(txdata, m_address, m_modeinfo.port);
-		++m_txcnt;
+		++m_txcnt; ++m_tx_frames;
 
         if(m_debug){
             QDebug debug = qDebug();
@@ -814,6 +827,8 @@ void YSF::send_frame()
 	}
 	else{
 		fprintf(stderr, "YSF TX stopped\n");
+		emit update_log(QString("YSF TX stopped: packets sent %1, longest timer gap %2 ms, microphone samples dropped %3").arg(m_tx_frames).arg(m_tx_max_gap_ms).arg(m_audio->in_dropped_samples()));
+		m_tx_frames = 0; m_tx_max_gap_ms = 0; m_tx_last_ms = 0; m_audio->reset_stats();
 		m_txtimer->stop();
 		if(m_ttsid == 0){
 			m_audio->stop_capture();
@@ -1456,7 +1471,8 @@ void YSF::process_rx_data()
 		m_rximbecodecq.clear();
 		//m_ambedev->clear_queue();
 		qDebug() << "YSF playback stopped: frames played" << m_rx_played << ", gaps (interruptions)" << m_rx_gaps;
-		emit update_log(QString("YSF playback stopped: frames played %1 , gaps (interruptions) %2").arg(m_rx_played).arg(m_rx_gaps));   // also as an event: same on every platform
+		emit update_log(QString("YSF playback stopped: frames played %1 , gaps (interruptions) %2 , sound-card bytes lost %3").arg(m_rx_played).arg(m_rx_gaps).arg(m_audio->out_dropped_bytes()));
+		m_audio->reset_stats();   // also as an event: same on every platform
 		m_rx_played = 0; m_rx_gaps = 0; m_rx_wasplaying = false; m_rx_primed = false;
 		m_modeinfo.stream_state = STREAM_IDLE;
 		return;

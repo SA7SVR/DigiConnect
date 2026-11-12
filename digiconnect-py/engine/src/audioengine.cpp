@@ -223,7 +223,7 @@ void AudioEngine::input_data_received()
             m_audioinq.enqueue(static_cast<int16_t>(o));
         }
     }
-    while(m_audioinq.size() > 8000) m_audioinq.dequeue();    // never let a stalled consumer build up seconds of delay
+    while(m_audioinq.size() > 8000){ m_audioinq.dequeue(); ++m_in_dropped; }    // never let a stalled consumer build up seconds of delay
 }
 
 void AudioEngine::stop_capture()
@@ -289,9 +289,12 @@ void AudioEngine::write(int16_t *pcm, size_t s, float fade_from, float fade_to)
 	}
 
     if(m_outdev != nullptr){
-        size_t l = m_outdev->write((const char *) pcm, sizeof(int16_t) * s);
-        if (l*2 < s){
-            qDebug() << "AudioEngine::write() " << s << ":" << l << ":" << (int)m_out->bytesFree() << ":" << m_out->bufferSize() << ":" << m_out->error();
+        const qint64 want = (qint64)(sizeof(int16_t) * s);
+        qint64 l = m_outdev->write((const char *) pcm, want);
+        if(l < 0) l = 0;
+        if(l < want){                                    // the sound card buffer was full: this part of the speech is lost
+            m_out_dropped += (uint32_t)(want - l);
+            qDebug() << "AudioEngine::write() short write" << want << ":" << l << ":" << (int)m_out->bytesFree() << ":" << m_out->bufferSize() << ":" << m_out->error();
         }
     }
 

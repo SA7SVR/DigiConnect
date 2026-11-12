@@ -61,7 +61,7 @@ class Servers:
             return {"host": allstar.dns_name(t.id), "port": allstar.DEFAULT_PORT} if allstar.valid_node(t.id) else None
         k = self.key(t)
         if self.user.get(k) or BUILTIN.get(k): return self.user.get(k) or BUILTIN.get(k)
-        if t.net == "C4FM": return self.hosts.find("YSF", t.id)                    # worldwide list, downloaded
+        if t.net == "C4FM": return self.hosts.find("FCS" if t.id.upper().startswith("FCS") else "YSF", t.id)     # worldwide lists, downloaded
         if t.net in ("NXDN", "P25"): return self.hosts.find(t.net, t.id.strip())
         if t.net == "M17": return self.hosts.find("M17", split_dstar(t)[0])
         if t.net == "D-Star":

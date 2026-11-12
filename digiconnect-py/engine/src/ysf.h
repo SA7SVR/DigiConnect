@@ -107,6 +107,8 @@ private:
 	std::string m_fcsname;
 	bool m_txfullrate;
 	QQueue<uint8_t> m_rximbecodecq;
+	uint32_t m_tx_frames = 0, m_tx_max_gap_ms = 0; qint64 m_tx_last_ms = 0;   // transmit statistics (diagnostics)
+	void transmit_one();
 	uint32_t m_rx_played = 0, m_rx_gaps = 0;      // statistics of the current received stream (diagnostics)
 	bool m_rx_wasplaying = false;
 	bool m_rx_primed = false;                     // jitter buffer filled, playout running

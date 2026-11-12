@@ -65,6 +65,7 @@ def web(tmp_path):
     root = tmp_path / "www"; root.mkdir()
     for n, t in {"YSFHosts.txt": YSF, "dplus.txt": DPLUS, "dextra.txt": DEXTRA, "dcs.txt": DCS, "XLXHosts.txt": XLX, "DMRHosts.txt": DMR, "TalkGroups.json": TGJSON, "NXDNHosts.txt": NXDN, "P25Hosts.txt": P25, "M17Hosts-full.csv": M17CSV, "xlx.xml": XLXAPI}.items():
         (root / n).write_text(t, encoding="utf-8")
+    (root / "FCSRooms.txt").write_text("FCS00134;Greece;FCS001 - Greece;;;\n", encoding="utf-8")
     h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -87,7 +88,7 @@ def test_download_cache_and_resolve(tmp_path, web):
     assert hl.find("NXDN", "65000")["host"] == "nxdn.example.org" and hl.find("P25", "10100")["port"] == 41000 and hl.find("M17", "M17-DEU")["host"] == "m17-deu.example.org"
     assert hl.find("XLX", "XLX999")["host"] == "xlx999.example.org"                          # added from the API
     assert [e["country"] for e in hl.entries if e["id"] == "XLX001 A"] == ["Germany"]
-    assert len(hl.dmr_masters()) == 3 and [e["id"] for e in hl.for_net("DMR")] == ["91", "202", "20208"] and len(hl.for_net("C4FM")) == 3 and len(hl.for_net("D-Star")) >= 6
+    assert len(hl.dmr_masters()) == 3 and [e["id"] for e in hl.for_net("DMR")] == ["91", "202", "20208"] and len(hl.for_net("C4FM")) == 4 and len(hl.for_net("D-Star")) >= 6
     assert not hl.stale()
     # persisted: a new object (a later start of the program, maybe offline) sees the same data
     again = H.HostLists(store.root); assert len(again.entries) == len(hl.entries) and again.find("XRF", "XRF001")["host"] == "xrf001.example.net"
@@ -161,3 +162,15 @@ def test_real_pistar_formats():
     x = H.parse_dstar("000;71.41.121.226;4004\n", "XLX"); assert x[0]["id"] == "XLX000 A" and x[0]["port"] == 30051
     t = H.parse_tg("1;0;LOCAL;TG1\n240;0;SWEDEN;TG240\n"); assert t[1]["name"] == "TG 240 · SWEDEN"
     assert H.HostLists.candidates("YSF")[0].startswith("https://hostfiles.w0chp.net/") and H.HostLists.candidates("TG")[0].startswith("https://api.brandmeister")
+
+
+def test_fcs_rooms():
+    """FCS room list as published (id;name;description): address = <FCS###>.xreflector.net:62500 (the rule YSFGateway uses); the engine gets the room id."""
+    f = H.parse_fcs("# comment\nFCS00134;Greece;FCS001 - Greece;;;\nFCS20269;Greece;FCS202 - Greece;;;\nbad line\n")
+    assert [e["id"] for e in f] == ["FCS00134", "FCS20269"] and f[1]["name"] == "FCS20269 - Greece" and f[1]["sub"] == "FCS202 - Greece"
+    assert f[1]["host"] == "fcs202.xreflector.net" and f[1]["port"] == 62500 and f[1]["net"] == "C4FM"
+    from app.servers import Servers
+    import tempfile, pathlib
+    from app.store import Store
+    hl = H.HostLists(pathlib.Path(tempfile.mkdtemp())); hl._set(f, {}, 1.0)
+    assert hl.find("FCS", "FCS20269") == dict(host="fcs202.xreflector.net", port=62500) and [e["id"] for e in hl.for_net("C4FM")] == ["FCS00134", "FCS20269"]

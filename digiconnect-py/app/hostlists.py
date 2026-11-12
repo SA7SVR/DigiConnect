@@ -19,6 +19,7 @@ TIMEOUT = 15
 # source key -> (file name on the server / upstream, parser, label shown to the user, Pi-Star file names tried on the Pi-Star mirrors; Pi-Star names its downloads <MODE>_Hosts.txt, e.g. YSF_Hosts.txt, FCS_Hosts.txt)
 SOURCES = {
     "YSF": ("YSFHosts.txt", "ysf", "YSF reflectors", ["YSF_Hosts.txt"]),
+    "FCS": ("FCSRooms.txt", "fcs", "FCS rooms (C4FM)", ["FCS_Hosts.txt"]),
     "REF": ("dplus.txt", "dstar:REF", "D-Star REF (DPlus)", ["DPlus_Hosts.txt", "DStar_Hosts.json"]),
     "XRF": ("dextra.txt", "dstar:XRF", "D-Star XRF (DExtra)", ["DExtra_Hosts.txt", "DStar_Hosts.json"]),
     "DCS": ("dcs.txt", "dstar:DCS", "D-Star DCS", ["DCS_Hosts.txt", "DStar_Hosts.json"]),
@@ -30,9 +31,9 @@ SOURCES = {
     "TG": ("TalkGroups.json", "tg", "DMR talkgroups", []),          # BrandMeister talkgroup catalogue (public API, see FULL_URL)
 }
 FULL_URL = {"TG": ["https://api.brandmeister.network/v2/talkgroup", "https://www.pistar.uk/downloads/TGList_BM.txt", "https://hostfiles.w0chp.net/TGList_BM.txt"]}   # the BrandMeister API is what the Pi-Star TG page itself shows (live names, e.g. TG 202)
-DEFAULT_PORT = {"YSF": 42000, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000, "TG": 0}
+DEFAULT_PORT = {"YSF": 42000, "FCS": 62500, "REF": 20001, "XRF": 30001, "DCS": 30051, "XLX": 30051, "DMR": 62031, "NXDN": 41400, "P25": 41000, "M17": 17000, "TG": 0}
 DEFAULT_MODULE = {"REF": "C", "XRF": "C", "DCS": "A", "XLX": "A", "M17": "A"}
-NET_OF = {"YSF": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR", "NXDN": "NXDN", "P25": "P25", "M17": "M17", "TG": "DMR"}
+NET_OF = {"YSF": "C4FM", "FCS": "C4FM", "REF": "D-Star", "XRF": "D-Star", "DCS": "D-Star", "XLX": "D-Star", "DMR": "DMR", "NXDN": "NXDN", "P25": "P25", "M17": "M17", "TG": "DMR"}
 
 _HOST = re.compile(r"^(?:\d{1,3}(?:\.\d{1,3}){3}|(?=.*[A-Za-z])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+)$")
 
@@ -75,6 +76,18 @@ def parse_ysf(text: str) -> list[dict]:
         name = tok[1] or tok[0]; desc = " ".join(x for x in tok[2:hi] if x)
         out.append(_entry("YSF", tok[0], f"YSF{tok[0]} - {name}" + (f" - {desc}" if desc else ""), f"{tok[0]} · YSF",
                           tok[hi], _port_after(tok, hi + 1, DEFAULT_PORT["YSF"])))
+    return out
+
+
+def parse_fcs(text: str) -> list[dict]:
+    """FCS rooms: 'FCS00134;Greece;FCS001 - Greece;;;' (id;name;description). An FCS reflector has no address in the list: like YSFGateway
+    (g4klx) it is the DNS name <first six characters, e.g. FCS001>.xreflector.net on UDP port 62500."""
+    out, seen = [], set()
+    for line in text.splitlines():
+        tok = _tokens(line) if ";" in line else []
+        if len(tok) < 2 or not re.match(r"^FCS\d{5}$", tok[0].upper()) or tok[0].upper() in seen: continue
+        id_ = tok[0].upper(); seen.add(id_); name = tok[1] or id_; desc = tok[2] if len(tok) > 2 else ""
+        out.append(_entry("FCS", id_, f"{id_} - {name}", desc or f"{id_} · FCS", f"{id_[:6].lower()}.xreflector.net", DEFAULT_PORT["FCS"]))
     return out
 
 
@@ -198,6 +211,7 @@ def parse_tg(text: str) -> list[dict]:
 def parse(kind: str, text: str) -> list[dict]:
     if kind == "tg": return parse_tg(text)
     if kind == "ysf": return parse_ysf(text)
+    if kind == "fcs": return parse_fcs(text)
     if kind == "dmr": return parse_dmr(text)
     if kind == "m17": return parse_m17(text)
     if kind.startswith("num:"): return parse_numeric(text, kind.split(":")[1])
@@ -239,6 +253,7 @@ class HostLists:
             try:
                 if e["proto"] == "TG": e["country"] = countries.of_talkgroup(e["id"])
                 elif e["proto"] in ("YSF", "XLX", "NXDN", "P25"): e["country"] = countries.guess(e.get("name", "").split(" · ")[0], e.get("name", ""))
+                elif e["proto"] == "FCS": e["country"] = countries.guess(e.get("name", "").split(" - ", 1)[-1])
             except Exception:
                 e["country"] = ""
         idx = {}
@@ -249,8 +264,9 @@ class HostLists:
     def stale(self) -> bool: return not self.entries or time.time() - self.fetched > MAX_AGE
 
     def for_net(self, net: str) -> list[dict]:
+        order = {"YSF": "0", "FCS": "1"}                                   # C4FM: YSF reflectors first, then FCS rooms
         return sorted((e for e in self.entries if e["net"] == net and e["proto"] != "DMR"),
-                      key=lambda e: (e["proto"], 0, int(e["id"]), "") if e["id"].isdigit() else (e["proto"], 1, 0, e["id"]))
+                      key=lambda e: (order.get(e["proto"], e["proto"]), 0, int(e["id"]), "") if e["id"].isdigit() else (order.get(e["proto"], e["proto"]), 1, 0, e["id"]))
 
     def dmr_masters(self) -> list[dict]: return sorted((e for e in self.entries if e["proto"] == "DMR"), key=lambda e: e["name"].lower())
 

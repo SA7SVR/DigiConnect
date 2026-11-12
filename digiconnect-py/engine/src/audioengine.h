@@ -58,10 +58,15 @@ public:
 	// Microphone level: 0..1 goes to the device (session) volume; above 1 is applied as software gain (clipped), so a quiet microphone can be raised.
 	void set_input_volume(qreal v){ if(v < 0) v = 0; m_ingain = (float)(v > 1.0 ? v : 1.0); if(m_in != nullptr) m_in->setVolume(v > 1.0 ? 1.0 : v); }
 	void set_agc(bool agc) { m_agc = agc; }
+	bool has_samples(int n) const { return m_audioinq.size() >= n; }
 	bool frame_available() { return (m_audioinq.size() >= 320) ? true : false; }
 	uint16_t read(int16_t *, int);
 	uint16_t read(int16_t *);
 	uint16_t level() { return m_maxlevel; }
+	// diagnostics: bytes the sound card did not accept (lost playback sound) and microphone samples dropped because nobody read them in time
+	uint32_t out_dropped_bytes() const { return m_out_dropped; }
+	uint32_t in_dropped_samples() const { return m_in_dropped; }
+	void reset_stats() { m_out_dropped = 0; m_in_dropped = 0; }
 signals:
 
 private slots:
@@ -78,6 +83,7 @@ private:
 	QAudioSource *m_in;
 #endif
 	QIODevice *m_outdev = nullptr;
+	uint32_t m_out_dropped = 0, m_in_dropped = 0;
 	QIODevice *m_indev = nullptr;
 	QQueue<int16_t> m_audioinq;
 	uint16_t m_maxlevel;
