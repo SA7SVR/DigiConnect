@@ -1,0 +1,49 @@
+DigiConnect 2.3.0 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+===========================================================================
+
+ΕΛΛΗΝΙΚΑ
+--------
+• Άδεια δεμένη με τον υπολογιστή: η άδεια μένει με τον πρώτο υπολογιστή που τη χρησιμοποίησε. Αντιγραφή του φακέλου
+  ρυθμίσεων σε άλλον υπολογιστή δεν δίνει άδεια· ο διαχειριστής παίρνει ειδοποίηση και, αν ο χρήστης άλλαξε υπολογιστή,
+  πατά «Ελευθέρωση υπολογιστή» (Εγκαταστάσεις).
+• Υπογεγραμμένες άδειες (Ed25519): το πρόγραμμα πιστεύει μόνο απαντήσεις που υπογράφονται από τον server HELLAS Zone.
+  Τροποποίηση του αρχείου ρυθμίσεων ή «ηχογραφημένη» παλιά απάντηση δεν δουλεύουν.
+• Offline: οι κανόνες (απαιτείται σύνδεση / περίοδος χάριτος / επιτρέπεται) ισχύουν από την τελευταία υπογεγραμμένη
+  απάντηση. Το demo δεν συνεχίζεται πέρα από τη λήξη του ούτε χωρίς σύνδεση. Αν αλλάξει η ώρα του υπολογιστή προς τα πίσω, η
+  περίοδος χάριτος δεν παρατείνεται.
+• Κουμπί «Άδεια» στη γραμμή πάνω: κατάσταση, κωδικός ενεργοποίησης, μηνύματα από τον ιδιοκτήτη (με αριθμό αδιάβαστων),
+  απαντήσεις και αποστολή μηνύματος προς τον ιδιοκτήτη. Στο παράθυρο «δεν είναι ενεργό» υπάρχουν επίσης «Κωδικός
+  ενεργοποίησης…» και «Επικοινωνία με τον ιδιοκτήτη…».
+• Δωρεά / αγορά: το κουμπί ακολουθεί τη ρύθμιση του panel (κρύβεται, «Δωρεά» ή «Αγορά άδειας»).
+• Server: προειδοποίηση στο panel αν λείπει το κλειδί υπογραφής· εφεδρικό αντίγραφο του κλειδιού στο data/.
+• EchoLink: υπό κατασκευή — έρχεται προσεχώς.
+
+ENGLISH
+-------
+• Licence bound to the computer: a licence stays with the first computer that used it. Copying the settings folder to another
+  computer does not give a licence; the administrator gets an alert and, if the user really changed computer, presses
+  "Free the computer" (Installations).
+• Signed licences (Ed25519): the program believes only answers signed by the HELLAS Zone server. Editing the settings file or
+  replaying a recorded old answer does not work.
+• Offline: the rules (connection required / grace period / allowed) come from the last signed answer. A demo cannot go on past
+  its end, not even without a connection. Setting the computer clock back does not extend the grace period.
+• "Licence" button in the top bar: status, activation code, messages from the owner (with an unread counter), replies and
+  writing to the owner. The "not active" window also offers "Activation code…" and "Contact the owner…".
+• Donate / buy: the button follows the panel setting (hidden, "Donate" or "Buy a licence").
+• Server: panel warning when the signing key is missing; a safety copy of the key is kept in data/.
+• EchoLink: under construction - coming soon.
+
+SVENSKA
+-------
+• Licens bunden till datorn: licensen stannar hos den första dator som använde den. Att kopiera inställningsmappen till en annan
+  dator ger ingen licens; administratören får en avisering och, om användaren verkligen bytt dator, trycker på «Frigör datorn»
+  (Installationer).
+• Signerade licenser (Ed25519): programmet litar bara på svar som signerats av HELLAS Zone-servern. Att ändra inställningsfilen
+  eller spela upp ett inspelat gammalt svar fungerar inte.
+• Offline: reglerna (anslutning krävs / respitperiod / tillåtet) gäller från det senaste signerade svaret. En demo kan inte
+  fortsätta efter sitt slut, inte heller utan anslutning. Att ställa tillbaka datorns klocka förlänger inte respitperioden.
+• Knappen «Licens» i översta raden: status, aktiveringskod, meddelanden från ägaren (med räknare för olästa), svar och att skriva
+  till ägaren. Fönstret «inte aktivt» har också «Aktiveringskod…» och «Kontakta ägaren…».
+• Donera / köp: knappen följer inställningen i panelen (dold, «Donera» eller «Köp licens»).
+• Server: varning i panelen om signeringsnyckeln saknas; en säkerhetskopia av nyckeln sparas i data/.
+• EchoLink: under uppbyggnad — kommer snart.

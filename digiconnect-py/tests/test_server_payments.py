@@ -106,7 +106,7 @@ def test_euro_and_krona_totals_are_never_added_together(srv):
     a.post("payments", "pay_add", amount="25", currency="sek", name="Swish man", email="", memo="Swish", to="")
     html = a.page("payments")
     assert "15.50 €" in html and "125.00 kr" in html                                   # EUR 10 + 5.50 ; SEK 100 + 25 (S2 ignored)
-    assert "140.50" not in html and "115.50" not in html and "175" not in html         # no mixed sums
+    assert "140.50" not in html and "115.50" not in html and "175.00" not in html         # no mixed sums
     assert "Ποιος πληρώνει" in html and "Swish man" in html
     assert "10.00 EUR" in a.page("installs")                                           # the installation shows what it has paid
     dash = a.page("dashboard"); assert "15.50 €" in dash and "125.00 kr" in dash

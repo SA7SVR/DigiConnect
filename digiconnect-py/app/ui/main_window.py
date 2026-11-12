@@ -88,6 +88,7 @@ class MainWindow(W.QMainWindow):
         self.demo_lbl = label("", tone="amber"); self.demo_lbl.setVisible(False); th.addWidget(self.demo_lbl)
         self.donate_btn = button("♥ Donate", "", tip="Support the development of DigiConnect"); self.donate_btn.clicked.connect(lambda: self._donate()); th.addWidget(self.donate_btn)
         self.license_url = ""
+        self.lic_btn = button("Licence", "", tip="Licence, activation code and messages from the owner"); self.lic_btn.clicked.connect(self._licence_dialog); th.addWidget(self.lic_btn)
         self.stop_top = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_top.clicked.connect(lambda: self.ctx.stop_all()); self.stop_top.setVisible(False); th.addWidget(self.stop_top)
         self.theme_btn = button("", ""); th.addWidget(self.theme_btn); self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top); col.addWidget(top)
         # head (page title + tabs) – used by workspace pages
@@ -97,7 +98,7 @@ class MainWindow(W.QMainWindow):
         self.h_nq = button("New QSO", "", "plus"); self.h_set = button("Settings", "", "gear"); self.h_add = button("☆ Add favorite", "primary"); hr.addWidget(self.h_nq); hr.addWidget(self.h_add); hr.addWidget(self.h_set); hv.addLayout(hr)
         tabs = hbox(s=10); self.tabs = {}
         for k in ("favorites", *NETS):
-            b = button("My favorites" if k == "favorites" else k, "tab", checkable=True); b.clicked.connect(lambda _, k=k: self.nav("favorites" if k == "favorites" else "net:" + k)); self.tabs[k] = b; tabs.addWidget(b)
+            b = button("My favorites" if k == "favorites" else ("EchoLink · soon" if k == "EchoLink" else k), "tab", checkable=True); b.clicked.connect(lambda _, k=k: self.nav("favorites" if k == "favorites" else "net:" + k)); self.tabs[k] = b; tabs.addWidget(b)
         self.stop_all_btn = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_all_btn.clicked.connect(lambda: self.ctx.stop_all()); tabs.addWidget(self.stop_all_btn)   # always in reach, on the same line as the network tabs
         tabs.addStretch(); hv.addLayout(tabs); col.addWidget(self.head)
         # pages + right drawers
@@ -128,13 +129,25 @@ class MainWindow(W.QMainWindow):
         from .license_dialog import open_donate
         open_donate(self.license_url)
 
+    def _licence_dialog(self):
+        w = getattr(self, "watcher", None)
+        if w is None: return
+        from .license_dialog import LicenceDialog
+        LicenceDialog(w, self).exec()
+
+    def _unread(self, n):
+        self.lic_btn.setText(tr("Licence") + (f" ✉ {n}" if n else ""))
+        self.lic_btn.setProperty("kind", "primary" if n else ""); repolish(self.lic_btn)
+
     def bind_license(self, watcher):
         """Demo days in the top bar; when the server says this copy is locked (or the demo ended) the program stops and asks."""
-        self.watcher = watcher; watcher.changed.connect(self._license_changed)
+        self.watcher = watcher; watcher.changed.connect(self._license_changed); watcher.unread_changed.connect(self._unread)
         if getattr(watcher.lic, "last", None) is not None: self._license_changed(watcher.lic.last)
 
     def _license_changed(self, v):
         self.license_url = v.donate or ""
+        offer = (v.info or {}).get("offer", "donate"); self.donate_btn.setVisible(offer != "none")
+        self.donate_btn.setText("♥ Buy a licence" if offer == "buy" else "♥ Donate")
         self.demo_lbl.setVisible(v.allowed and v.state == "demo"); self.demo_lbl.setText(tr("Demo") + " · " + tr(v.left) if v.left else tr("Demo"))
         if v.allowed or getattr(self, "_blocking", False): return
         self._blocking = True

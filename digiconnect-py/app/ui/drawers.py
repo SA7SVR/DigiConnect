@@ -68,7 +68,7 @@ class SettingsDrawer(W.QFrame):
         group("D-Star", "D-Star", note="No extra settings: D-Star uses your callsign. The reflector and its module are chosen on the D-Star page.")
         group("C4FM", "C4FM / YSF", note="No extra settings: C4FM uses your callsign. The reflector address is on the C4FM page.")
         group("M17", "M17", note="No extra settings: M17 uses your callsign. The reflector and its module are on the M17 page.")
-        group("EchoLink", "EchoLink", note="EchoLink is not available in this build yet.")
+        group("EchoLink", "EchoLink", note="EchoLink is under construction — coming soon.")
         group("AllStar", "AllStarLink", note="Sign in with your AllStarLink portal account on the AllStar page (username, password).")
         l2.addWidget(label("SERVER LISTS", section=True)); self.lists = label("", muted=True); self.lists.setWordWrap(True); self.lists.setTextFormat(Qt.TextFormat.RichText); l2.addWidget(self.lists)
         self.dl = button("Download the server lists now"); l2.addWidget(self.dl, 0, Qt.AlignmentFlag.AlignLeft); self.dl.clicked.connect(lambda: (ctx.refresh_hosts(True), self._lists_text()))

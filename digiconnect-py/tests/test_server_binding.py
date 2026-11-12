@@ -1,0 +1,104 @@
+"""Computer binding and signed licences against the real PHP server (php -S)."""
+import base64, json, re, urllib.parse, urllib.request
+import pytest
+from test_license import srv, PERSON, shutil  # noqa: F401
+from test_server_payments import Admin
+from app import sigverify
+
+pytestmark = pytest.mark.skipif(not shutil.which("php"), reason="php not installed")
+HW1, HW2 = "a" * 32, "b" * 32
+
+
+def call(srv, page, **q):
+    return json.loads(urllib.request.urlopen(srv.base + page, urllib.parse.urlencode(q).encode()).read())
+
+
+def reg(srv, id, hw, **o):
+    d = dict(PERSON); d.update(id=id, hw=hw, consent=1, v="2.3.0", os="windows", **o)
+    return call(srv, "register.php", **d)
+
+
+def test_answer_is_signed_and_verifies_with_public_key_only(srv):
+    a = call(srv, "manifest.php", id="i1", v="2.3.0", hw=HW1)
+    assert a["sig"] and a["payload"]
+    assert sigverify.verify(srv.pub, a["payload"].encode(), a["sig"])
+    p = json.loads(a["payload"])
+    assert p["id"] == "i1" and p["state"] == a["state"] and p["hw"] == HW1 and p["v"] == 2
+    # any change of the payload breaks the signature
+    assert not sigverify.verify(srv.pub, a["payload"].replace('"state":"demo"', '"state":"full"').encode(), a["sig"])
+    # another key does not verify
+    other = base64.b64encode(bytes(32)).decode()
+    assert not sigverify.verify(other, a["payload"].encode(), a["sig"])
+
+
+def test_full_licence_stays_on_first_computer(srv):
+    call(srv, "manifest.php", id="i1", v="2.3.0", hw=HW1)
+    srv.sql("UPDATE dc_installs SET state='full', lic_by='admin' WHERE id='i1'")
+    ok = call(srv, "manifest.php", id="i1", v="2.3.0", hw=HW1)
+    assert ok["state"] == "full" and not ok["other_pc"]
+    bad = call(srv, "manifest.php", id="i1", v="2.3.0", hw=HW2)             # settings folder copied to another computer
+    assert bad["state"] == "locked" and bad["other_pc"] == 1
+    p = json.loads(bad["payload"]); assert p["state"] == "locked" and p["other_pc"] == 1 and p["hw"] == HW1 and p["code"] == ""
+    assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='alert_clone' OR kind='clone'")[0]["n"] >= 1
+    assert call(srv, "manifest.php", id="i1", v="2.3.0", hw=HW1)["state"] == "full"      # the real computer is not affected
+
+
+def test_demo_is_not_restarted_by_clone_and_free_computer_works(srv):
+    call(srv, "manifest.php", id="i1", v="2.3.0", hw=HW1)
+    srv.sql("UPDATE dc_installs SET state='full', lic_by='admin' WHERE id='i1'")
+    assert call(srv, "manifest.php", id="i1", hw=HW2)["other_pc"] == 1
+    srv.sql("UPDATE dc_installs SET hw='', hw_set=0 WHERE id='i1'")                    # what the panel button does
+    r = call(srv, "manifest.php", id="i1", hw=HW2)
+    assert r["state"] == "full" and not r["other_pc"]
+    assert call(srv, "manifest.php", id="i1", hw=HW1)["other_pc"] == 1                  # now the old computer is the other one
+
+
+def test_reinstall_on_same_computer_gets_state_back_and_other_computer_does_not_get_full(srv):
+    reg(srv, "old", HW1)
+    srv.sql("UPDATE dc_installs SET state='full', lic_by='admin', lic_code='DC-1' WHERE id='old'")
+    again = reg(srv, "new", HW1)                                                          # same computer, new id
+    assert again["state"] == "full" and json.loads(again["payload"])["id"] == "new"
+    other = reg(srv, "third", HW2)                                                        # other computer, same callsign + e-mail
+    assert other["state"] != "full"
+    assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind LIKE '%clone%'")[0]["n"] >= 1
+
+
+def test_redeem_code_returns_signed_full_and_binds(srv):
+    srv.sql("INSERT INTO dc_installs(id,first_seen,last_seen,state,demo_until) VALUES('r1',1,1,'demo',9999999999)")
+    cols = [c["name"] for c in srv.sql("PRAGMA table_info(dc_codes)")]
+    row = {"code": "ABCD-1", "kind": "full", "dur": 0, "unit": "d", "uses": 1, "used": 0}
+    row = {k: v for k, v in row.items() if k in cols}
+    srv.sql(f"INSERT INTO dc_codes({','.join(row)}) VALUES({','.join('?'*len(row))})", *row.values())
+    r = call(srv, "api.php", action="redeem", id="r1", code="ABCD-1", hw=HW1)
+    assert r["ok"] and r["state"] == "full" and sigverify.verify(srv.pub, r["payload"].encode(), r["sig"])
+    assert json.loads(r["payload"])["code"] == "ABCD-1"
+    assert call(srv, "api.php", action="state", id="r1", hw=HW2)["other_pc"] == 1
+
+
+def test_missing_key_gives_unsigned_answer_and_panel_warns(srv):
+    (srv.root / "license-key.php").unlink()
+    (srv.root / "data" / "license-key.bak.php").unlink(missing_ok=True)
+    r = call(srv, "manifest.php", id="n1", v="2.3.0", hw=HW1)
+    assert r["ok"] and r["sig"] == ""
+    assert re.search(r"license-key", Admin(srv.base).page("dashboard"))
+
+
+def test_panel_free_computer_button_and_clone_alert_visible(srv):
+    call(srv, "manifest.php", id="i1", v="2.3.0", hw=HW1)
+    srv.sql("UPDATE dc_installs SET state='full', lic_by='admin', call='SV1ABC' WHERE id='i1'")
+    call(srv, "manifest.php", id="i1", hw=HW2)
+    a = Admin(srv.base)
+    inst = a.page("installs")
+    assert "hw_free" in inst and HW1[:8] in inst
+    assert "ΑΛΛΟΝ υπολογιστή" in a.page("dashboard") or "ANOTHER computer" in a.page("dashboard")
+    a.post("installs", "hw_free", id="i1")                                       # the button
+    assert srv.sql("SELECT hw FROM dc_installs WHERE id='i1'")[0]["hw"] == ""
+    assert call(srv, "manifest.php", id="i1", hw=HW2)["state"] == "full"
+
+
+def test_key_survives_deleting_the_folder_copy(srv):
+    call(srv, "manifest.php", id="k1", v="2.3.0", hw=HW1)                          # first signed answer makes the safety copy in data/
+    assert (srv.root / "data" / "license-key.bak.php").is_file()
+    (srv.root / "license-key.php").unlink()                                          # e.g. the folder was replaced by an update
+    a = call(srv, "manifest.php", id="k1", v="2.3.0", hw=HW1)
+    assert sigverify.verify(srv.pub, a["payload"].encode(), a["sig"])

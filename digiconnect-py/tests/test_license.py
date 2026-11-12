@@ -15,13 +15,16 @@ def free_port():
 def _php_flags():
     """php.exe from a CI image can come without php.ini, so sqlite is not loaded: switch it on explicitly when `php -m` does not list it."""
     have = subprocess.run(["php", "-m"], capture_output=True, text=True).stdout.lower()
-    return [] if "pdo_sqlite" in have else ["-d", "extension=pdo_sqlite", "-d", "extension=sqlite3"]
+    f = [] if "pdo_sqlite" in have else ["-d", "extension=pdo_sqlite", "-d", "extension=sqlite3"]
+    return f if "sodium" in have else f + ["-d", "extension=sodium"]
 
 
 @pytest.fixture()
 def srv(tmp_path):
     root = tmp_path / "dc"; shutil.copytree(SERVER, root, ignore=shutil.ignore_patterns("data", "pkg", "hosts"))
     (root / "data").mkdir(); (root / "pkg").mkdir(); (root / "hosts").mkdir()
+    kp = subprocess.run(["php", *_php_flags(), "-r", '$k=sodium_crypto_sign_keypair(); echo base64_encode(sodium_crypto_sign_secretkey($k)),"\\n",base64_encode(sodium_crypto_sign_publickey($k));'], capture_output=True, text=True, check=True).stdout.split()
+    (root / "license-key.php").write_text(f'<?php define("LIC_SECRET","{kp[0]}"); define("LIC_PUBLIC","{kp[1]}");')   # a test key, never the real one
     (root / "config.php").write_text("<?php return ['admin_user'=>'a','admin_pass'=>'b','demo_days'=>14,'gate'=>true];")
     port = free_port(); log = (tmp_path / "php.log").open("w+")
     p = subprocess.Popen(["php", *_php_flags(), "-S", f"127.0.0.1:{port}", "-t", str(root)], stdout=log, stderr=subprocess.STDOUT)
@@ -30,7 +33,7 @@ def srv(tmp_path):
         except OSError: time.sleep(0.1)
     class S: pass
     s = S(); s.port, s.root, s.proc = port, root, p; s.base = f"http://127.0.0.1:{port}/"
-    s.sql = lambda q, *a: _sql(root, q, a)
+    s.sql = lambda q, *a: _sql(root, q, a); s.pub = kp[1]
     try: urllib.request.urlopen(s.base + "manifest.php?id=probe&v=2.1.0")
     except Exception as ex:                                                    # say WHY the PHP server answers with an error (missing extension ...)
         log.flush(); log.seek(0); p.kill(); pytest.fail(f"php server probe failed: {ex}\n--- php output ---\n{log.read()[-3000:]}\n--- php -m ---\n{subprocess.run(['php', '-m'], capture_output=True, text=True).stdout[-1500:]}")
@@ -51,8 +54,10 @@ class FakeStore:
     def save_settings(self): pass
 
 
-def lic(srv, iid="inst-1"):
-    return L.License(FakeStore(), lambda: dict(id=iid, v="2.1.0", os="linux", arch="x64", shell="2.1.0"), base=srv.base)
+def lic(srv, iid="inst-1", hw=None):
+    import hashlib
+    return L.License(FakeStore(), lambda: dict(id=iid, v="2.1.0", os="linux", arch="x64", shell="2.1.0"), base=srv.base,
+                     hw=hw or hashlib.sha256(iid.encode()).hexdigest()[:32], pubkeys=[srv.pub])          # every test installation is its own computer
 
 
 PERSON = dict(name="Panagiotis", call="sa7svr", dmr_id="2400123", mail="Hellas@Example.org")
@@ -108,16 +113,64 @@ def test_gate_off_in_the_panel_makes_everything_full(srv):
     srv.sql("INSERT INTO dc_kv(k,v) VALUES('gate','0')"); assert l.verdict(l.check()).state == "full"
 
 
-def test_offline_rules_follow_the_server_setting(srv):
+def _offline_case(srv, kv, extra=""):
     l = lic(srv); l.register(PERSON)
-    srv.proc.kill(); srv.proc.wait()                                                          # the server disappears
-    now = time.time()
-    assert l.verdict(None, "down", now).kind == "offline"                                     # default = require
-    c = l.cache(); c.update(offline="grace", offline_days=7, ts=now - 3 * 86400); l.store.settings["lic"] = c
-    assert l.verdict(None, "down", now).allowed
-    c["ts"] = now - 8 * 86400; assert l.verdict(None, "down", now).kind == "offline"
-    c.update(offline="allow", ts=now - 400 * 86400); assert l.verdict(None, "down", now).allowed
-    c.update(state="locked", msg="Contact SA7SVR"); assert l.verdict(None, "down", now).kind == "blocked"     # a block already known stays
+    srv.sql("DELETE FROM dc_kv WHERE k IN ('offline','offline_days')")
+    srv.sql("INSERT INTO dc_kv(k,v) VALUES" + kv)
+    if extra: srv.sql(extra)
+    d = l.check(); srv.proc.kill(); srv.proc.wait()
+    return l, float(d["now"])
+
+
+def test_offline_grace_period(srv):
+    l, t0 = _offline_case(srv, "('offline','grace'),('offline_days','7')")
+    assert l.verdict(None, "down", t0 + 3 * 86400).allowed
+    assert l.verdict(None, "down", t0 + 8 * 86400).kind == "offline"
+
+
+def test_offline_allow_keeps_a_licence_working_but_a_demo_still_ends(srv):
+    l, t0 = _offline_case(srv, "('offline','allow')", "UPDATE dc_installs SET state='full', demo_until=0 WHERE id='inst-1'")
+    assert l.verdict(None, "down", t0 + 400 * 86400).allowed
+
+
+def test_offline_demo_cannot_outlive_its_end(srv):
+    l, t0 = _offline_case(srv, "('offline','allow')")
+    assert l.verdict(None, "down", t0 + 5 * 86400).allowed
+    assert l.verdict(None, "down", t0 + 20 * 86400).kind == "offline"                           # the 14 days are over
+
+
+def test_offline_known_block_stays(srv):
+    l, t0 = _offline_case(srv, "('offline','allow')", "UPDATE dc_installs SET state='locked', note='Contact SA7SVR' WHERE id='inst-1'")
+    assert l.verdict(None, "down", t0 + 60).kind == "blocked"
+
+
+def test_offline_clock_set_back_does_not_extend_the_grace(srv):
+    l, t0 = _offline_case(srv, "('offline','grace'),('offline_days','7')")
+    l.store.settings["lic_seen"] = t0 + 20 * 86400                                            # the program had run on a later date
+    assert l.verdict(None, "down", t0 + 3 * 86400).kind == "offline"
+
+
+def test_edited_cache_is_not_believed(srv):
+    l, t0 = _offline_case(srv, "('offline','grace'),('offline_days','7')", "UPDATE dc_installs SET state='locked' WHERE id='inst-1'")
+    c = l.store.settings["lic"]; c["payload"] = c["payload"].replace('"state":"locked"', '"state":"full"')
+    assert l.cache() == {} and l.verdict(None, "down", t0 + 60).kind == "offline"
+
+
+def test_cache_of_another_installation_is_not_believed(srv):
+    a = lic(srv, "inst-1"); a.register(PERSON); a.check()
+    b = lic(srv, "inst-2"); b.store.settings["lic"] = dict(a.store.settings["lic"])
+    assert b.cache() == {}
+
+
+def test_unsigned_or_replayed_answers_are_refused(srv):
+    l = lic(srv); l.register(PERSON)
+    other = L.License(FakeStore(), l.params, base=srv.base, hw=l.hw, pubkeys=[L.PUBKEYS[0]])         # the real program key is not the test server's key
+    with pytest.raises(L.LicenseError, match="signature"): other.check()
+    import json, urllib.request
+    old = json.loads(urllib.request.urlopen(srv.base + "manifest.php?id=inst-1&n=" + "0" * 32 + "&hw=" + l.hw).read())
+    with pytest.raises(L.LicenseError, match="replay"): l._verify(old, "f" * 32)                        # an answer recorded for another request
+    old.pop("sig"); old["sig"] = ""
+    with pytest.raises(L.LicenseError, match="unsigned"): l._verify(old, "0" * 32)
 
 
 def test_first_start_without_server_cannot_register(srv):

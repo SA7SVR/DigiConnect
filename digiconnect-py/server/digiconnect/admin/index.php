@@ -227,6 +227,13 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       flash('ok', L('Η άδεια άλλαξε. Το πρόγραμμα την παίρνει στον επόμενο έλεγχο (το πολύ ' . $ceNow . ' λεπτά) ή στην επόμενη εκκίνηση.', 'Licence changed. The program picks it up at its next check (at most ' . $ceNow . ' minutes) or at its next start.'));
     }
   }
+  if ($a === 'hw_free') {
+    $id = $_POST['id'] ?? '';
+    if (dc_one('SELECT id FROM dc_installs WHERE id=?', [$id])) {
+      dc_q("UPDATE dc_installs SET hw='', hw_set=0 WHERE id=?", [$id]); dc_event('hw_free', $id . '|' . dc_inst_no($id));
+      flash('ok', L('Ο υπολογιστής ελευθερώθηκε: η άδεια δένεται με τον επόμενο υπολογιστή που θα συνδεθεί.', 'Computer freed: the licence binds to the next computer that connects.'));
+    }
+  }
   if ($a === 'code_new') {
     $kind = ($_POST['kind'] ?? '') === 'full' ? 'full' : 'demo'; $perm = !empty($_POST['perm']) && $kind === 'full';
     $n = $perm ? 0 : max(1, (int)($_POST['n'] ?? 6)); $u = in_array($_POST['unit'] ?? '', $UN, true) ? $_POST['unit'] : 'd';
@@ -399,6 +406,10 @@ if ($p === 'dashboard') {
   // things that need your attention: new payments, refunds
   $seen = (int)dc_kv('alerts_seen', 0); $phD = implode(',', array_fill(0, count(DC_ALERTS), '?'));
   $al = dc_q("SELECT * FROM dc_events WHERE kind IN ($phD) AND t>? ORDER BY t DESC LIMIT 30", array_merge(DC_ALERTS, [$seen]))->fetchAll();
+  $si = dc_sign_info();
+  if (!$si['ok']) echo '<section class="card" style="border-color:var(--tx)"><h2>⚠ ' . L('Υπογραφή αδειών ανενεργή', 'Licence signing is off') . '</h2><p>' . ($si['why'] === 'php-sodium'
+    ? L('Η PHP του server δεν έχει την επέκταση <b>sodium</b>. Ζήτα από τον πάροχο να την ενεργοποιήσει.', 'The server PHP has no <b>sodium</b> extension. Ask the host to enable it.')
+    : L('Λείπει το αρχείο <b>license-key.php</b> δίπλα στο lib.php. Ανέβασέ το μία φορά (το έχεις στο ζιπ του server που σου έδωσα) και κράτα αντίγραφο. Μέχρι τότε οι άδειες δεν υπογράφονται.', 'The file <b>license-key.php</b> next to lib.php is missing. Upload it once (it is in the server zip I gave you) and keep a backup. Until then licences are not signed.')) . '</p></section>';
   if ($al) echo '<section class="card" style="border-color:var(--tx)"><h2>⚠ ' . L('Ειδοποιήσεις','Alerts') . ' <small>(' . count($al) . ')</small></h2>' . activity_rows($al) . '<form method="post" style="margin-top:10px">' . csrf() . '<input type="hidden" name="p" value="dashboard"><input type="hidden" name="a" value="alerts_seen"><button class="btn sm">' . L('Τα είδα','Mark as seen') . '</button></form></section>';
   echo '<div class="kpis">'
     . $kpi(L('Εγκαταστάσεις','Installations'), $total, L('συνολικά','total'))
@@ -584,7 +595,7 @@ elseif ($p === 'installs') {
        . '<td>' . h($r['version'] ?: '—') . '</td><td>' . h($r['os'] ?: '—') . '</td>'
        . '<td><span class="pill onl ' . ($online?'ok':'') . '"><i></i>' . ($online ? 'online' : 'offline') . '</span><br>' . dc_lic_label($r) . '</td>'
        . '<td class="muted">' . dc_dt(dc_last($r)) . '</td><td><div class="acts">'
-       . lic_form($r, 'installs')
+       . lic_form($r, 'installs') . hw_form($r, 'installs')
        . ((int)$r['enabled'] === 1
           ? '<form method="post">' . csrf() . '<input type="hidden" name="p" value="installs"><input type="hidden" name="iid" value="' . h($r['id']) . '"><button class="btn sm danger" name="a" value="disable">' . L('Απενεργ.','Disable') . '</button></form>'
           : '<form method="post">' . csrf() . '<input type="hidden" name="p" value="installs"><input type="hidden" name="iid" value="' . h($r['id']) . '"><button class="btn sm" name="a" value="enable">' . L('Ενεργό','Enable') . '</button></form>')
@@ -1309,6 +1320,12 @@ function dc_lic_label(array $r): string {
   $m = ['free' => ['ok', L('Δωρεάν', 'Free')], 'full' => ['ok', L('Μόνιμη άδεια', 'Licensed')], 'demo' => ['o', 'Demo'], 'locked' => ['bad', L('Κλειδωμένο', 'Locked')], 'expired' => ['bad', L('Έληξε', 'Expired')]][$st] ?? ['', $st];
   return '<span class="pill ' . $m[0] . '">' . h($m[1]) . '</span>' . ($exp && $st !== 'free' ? ' <small class="muted">' . h($x) . '</small>' : '');
 }
+function hw_form(array $r, string $back): string {
+  $hw = (string)($r['hw'] ?? '');
+  return '<form method="post" class="licf" style="margin-top:6px">' . csrf() . '<input type="hidden" name="p" value="' . h($back) . '"><input type="hidden" name="a" value="hw_free"><input type="hidden" name="id" value="' . h($r['id']) . '">'
+    . '<small class="muted">' . L('Υπολογιστής: ', 'Computer: ') . ($hw !== '' ? '<span class="mono">' . h(substr($hw, 0, 8)) . '</span>' . ((int)($r['hw_set'] ?? 0) ? ' · ' . h(dc_dt((int)$r['hw_set'])) : '') : L('δεν δηλώθηκε ακόμη', 'not reported yet')) . '</small> '
+    . ($hw !== '' ? '<button class="btn sm">' . L('Ελευθέρωση υπολογιστή', 'Free the computer') . '</button>' : '') . '</form>';
+}
 function lic_form(array $r, string $back): string {
   $u = function ($sel) { return '<select name="unit"><option value="h">' . L('ώρες', 'hours') . '</option><option value="d"' . ($sel === 'd' ? ' selected' : '') . '>' . L('ημέρες', 'days') . '</option><option value="m">' . L('μήνες', 'months') . '</option><option value="y">' . L('χρόνια', 'years') . '</option></select>'; };
   return '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="' . h($back) . '"><input type="hidden" name="a" value="lic_one"><input type="hidden" name="id" value="' . h($r['id']) . '">'
@@ -1340,6 +1357,8 @@ function activity_rows($rows) {
       case 'chat_reply': $txt = L('Απάντηση στη συνομιλία · ', 'Reply in the chat · ') . h(mb_substr((string)($d[1] ?? ''), 0, 80)); $c = 'b'; break;
       case 'chat_delete': $txt = L('Διαγραφή συνομιλίας', 'Chat deleted'); break;
       case 'reinstall_id': $txt = '⚠ ' . L('Επανεγκατάσταση (ίδιο διακριτικό + email): ', 'Reinstall (same callsign + e-mail): ') . $who($d[0]) . ' ' . L('πήρε αυτόματα την άδεια της ', 'automatically took the licence of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>' . (!empty($d[4]) ? ' (' . h($d[4]) . ')' : ''); $c = 'o'; break;
+      case 'clone': $txt = '⚠ ' . L('Άδεια σε ΑΛΛΟΝ υπολογιστή: ', 'Licence on ANOTHER computer: ') . $who($d[0]) . (!empty($d[2]) ? ' · ' . h($d[2]) : '') . (!empty($d[3]) ? ' · ' . h($d[3]) : ''); $c = 'bad'; break;
+      case 'hw_free': $txt = L('Ελευθερώθηκε ο υπολογιστής της ', 'Computer freed for ') . '<b>' . h($d[1] ?? '') . '</b>'; $c = 'b'; break;
       case 'reinstall': $txt = L('Επανεγκατάσταση: ', 'Reinstalled: ') . $who($d[0]) . ' ' . L('πήρε την κατάσταση της ', 'took the state of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>'; $c = 'b'; break;
       case 'payment':   $txt = L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? ''); $c = 'g'; break;
       case 'pay_auto':  $txt = '♥ ' . L('Αυτόματη ενεργοποίηση ', 'Automatic activation ') . $who($d[0]) . ' · ' . h($d[2] ?? '') . ' · <span class="mono">' . h($d[3] ?? '') . '</span>'; $c = 'g'; break;

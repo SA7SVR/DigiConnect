@@ -109,12 +109,12 @@ def test_reinstall_takes_the_licence_and_raises_an_alert(srv):
     old = lic(srv, "old-1"); old.register(PERSON)
     a = Admin(srv.base)
     srv.sql("UPDATE dc_installs SET state='full', lic_by='payment T1', lic_since=1 WHERE id='old-1'")
-    new = lic(srv, "new-9"); new.register(PERSON)                                                # same callsign + e-mail, new installation id
+    new = lic(srv, "new-9", hw=old.hw); new.register(PERSON)                                      # same computer, new installation id
     row = srv.sql("SELECT state FROM dc_installs WHERE id='new-9'")[0]
     assert row["state"] == "full"
     ev = srv.sql("SELECT kind FROM dc_events WHERE kind='reinstall_id'")
     assert ev and "reinstall_id" in [e["kind"] for e in srv.sql("SELECT kind FROM dc_events")] and "Επανεγκατάσταση" in a.page("dashboard")
     a.post("settings", "set_lic", offline="require", offline_days="7")                           # checkbox off -> setting 0
     assert srv.sql("SELECT v FROM dc_kv WHERE k='reinstall_id'")[0]["v"] == "0"
-    third = lic(srv, "third-3"); third.register(PERSON)
+    third = lic(srv, "third-3", hw=old.hw); third.register(PERSON)                               # same computer again, but the setting is off
     assert srv.sql("SELECT state FROM dc_installs WHERE id='third-3'")[0]["state"] != "full"

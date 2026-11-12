@@ -106,7 +106,8 @@ class Updater(QtCore.QObject):
     def params(self) -> dict:
         m = platform.machine().lower(); arch = "arm64" if m in ("arm64", "aarch64") else ("x64" if m in ("x86_64", "amd64") else m)
         os_ = {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
-        return dict(id=self.install_id(), v=self.running, os=os_, arch=arch, shell=bootstrap.SHELL_VERSION)
+        from . import hwid
+        return dict(id=self.install_id(), v=self.running, os=os_, arch=arch, shell=bootstrap.SHELL_VERSION, hw=hwid.get())
 
     # ---- check / download -------------------------------------------------------
     def start(self):

@@ -7,6 +7,7 @@ header('Cache-Control: no-store');
 
 $a  = $_REQUEST['action'] ?? 'state';
 $id = $_REQUEST['id'] ?? '';
+$hw = dc_hw_clean($_REQUEST['hw'] ?? '');
 if (!$id) { echo json_encode(['ok' => false, 'err' => 'no id']); exit; }
 
 $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
@@ -17,6 +18,7 @@ if (!$in) {
   $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
 }
 
+if ($hw !== '') dc_hw_bind($id, $hw, (string)($_REQUEST['os'] ?? ''));
 if ($a === 'redeem') {
   // same rules as HAM Digi: the code can have an end date (valid_until) and a number of computers (uses, 0 = unlimited);
   // the duration counts from the moment the code is entered; entering it again on the same installation does not use it up
@@ -37,5 +39,4 @@ if ($a === 'redeem') {
   $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
 }
 
-list($state, $left, $msg) = dc_state($in);
-echo json_encode(['ok' => true, 'state' => $state, 'left' => $left, 'msg' => $msg, 'version' => $in['version']] + dc_lic_public());
+echo json_encode(dc_lic_answer($id, $hw, ['os' => (string)($_REQUEST['os'] ?? '')]) + ['version' => $in['version']]);

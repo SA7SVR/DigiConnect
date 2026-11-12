@@ -2,7 +2,7 @@
 // DigiConnect server — shared library. Self-contained (own SQLite DB), so it never touches HAM Digi data.
 // (c) 2026 SA7SVR (Panagiotis Tsekouras).
 declare(strict_types=1);
-const DC_SERVER_VERSION = '2.2.0';   // server package number (panel footer); same number as the program in the package
+const DC_SERVER_VERSION = '2.3.0';   // server package number (panel footer); same number as the program in the package
 if (session_status() === PHP_SESSION_NONE) @session_start();
 
 function dc_cfg(): array {
@@ -73,7 +73,7 @@ function dc_db(): PDO {
   ");
   // additive migration: presence columns (what the station reports with ping.php)
   $have = array_column($pdo->query('PRAGMA table_info(dc_installs)')->fetchAll(), 'name');
-  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT'] as $c => $t)
+  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT'] as $c => $t)
     if (!in_array($c, $have, true)) $pdo->exec("ALTER TABLE dc_installs ADD COLUMN $c $t");
   // messages to the users as in HAM Digi: Greek + English title and text, link, end date, to everyone or to one installation (target = installation id)
   $mc = array_column($pdo->query('PRAGMA table_info(dc_messages)')->fetchAll(), 'name');
@@ -189,7 +189,7 @@ function dc_inst_no($id): string { $n = (int)(dc_one('SELECT rowid n FROM dc_ins
 function dc_no_filter(string $q): ?int { return preg_match('/^\s*(?:DC-?)?0*(\d{1,6})\s*$/i', $q, $m) ? (int)$m[1] : null; }
 
 // ---- e-mail + alerts (same as HAM Digi): this server sends no e-mail unless "mail_on" is switched on ----
-const DC_ALERTS = ['reinstall_id', 'pay_unmatched', 'pay_refund', 'pay_auto', 'code_reuse'];
+const DC_ALERTS = ['reinstall_id', 'clone', 'pay_unmatched', 'pay_refund', 'pay_auto', 'code_reuse'];
 function dc_base_url(): string {
   $s = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') ? 'https' : 'http';
   $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
@@ -392,4 +392,82 @@ function dc_chat_row_out(array $r): array {
 function dc_chat_json(array $a): void { header('Content-Type: application/json; charset=utf-8'); header('Cache-Control: no-store'); echo json_encode($a, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
 function dc_chat_purge_old(): void { // pictures of deleted messages are removed; nothing else is ever deleted automatically
   foreach (dc_q("SELECT id,img FROM dc_chat WHERE del=1 AND img<>''")->fetchAll() as $r) { @unlink(dc_chat_dir() . '/' . basename($r['img'])); dc_q("UPDATE dc_chat SET img='' WHERE id=?", [$r['id']]); }
+}
+
+
+// =============================================================================================================================
+// Computer binding + signed licences (phase 2).
+// The program sends a fingerprint of the computer (hw). A FULL licence stays with the first computer it was used on; the same installation
+// answering from another computer (its settings folder was copied) raises a "clone" alert and gets "belongs to another computer".
+// The answer the program trusts is signed with Ed25519 (private key: license-key.php, only on this server; public key: inside the program).
+// =============================================================================================================================
+function dc_hw_clean($s): string { return substr(preg_replace('/[^a-f0-9]/', '', strtolower((string)$s)), 0, 32); }
+function dc_sign_ready(): bool { return dc_sign_info()['ok']; }
+// the key file lives next to lib.php; a safety copy is kept in data/ (which is never overwritten by an update), so deleting the folder by mistake cannot lose it
+function dc_sign_info(): array {
+  static $info = null; if ($info !== null) return $info;
+  if (!function_exists('sodium_crypto_sign_detached')) return $info = ['ok' => false, 'why' => 'php-sodium'];
+  $main = __DIR__ . '/license-key.php'; $bak = __DIR__ . '/data/license-key.bak.php';
+  if (is_file($main) && !is_file($bak) && is_dir(dirname($bak))) @copy($main, $bak);
+  $f = is_file($main) ? $main : (is_file($bak) ? $bak : '');
+  if ($f === '') return $info = ['ok' => false, 'why' => 'no-key'];
+  require_once $f;
+  return $info = ['ok' => defined('LIC_SECRET') && defined('LIC_PUBLIC'), 'why' => '', 'public' => defined('LIC_PUBLIC') ? LIC_PUBLIC : ''];
+}
+function dc_sign(string $payload): string {
+  if (!dc_sign_info()['ok']) return '';
+  return base64_encode(sodium_crypto_sign_detached($payload, base64_decode(LIC_SECRET)));
+}
+// the installation of the same computer that already had a licence / demo (reinstall on the same machine): a new installation id must not restart the demo
+function dc_inherit_hw(string $id): ?string {
+  if (dc_kv('reinstall_id', '1') !== '1') return null;                                    // panel setting (Licences): reinstall takes over the earlier state
+  $r = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]); if (!$r || (string)($r['hw'] ?? '') === '') return null;
+  $st = (string)($r['state'] ?? ''); $by = (string)($r['lic_by'] ?? '');
+  if (!($st === '' || ($by === 'default' && $st !== 'full'))) return null;
+  $p = dc_one("SELECT * FROM dc_installs WHERE hw=? AND id<>? AND COALESCE(state,'')<>'' ORDER BY CASE state WHEN 'full' THEN 0 ELSE 1 END, lic_set DESC LIMIT 1", [$r['hw'], $id]);
+  if (!$p || ($st !== '' && $p['state'] !== 'full')) return null;
+  dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=?, owner=COALESCE(NULLIF(owner,\'\'),?), lic_code=?, lic_since=? WHERE id=?',
+    [$p['state'], $p['demo_until'], $p['enabled'], $p['note'], 'reinstall ' . dc_inst_no($p['id']), time(), $p['owner'], $p['lic_code'], $p['lic_since'], $id]);
+  if ($p['state'] === 'full' && (string)$p['lic_code'] !== '') dc_q('UPDATE dc_codes SET last_install=? WHERE code=?', [$id, $p['lic_code']]);
+  if ($p['state'] === 'full') {
+    $who = trim(dc_inst_no($id) . ' ' . ($r['call'] ?? ''));
+    dc_alert('reinstall_id', "$id|{$p['id']}|" . dc_inst_no($p['id']) . "|full|" . ($r['call'] ?? ''),
+      "Νέα εγκατάσταση $who στον ΙΔΙΟ υπολογιστή πήρε αυτόματα την άδεια της " . dc_inst_no($p['id']) . ".\nNew installation $who on the SAME computer automatically took the licence of " . dc_inst_no($p['id']) . ".");
+  } else dc_event('reinstall', "$id|{$p['id']}|" . dc_inst_no($p['id']) . "|{$p['state']}");
+  return $p['id'];
+}
+// binds / checks the computer of one installation. Returns the hw that goes into the signed answer ('' = unknown).
+function dc_hw_bind(string $id, string $hw, string $os = '', string $call = ''): string {
+  $r = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]); if (!$r) return $hw;
+  $stored = (string)($r['hw'] ?? '');
+  if ($hw === '') return $stored;
+  if ($stored === '') { dc_q('UPDATE dc_installs SET hw=?, hw_set=? WHERE id=?', [$hw, time(), $id]); dc_inherit_hw($id); return $hw; }
+  if ($stored === $hw) return $hw;
+  [$st] = dc_lic_effective($r);
+  if ($st !== 'full') return $hw;                       // demo / free / locked: nothing to protect, the answer is simply for this computer
+  $last = (int)dc_scalar("SELECT MAX(t) FROM dc_events WHERE kind='clone' AND detail LIKE ?", [$id . '|%']);
+  if (time() - $last > 6 * 3600) {
+    $who = trim(dc_inst_no($id) . ' ' . ($r['call'] ?? '') . ' ' . ($r['owner'] ?? ''));
+    dc_alert('clone', "$id|$hw|$os|$call", "Η άδεια της εγκατάστασης $who χρησιμοποιήθηκε σε ΑΛΛΟΝ υπολογιστή ($os). Εκεί δεν λειτουργεί. Αν ο χρήστης άλλαξε υπολογιστή, πάτα «Ελευθέρωση υπολογιστή» στις Εγκαταστάσεις.\nThe licence of $who was used on ANOTHER computer ($os). It does not work there. If the user changed computer, press \"Free the computer\" in Installations.");
+  }
+  return $stored;                                       // the licence stays with the first computer
+}
+// the whole answer of the licence server for one installation: the plain fields (older programs) + the signed payload (this program trusts only that)
+function dc_lic_answer(string $id, string $hw = '', array $extra = []): array {
+  $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
+  $bind = dc_hw_bind($id, $hw, (string)($extra['os'] ?? ''), (string)($extra['call'] ?? ''));
+  $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
+  [$state, $left, $msg] = dc_state($in);
+  $other = 0;
+  if ($hw !== '' && $bind !== '' && $bind !== $hw && $state === 'full') {            // a FULL licence of another computer
+    $other = 1; $state = 'locked'; $left = ''; $msg = 'Αυτή η άδεια ανήκει σε άλλον υπολογιστή. Επικοινώνησε με τον διαχειριστή αν άλλαξες υπολογιστή.\nThis licence belongs to another computer. Contact the administrator if you changed computer.';
+  }
+  $off = dc_offline(); $pub = dc_lic_public();
+  $registered = (!empty($in['consent_at']) && trim((string)$in['call']) !== '' && trim((string)$in['mail']) !== '') ? 1 : 0;
+  [$st, $exp] = dc_lic_effective($in); $full = $state === 'full' && !$other;
+  $payload = json_encode(['v' => 2, 'id' => $id, 'no' => dc_inst_no($id), 'state' => $state, 'left' => $left, 'msg' => $msg, 'exp' => (int)$exp, 'now' => time(),
+    'registered' => $registered, 'offline' => $off['offline'], 'offline_days' => $off['offline_days'], 'donate' => $pub['donate'], 'offer' => $pub['offer'], 'amount' => $pub['amount'],
+    'n' => substr(preg_replace('/[^a-f0-9]/', '', strtolower((string)($_REQUEST['n'] ?? ''))), 0, 32), 'hw' => $bind, 'other_pc' => $other, 'own' => $full ? (string)($in['owner'] ?? '') : '', 'call' => (string)($in['call'] ?? ''), 'code' => $full ? (string)($in['lic_code'] ?? '') : ''], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+  return ['ok' => true, 'state' => $state, 'left' => $left, 'msg' => $msg, 'other_pc' => $other, 'registered' => $registered, 'offline' => $off['offline'], 'offline_days' => $off['offline_days']] + $pub
+    + ['payload' => $payload, 'sig' => dc_sign($payload)];
 }

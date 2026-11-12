@@ -10,6 +10,7 @@ $v     = $_REQUEST['v'] ?? '';
 $os    = $_REQUEST['os'] ?? '';
 $arch  = $_REQUEST['arch'] ?? '';
 $shell = $_REQUEST['shell'] ?? '';
+$hw    = dc_hw_clean($_REQUEST['hw'] ?? '');
 $now   = time();
 $cfg   = dc_cfg();
 
@@ -27,11 +28,9 @@ if ($id) {
 
 if ($id) dc_daily_mark($id, $v, $os);
 $in = $id ? dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]) : null;
-list($state, $left, $msg) = $in ? dc_state($in) : ['full', '', ''];
+$ans = $id ? dc_lic_answer($id, $hw, ['os' => $os]) : ['state' => 'full', 'left' => '', 'msg' => ''] + dc_lic_public();
 
-$out = ['ok' => true, 'checkEvery' => max(60, (int)dc_opt('check_every', $cfg['check_every'])), 'state' => $state, 'left' => $left, 'msg' => $msg,
-        'registered' => ($in && !empty($in['consent_at']) && trim((string)$in['call']) !== '' && trim((string)$in['mail']) !== '') ? 1 : 0,
-        'offline' => dc_offline()['offline'], 'offline_days' => dc_offline()['offline_days']] + dc_lic_public();
+$out = ['ok' => true, 'checkEvery' => max(60, (int)dc_opt('check_every', $cfg['check_every']))] + $ans;
 
 $out['msgs'] = $in ? dc_messages_for($id, (int)$in['first_seen']) : [];
 

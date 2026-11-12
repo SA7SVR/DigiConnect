@@ -77,14 +77,14 @@ class Workspace(W.QWidget):
         self.tx = TxControls(ctx, on_new_qso); mv.addWidget(self.tx)
         mv.addWidget(label("AUDIO", section=True))
         if net == "EchoLink":
-            note = panel("note"); nv = vbox(note, m=(12, 10, 12, 10)); nv.addWidget(label("Sign in with your validated EchoLink account to load the directory and listen. Transmit remains disabled."))
+            note = panel("note"); nv = vbox(note, m=(12, 10, 12, 10)); nv.addWidget(label("EchoLink is under construction — coming soon. The page is here so you can see where it will be; it does not connect yet."))
             mv.addWidget(note)
             g = W.QGridLayout(); self.el_call = W.QLineEdit(ctx.store.settings.get("echolink_call") or ctx.store.settings.get("callsign", ""))
             self.el_pw = W.QLineEdit(); self.el_pw.setEchoMode(W.QLineEdit.EchoMode.Password)
             g.addWidget(field("Callsign", self.el_call), 0, 0); g.addWidget(field("Password", self.el_pw), 0, 1); mv.addLayout(g)
             self.el_rem = checkbox("Remember password"); self.el_rem.setChecked(True); mv.addWidget(self.el_rem)
             self.el_sign = button("Sign in to account", "primary"); mv.addWidget(self.el_sign, 0, Qt.AlignmentFlag.AlignLeft)
-            self.el_sign.clicked.connect(lambda: ctx.toast.emit("EchoLink sign-in needs the EchoLink engine (not connected in this build)"))
+            self.el_sign.clicked.connect(lambda: ctx.toast.emit("EchoLink is under construction — coming soon."))
         self.audio = AudioBlock(ctx); mv.addWidget(self.audio)
         self.rxvol = W.QSlider(Qt.Orientation.Horizontal); self.rxvol.setRange(0, 100); self.rxvol.setValue(int(ctx.rules.net_volume[net] * 100))
         vr = hbox(); vr.addWidget(label("RX volume", muted=True)); vr.addWidget(self.rxvol, 1); mv.addLayout(vr)
@@ -277,7 +277,7 @@ class Workspace(W.QWidget):
                 self.count.setText(tr("DMR · {} entries — {} — press Refresh").format(total, " · ".join(bits)))
         if self.net == "AllStar":
             self.count.setText(f"AllStarLink · {total} nodes" if self.ctx.asl_nodes.nodes else "AllStarLink · node list not downloaded yet — press Refresh (needs internet), or type a node number")
-        if self.net == "EchoLink" and not total: self.count.setText("EchoLink · 0 entries — the directory appears after signing in")
+        if self.net == "EchoLink" and not total: self.count.setText("EchoLink · "+"under construction — coming soon")
         self.refresh()
 
     def _picked(self, row):
