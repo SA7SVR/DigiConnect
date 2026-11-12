@@ -297,5 +297,5 @@ class EngineClient(QtCore.QObject, Engine):
 
     def _on_finished(self, ln: Link):
         if self.links.get(ln.key) is ln:
-            self.status.emit(ln, "error", "The protocol engine stopped unexpectedly.")
+            self.status.emit(ln, "error", "The protocol engine stopped unexpectedly. Licence › Send diagnostics to the owner shows why.")
             ln.rx.clear(); ln.tx = False; self.links.pop(ln.key, None)

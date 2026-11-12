@@ -1,8 +1,16 @@
-DigiConnect 2.3.0 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+DigiConnect 2.3.1 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
 ===========================================================================
 
 ΕΛΛΗΝΙΚΑ
 --------
+ΝΕΑ ΣΤΗΝ 2.3.1 — ΕΛΕΓΧΟΣ MODES ΑΠΟ ΤΟΝ SERVER
+• Νέο panel «Modes / Πολιτικές»: κουμπιά Ενεργό / Κλειστό / Μόνο δοκιμαστές για κάθε mode (DMR, D-Star, C4FM, NXDN, P25, M17, AllStar, EchoLink), για όλους ή μόνο για επιλεγμένες εγκαταστάσεις, με αναζήτηση και τσεκάρισμα. Η αλλαγή φτάνει στα προγράμματα στον επόμενο έλεγχο χωρίς καμία ενέργεια του χρήστη.
+• «Μόνο ακρόαση» (χωρίς εκπομπή), γενικά ή ανά εγκατάσταση. «Ελάχιστη έκδοση»: οι παλιότερες εκδόσεις κλείνουν τα modes και ζητούν ενημέρωση. Δικά σου μηνύματα (EL/EN) για κλειστό mode, για μόνο ακρόαση και για παλιά έκδοση.
+• Στο πρόγραμμα το κλειστό mode γίνεται γκρι («κλειστό»), η σελίδα του δείχνει το μήνυμά σου και τα Listen / Connect / PTT δεν ξεκινούν· ό,τι έτρεχε σταματά αμέσως. Η πολιτική είναι υπογεγραμμένη μαζί με την άδεια και μένει και χωρίς σύνδεση.
+• Κάθε αλλαγή καταγράφεται στη Δραστηριότητα.
+• Άδεια › «Αποστολή διαγνωστικών στον ιδιοκτήτη»: στέλνει (με τη θέλησή σου) την έκδοση, το σύστημα και το τέλος του log για να βρεθεί γρήγορα η αιτία προβλήματος.
+• Ρυθμίσεις: κάτω από τον κωδικό DMR φαίνεται ξεκάθαρα αν ο κωδικός είναι αποθηκευμένος· μήνυμα «αποθηκεύτηκε» μετά το Save.
+
 • Άδεια δεμένη με τον υπολογιστή: η άδεια μένει με τον πρώτο υπολογιστή που τη χρησιμοποίησε. Αντιγραφή του φακέλου
   ρυθμίσεων σε άλλον υπολογιστή δεν δίνει άδεια· ο διαχειριστής παίρνει ειδοποίηση και, αν ο χρήστης άλλαξε υπολογιστή,
   πατά «Ελευθέρωση υπολογιστή» (Εγκαταστάσεις).
@@ -24,6 +32,14 @@ DigiConnect 2.3.0 — Release notes / Σημειώσεις έκδοσης / Vers
 
 ENGLISH
 -------
+NEW IN 2.3.1 — MODE CONTROL FROM THE SERVER
+• New panel "Modes / Policies": On / Off / Testers only buttons for every mode (DMR, D-Star, C4FM, NXDN, P25, M17, AllStar, EchoLink), for everyone or only for selected installations, with search and tick boxes. The change reaches the programs at their next check with nothing for the user to do.
+• "Listen only" (no transmit), general or per installation. "Minimum version": older versions close the modes and ask for an update. Your own messages (EL/EN) for a closed mode, for listen-only and for an old version.
+• In the program a closed mode turns grey ("closed"), its page shows your message and Listen / Connect / PTT do not start; whatever was running stops at once. The policy is signed with the licence and is kept without a connection.
+• Every change is written to the Activity log.
+• Licence › "Send diagnostics to the owner": sends (only when you press it) the version, system and the end of the log so the cause of a problem can be found quickly.
+• Settings: under the DMR password field it now says clearly whether the password is saved; a "saved" message appears after Save.
+
 • Licence bound to the computer: a licence stays with the first computer that used it. Copying the settings folder to another
   computer does not give a licence; the administrator gets an alert and, if the user really changed computer, presses
   "Free the computer" (Installations).
@@ -43,6 +59,14 @@ ENGLISH
 
 SVENSKA
 -------
+NYTT I 2.3.1 — LÄGESKONTROLL FRÅN SERVERN
+• Ny panel «Lägen / Regler»: knapparna På / Av / Endast testare för varje läge (DMR, D-Star, C4FM, NXDN, P25, M17, AllStar, EchoLink), för alla eller bara valda installationer, med sökning och kryssrutor. Ändringen når programmen vid nästa kontroll utan att användaren gör något.
+• «Endast lyssna» (ingen sändning), generellt eller per installation. «Lägsta version»: äldre versioner stänger lägena och ber om uppdatering. Egna meddelanden (EL/EN) för stängt läge, endast lyssna och gammal version.
+• I programmet blir ett stängt läge grått («stängt»), dess sida visar ditt meddelande och Lyssna / Anslut / PTT startar inte; det som pågick stoppas direkt. Reglerna är signerade tillsammans med licensen och finns kvar utan uppkoppling.
+• Varje ändring skrivs i Aktivitet.
+• Licens › «Skicka diagnostik till ägaren»: skickar (bara när du trycker) version, system och slutet av loggen så att orsaken till ett problem hittas snabbt.
+• Inställningar: under DMR-lösenordet visas tydligt om lösenordet är sparat; ett «sparat»-meddelande efter Spara.
+
 • Licens bunden till datorn: licensen stannar hos den första dator som använde den. Att kopiera inställningsmappen till en annan
   dator ger ingen licens; administratören får en avisering och, om användaren verkligen bytt dator, trycker på «Frigör datorn»
   (Installationer).

@@ -115,6 +115,8 @@ QPushButton[kind="latch"]:disabled {{ background:{c['latch_dis']}; color:{c['lat
 QPushButton[kind="latch"]:checked {{ background:{c['red']}; color:#ffffff; }}
 QPushButton[kind="tab"] {{ background:{c['panel']}; border:1px solid {c['green_bd']}; border-radius:12px; padding:9px 18px; font-size:{font_px-1}px; }}
 QPushButton[kind="tab"]:checked {{ background:{c['tab_on']}; border:2px solid {c['green']}; }}
+QPushButton[kind="tab"][closed="true"] {{ color:{c['muted']}; border:1px dashed {c['muted']}; }}
+QFrame#card[closed="true"] {{ background:{c['panel']}; border:1px dashed {c['muted']}; }}
 QPushButton[kind="rail"] {{ background:transparent; border:none; border-radius:10px; padding:0; }}
 QPushButton[kind="rail"]:hover {{ background:{c['rail_hover']}; }}
 QPushButton[kind="rail"]:checked {{ background:{c['rail_on']}; }}

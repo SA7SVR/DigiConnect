@@ -131,5 +131,7 @@ class Favorites(W.QWidget):
                 c.badge.setText("● " + tr({"amber": "Receiving audio", "green": "Listening · traffic"}.get(st, "Listening")))
                 c.badge.setStyleSheet(f"font-weight:700;color:{C[{'amber': 'amber', 'green': 'green'}.get(st, 'pink')]};")
             c.setProperty("sel", bool(r.selected == t)); repolish(c)
-            if hasattr(c, "tx"): c.tx.setText("Transmit ready" if r.tx_connected and r.tx_target == t else "Transmit disconnected")
+            closed = not self.ctx.policy.allows(t.net)
+            if bool(c.property("closed")) != closed: c.setProperty("closed", closed); repolish(c)
+            if hasattr(c, "tx"): c.tx.setText("Mode closed" if closed else "Transmit ready" if r.tx_connected and r.tx_target == t else "Transmit disconnected")
         self.updated.setText(tr("Updated {}").format(self.ctx.utc_now().strftime("%H:%M:%S UTC")))

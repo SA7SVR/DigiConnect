@@ -2,7 +2,7 @@
 // DigiConnect server — shared library. Self-contained (own SQLite DB), so it never touches HAM Digi data.
 // (c) 2026 SA7SVR (Panagiotis Tsekouras).
 declare(strict_types=1);
-const DC_SERVER_VERSION = '2.3.0';   // server package number (panel footer); same number as the program in the package
+const DC_SERVER_VERSION = '2.3.1';   // server package number (panel footer); same number as the program in the package
 if (session_status() === PHP_SESSION_NONE) @session_start();
 
 function dc_cfg(): array {
@@ -73,7 +73,7 @@ function dc_db(): PDO {
   ");
   // additive migration: presence columns (what the station reports with ping.php)
   $have = array_column($pdo->query('PRAGMA table_info(dc_installs)')->fetchAll(), 'name');
-  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT'] as $c => $t)
+  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT', 'mode_ovr' => 'TEXT', 'tester' => 'INT DEFAULT 0', 'tx_ovr' => 'TEXT'] as $c => $t)
     if (!in_array($c, $have, true)) $pdo->exec("ALTER TABLE dc_installs ADD COLUMN $c $t");
   // messages to the users as in HAM Digi: Greek + English title and text, link, end date, to everyone or to one installation (target = installation id)
   $mc = array_column($pdo->query('PRAGMA table_info(dc_messages)')->fetchAll(), 'name');
@@ -464,6 +464,29 @@ function dc_hw_bind(string $id, string $hw, string $os = '', string $call = ''):
   }
   return $stored;                                       // the licence stays with the first computer
 }
+
+// =============================================================================================================================
+// Modes and policies: which radio modes work in the programs, whether they may transmit, the oldest allowed version.
+// Set in the panel (page Modes), resolved here per installation, and sent inside the SIGNED answer (field "pol").
+// =============================================================================================================================
+const DC_MODES = ['DMR', 'D-Star', 'C4FM', 'NXDN', 'P25', 'M17', 'AllStar', 'EchoLink'];
+function dc_mode_key(string $m): string { return 'mode_' . strtolower(preg_replace('/[^A-Za-z0-9]/', '', $m)); }
+function dc_mode_global(string $m): string { $v = dc_kv(dc_mode_key($m), $m === 'EchoLink' ? 'off' : 'on'); return in_array($v, ['on', 'off', 'beta'], true) ? $v : 'on'; }
+function dc_mode_ovr(array $in): array { $o = json_decode((string)($in['mode_ovr'] ?? ''), true); return is_array($o) ? array_filter($o, fn($v, $k) => in_array($k, DC_MODES, true) && in_array($v, ['on', 'off'], true), ARRAY_FILTER_USE_BOTH) : []; }
+// what one installation gets for one mode: its own setting first, else the general one (beta = only for testers)
+function dc_mode_for(array $in, string $m): string {
+  $o = dc_mode_ovr($in); if (isset($o[$m])) return $o[$m];
+  $g = dc_mode_global($m); return $g === 'beta' ? (!empty($in['tester']) ? 'on' : 'off') : $g;
+}
+function dc_tx_for(array $in): int { $o = (string)($in['tx_ovr'] ?? ''); return $o === '1' ? 1 : ($o === '0' ? 0 : (dc_kv('tx_all', '1') === '0' ? 0 : 1)); }
+function dc_policy(array $in): array {
+  $off = []; foreach (DC_MODES as $m) if (dc_mode_for($in, $m) !== 'on') $off[] = $m;
+  $note = trim(dc_kv('modes_note_el', '') . "\n" . dc_kv('modes_note_en', '')); if ($note === '') $note = "Αυτό το mode δεν είναι ακόμη διαθέσιμο.\nThis mode is not available yet.";
+  $minv = trim((string)dc_kv('min_version', '')); $old = ($minv !== '' && trim((string)($in['version'] ?? '')) !== '' && version_compare((string)$in['version'], $minv, '<')) ? 1 : 0;
+  if ($old) { $off = DC_MODES; $note = trim(dc_kv('min_msg_el', '') . "\n" . dc_kv('min_msg_en', '')); if ($note === '') $note = "Αυτή η έκδοση είναι παλιά. Ενημέρωσε το πρόγραμμα στην έκδοση $minv ή νεότερη.\nThis version is too old. Update the program to version $minv or newer."; }
+  return ['off' => array_values($off), 'note' => $note, 'tx' => dc_tx_for($in), 'minv' => $minv, 'old' => $old,
+    'txnote' => trim(dc_kv('tx_note_el', '') . "\n" . dc_kv('tx_note_en', '')) ?: "Η εκπομπή δεν είναι διαθέσιμη σε αυτή την εγκατάσταση (μόνο ακρόαση).\nTransmitting is not available on this installation (listen only)."];
+}
 // the whole answer of the licence server for one installation: the plain fields (older programs) + the signed payload (this program trusts only that)
 function dc_lic_answer(string $id, string $hw = '', array $extra = []): array {
   $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]);
@@ -479,7 +502,7 @@ function dc_lic_answer(string $id, string $hw = '', array $extra = []): array {
   [$st, $exp] = dc_lic_effective($in); $full = $state === 'full' && !$other;
   $payload = json_encode(['v' => 2, 'id' => $id, 'no' => dc_inst_no($id), 'state' => $state, 'left' => $left, 'msg' => $msg, 'exp' => (int)$exp, 'now' => time(),
     'registered' => $registered, 'offline' => $off['offline'], 'offline_days' => $off['offline_days'], 'donate' => $pub['donate'], 'offer' => $pub['offer'], 'amount' => $pub['amount'],
-    'n' => substr(preg_replace('/[^a-f0-9]/', '', strtolower((string)($_REQUEST['n'] ?? ''))), 0, 32), 'hw' => $bind, 'other_pc' => $other, 'own' => $full ? (string)($in['owner'] ?? '') : '', 'call' => (string)($in['call'] ?? ''), 'code' => $full ? (string)($in['lic_code'] ?? '') : ''], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    'n' => substr(preg_replace('/[^a-f0-9]/', '', strtolower((string)($_REQUEST['n'] ?? ''))), 0, 32), 'hw' => $bind, 'other_pc' => $other, 'own' => $full ? (string)($in['owner'] ?? '') : '', 'call' => (string)($in['call'] ?? ''), 'code' => $full ? (string)($in['lic_code'] ?? '') : '', 'pol' => dc_policy($in)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
   return ['ok' => true, 'state' => $state, 'left' => $left, 'msg' => $msg, 'other_pc' => $other, 'registered' => $registered, 'offline' => $off['offline'], 'offline_days' => $off['offline_days']] + $pub
     + ['payload' => $payload, 'sig' => dc_sign($payload)];
 }

@@ -40,6 +40,7 @@ class Workspace(W.QWidget):
         lv.addLayout(top); lv.addWidget(self.search); lv.addLayout(cr); lv.addWidget(self.count); lv.addWidget(self.list, 1); lv.addLayout(pr)
         # --- middle: selected station
         mid = panel(); _mo = vbox(mid, s=0); _sc = W.QScrollArea(); _sc.setWidgetResizable(True); _sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); _in = W.QWidget(); _in.setObjectName('scrollinner'); _in.setStyleSheet('QWidget#scrollinner{background:transparent;}'); _sc.setWidget(_in); _mo.addWidget(_sc); mv = vbox(_in, m=(16, 16, 16, 12), s=8)
+        self._sc = _sc; self.closed_note = panel("note"); _cv = vbox(self.closed_note, m=(12, 10, 12, 10)); self.closed_txt = label(""); self.closed_txt.setWordWrap(True); _cv.addWidget(self.closed_txt); self.closed_note.setVisible(False); _mo.insertWidget(0, self.closed_note)      # shown when the owner's server has closed this mode
         mv.addWidget(label("Selected station", eyebrow=True)); self.title = label("Select a station"); self.title.setStyleSheet("font-size:20px;font-weight:700;")
         self.sub = label("Select an entry in the list on the left.", muted=True); mv.addWidget(self.title); mv.addWidget(self.sub)
         if net == "AllStar":
@@ -305,6 +306,9 @@ class Workspace(W.QWidget):
         self.ctx.select(Target(self.net, text, f"{self.net} {text}")); self.fill(); self.ctx.changed.emit()
 
     def refresh(self):
+        closed = self.net != "EchoLink" and not self.ctx.policy.allows(self.net)
+        self.closed_note.setVisible(closed); self._sc.setEnabled(not closed)
+        if closed: self.closed_txt.setText("⚠  " + tr(self.ctx.policy.reason(self.net)))
         t = self.ctx.selected; mine = t is not None and t.net == self.net
         self.title.setText(t.name if mine else "Select a station")
         self.sub.setText(f"{t.net} · {t.id}" if mine else "Select an entry in the list on the left.")

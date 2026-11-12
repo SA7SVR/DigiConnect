@@ -158,6 +158,7 @@ class MainWindow(W.QMainWindow):
         if getattr(watcher.lic, "last", None) is not None: self._license_changed(watcher.lic.last)
 
     def _license_changed(self, v):
+        self.ctx.apply_policy((v.info or {}).get("pol"))              # modes / transmit the owner's server allows (signed with the licence answer)
         self.license_url = v.donate or ""
         i = v.info or {}; self.chip_no.setText(i.get("no") or "—")
         tone, txt = {"full": ("green", "Licensed"), "free": ("green", "Free"), "demo": ("amber", "Demo")}.get(v.state, ("red", v.state or "—"))
@@ -211,7 +212,10 @@ class MainWindow(W.QMainWindow):
         if ws: self.title.setText(f"{tr('Radio workspace')} <span style='color:{__import__('app.theme', fromlist=['NET_COLOR']).NET_COLOR[net]}'>{net}</span>")
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
         for t, b in self.tabs.items():
-            if t != "favorites": b.setText("EchoLink · soon" if t == "EchoLink" else t); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
+            if t != "favorites":
+                closed = t != "EchoLink" and not self.ctx.policy.allows(t)          # closed by the owner's server (EchoLink has its own 'soon')
+                b.setText("EchoLink · soon" if t == "EchoLink" else (t + " · " + tr("closed") if closed else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
+                if bool(b.property("closed")) != closed: b.setProperty("closed", closed); repolish(b)
         self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else "Choose a station, then Listen. Connect transmission separately to participate.")
         self.h_add.setVisible(k == "favorites")
         self.tabs["favorites"].setText(f"My favorites   {len(self.ctx.store.favorites)}")

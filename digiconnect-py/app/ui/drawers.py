@@ -58,8 +58,9 @@ class SettingsDrawer(W.QFrame):
         self.dmrid_field = field("DMR ID", le("dmr_id")); self.essid_field = field("ESSID", le("essid"))
         self.slot = W.QComboBox(); self.slot.addItems(["1", "2"]); self.slot.setCurrentText(str(s["slot"]))
         self.dpw = W.QLineEdit(); self.dpw.setEchoMode(W.QLineEdit.EchoMode.Password); self.dpw.setText(ctx.dmr_password); self._dpw_shown = ctx.dmr_password
+        self.dpw_state = label("", muted=True); self.dpw_state.setWordWrap(True); self.dpw.textChanged.connect(self._dpw_update); self._dpw_update()
         group("DMR", "DMR", row(self.dmrid_field, self.essid_field), field("DMR master server (host)", le("dmr_server", "hostname")),
-              row(field("DMR master port", le("dmr_port")), field("Time slot", self.slot)), field("Color code", le("cc")), field("Password (your BrandMeister hotspot password)", self.dpw),
+              row(field("DMR master port", le("dmr_port")), field("Time slot", self.slot)), field("Color code", le("cc")), field("Password (your BrandMeister hotspot password)", self.dpw), self.dpw_state,
               note="The server and the password are also on the DMR page. Every other station shows its own server and port on its page.")
         p25id = W.QLineEdit(str(s.get("dmr_id", ""))); main_id = self.f["dmr_id"]              # the same setting as the DMR ID, shown again in the P25 group
         p25id.textChanged.connect(main_id.setText); main_id.textChanged.connect(p25id.setText)
@@ -116,6 +117,14 @@ class SettingsDrawer(W.QFrame):
         d = W.QFileDialog.getExistingDirectory(self, tr("Recordings folder"))
         if d: self.recp.setText(d); self.ctx.store.settings["rec_path"] = d
 
+    def _dpw_update(self, *_):
+        """Says in words whether the DMR password is kept: the person must not have to guess after pressing Save."""
+        t = self.dpw.text()
+        if not t: self.dpw_state.setText(tr("No password entered yet"))
+        elif t != self.ctx.dmr_password: self.dpw_state.setText(tr("Not saved yet — press Save"))
+        elif self.ctx.store.settings.get("remember_pw", True): self.dpw_state.setText(tr("✓ Password saved on this computer"))
+        else: self.dpw_state.setText(tr('Password kept only until you close the program ("Remember" is off)'))
+
     def _collect(self):
         s = self.ctx.store.settings
         if self.dpw.text() != self._dpw_shown: self.ctx.set_dmr_password(self.dpw.text()); self._dpw_shown = self.dpw.text()      # only when changed here
@@ -135,7 +144,8 @@ class SettingsDrawer(W.QFrame):
         if not valid_text_size(s["text_size"]): self.ctx.toast.emit("Text size must be between 11 and 20 pixels."); return
         self.ctx.store.save_settings(); self.ctx.rules.ducking = s["duck"]
         if not self.ctx.rules.ptt: self.ctx.rules.limit = s["max_ptt"]
-        self.applied.emit(); self.ctx.changed.emit(); self.ctx.toast.emit("Settings saved")
+        self.applied.emit(); self.ctx.changed.emit(); self._dpw_update()
+        self.ctx.toast.emit("Settings saved · DMR password saved on this computer" if self.dpw.text() and s.get("remember_pw", True) else "Settings saved")
 
     def _saveprof(self):
         n = self.pname.text().strip()

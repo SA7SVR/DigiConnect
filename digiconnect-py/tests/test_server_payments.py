@@ -19,7 +19,7 @@ class Admin:
 
     def post(self, p, a, **f):
         tok = re.search(r'name="csrf" value="([0-9a-f]+)"', self.page(p)).group(1)
-        return self.op.open(self.base, urllib.parse.urlencode(dict(csrf=tok, p=p, a=a, **f)).encode()).read().decode()
+        return self.op.open(self.base, urllib.parse.urlencode(dict(csrf=tok, p=p, a=a, **f), doseq=True).encode()).read().decode()
 
 
 def ipn(srv, **p):

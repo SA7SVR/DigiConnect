@@ -243,6 +243,43 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       flash('ok', L('Ο υπολογιστής ελευθερώθηκε: η άδεια δένεται με τον επόμενο υπολογιστή που θα συνδεθεί.', 'Computer freed: the licence binds to the next computer that connects.'));
     }
   }
+
+  // ---------- modes and policies (page Modes) ----------
+  $MN = ['on' => L('Ενεργό', 'On'), 'off' => L('Κλειστό', 'Off'), 'beta' => L('Μόνο δοκιμαστές', 'Testers only')];
+  if ($a === 'mode_set') {
+    $m = $_POST['mode'] ?? ''; $v = $_POST['state'] ?? '';
+    if (in_array($m, DC_MODES, true) && in_array($v, ['on', 'off', 'beta'], true)) { dc_kv_set(dc_mode_key($m), $v); dc_event('modes', "all|$m → " . $v); flash('ok', "$m: " . $MN[$v] . L(' — για όλους.', ' — for everyone.')); }
+  }
+  if ($a === 'modes_all') {
+    $v = $_POST['state'] ?? ''; if (in_array($v, ['on', 'off'], true)) { foreach (DC_MODES as $m) dc_kv_set(dc_mode_key($m), $v); dc_event('modes', 'all|' . L('όλα τα modes', 'all modes') . ' → ' . $v); flash('ok', L('Όλα τα modes: ', 'All modes: ') . $MN[$v]); }
+  }
+  if ($a === 'modes_note') {
+    foreach (['modes_note_el', 'modes_note_en', 'tx_note_el', 'tx_note_en', 'min_msg_el', 'min_msg_en'] as $k) dc_kv_set($k, substr(trim($_POST[$k] ?? ''), 0, 300));
+    $mv = trim($_POST['min_version'] ?? ''); dc_kv_set('min_version', preg_match('/^\d+(\.\d+){0,3}$/', $mv) ? $mv : '');
+    dc_kv_set('tx_all', ($_POST['tx_all'] ?? '1') === '0' ? '0' : '1');
+    dc_event('modes', 'all|' . L('μηνύματα / ελάχιστη έκδοση / εκπομπή', 'messages / minimum version / transmit')); flash('ok', L('Αποθηκεύτηκε.', 'Saved.'));
+  }
+  if ($a === 'mode_inst') {
+    $ids = array_values(array_filter((array)($_POST['ids'] ?? []), 'is_string')); $ms = array_values(array_intersect(DC_MODES, (array)($_POST['modes'] ?? []))); $act = $_POST['act'] ?? '';
+    $tx = $_POST['txset'] ?? ''; $te = $_POST['testerset'] ?? '';
+    if (!$ids) flash('bad', L('Διάλεξε τουλάχιστον μία εγκατάσταση.', 'Select at least one installation.'));
+    elseif (!$ms && $act !== '' && $act !== '-') flash('bad', L('Διάλεξε τουλάχιστον ένα mode.', 'Select at least one mode.'));
+    else {
+      $n = 0;
+      foreach ($ids as $id) {
+        $r = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]); if (!$r) continue; $n++;
+        $o = dc_mode_ovr($r);
+        if (in_array($act, ['on', 'off'], true)) foreach ($ms as $m) $o[$m] = $act;
+        elseif ($act === 'reset') foreach ($ms as $m) unset($o[$m]);
+        dc_q('UPDATE dc_installs SET mode_ovr=? WHERE id=?', [$o ? json_encode($o) : '', $id]);
+        if ($tx === '1' || $tx === '0' || $tx === 'def') dc_q('UPDATE dc_installs SET tx_ovr=? WHERE id=?', [$tx === 'def' ? '' : $tx, $id]);
+        if ($te === '1' || $te === '0') dc_q('UPDATE dc_installs SET tester=? WHERE id=?', [(int)$te, $id]);
+      }
+      $what = ($act === 'on' ? L('άνοιγμα ', 'open ') : ($act === 'off' ? L('κλείσιμο ', 'close ') : ($act === 'reset' ? L('γενική ρύθμιση ', 'general setting ') : ''))) . implode(', ', $ms)
+        . ($tx !== '' && $tx !== '-' ? ' TX=' . $tx : '') . ($te !== '' && $te !== '-' ? ' tester=' . $te : '');
+      dc_event('modes', "$n|" . trim($what)); flash('ok', L("Εφαρμόστηκε σε $n εγκαταστάσεις: ", "Applied to $n installations: ") . trim($what));
+    }
+  }
   if ($a === 'code_new') {
     $kind = ($_POST['kind'] ?? '') === 'full' ? 'full' : 'demo'; $perm = !empty($_POST['perm']) && $kind === 'full';
     $n = $perm ? 0 : max(1, (int)($_POST['n'] ?? 6)); $u = in_array($_POST['unit'] ?? '', $UN, true) ? $_POST['unit'] : 'd';
@@ -324,7 +361,7 @@ if (!empty($_SESSION['dc_flash'])) { $flash = $_SESSION['dc_flash']; unset($_SES
 $p = $_GET['p'] ?? 'dashboard';
 $PAGES = ['dashboard' => L('Επισκόπηση','Overview','Översikt'), 'stats' => L('Στατιστικά','Statistics','Statistik'), 'releases' => L('Εκδόσεις','Releases','Versioner'),
   'installs' => L('Εγκαταστάσεις','Installations','Installationer'), 'demos' => L('Demo','Demo','Demo'), 'downloads' => L('Λήψεις / Εγγραφές','Downloads / Sign-ups','Nedladdningar'),
-  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Μηνύματα','Messages','Meddelanden'), 'inbox' => L('Μηνύματα χρηστών','From users','Från användare'), 'chat' => L('Συνομιλίες','Chats','Chattar'),
+  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'modes' => L('Modes / Πολιτικές','Modes / Policies','Lägen / Regler'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Μηνύματα','Messages','Meddelanden'), 'inbox' => L('Μηνύματα χρηστών','From users','Från användare'), 'chat' => L('Συνομιλίες','Chats','Chattar'),
   'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
 if (!isset($PAGES[$p])) $p = 'dashboard';
 
@@ -356,6 +393,7 @@ $icons = [
  'installs' => 'M3 5h18v11H3zM8 20h8M12 16v4',
  'downloads' => 'M4 17v3h16v-3M12 3v13M7 11l5 5 5-5',
  'licenses' => 'M7 11V8a5 5 0 0 1 10 0v3M5 11h14v10H5zM12 15v2',
+ 'modes' => 'M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6',
  'payments' => 'M3 6h18v12H3zM3 10h18M7 15h3',
  'servers' => 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
  'messages' => 'M4 5h16v11H8l-4 4z',
@@ -390,6 +428,7 @@ $SUB = ['stats' => L('Νέες εγκαταστάσεις και λήψεις α
   'installs' => L('Κάθε εγκατάσταση: demo, ενεργοποίηση, κλείδωμα, ενεργό/ανενεργό.','Every installation: demo, activate, lock, enable/disable.'),
   'downloads' => L('Ποιος κατέβασε το πρόγραμμα από τη σελίδα (callsign, OS, IP).','Who downloaded from the website (callsign, OS, IP).'),
   'licenses' => L('Demo, άδειες και κωδικοί ενεργοποίησης.','Demo, licences and activation codes.'),
+  'modes' => L('Άνοιξε ή κλείσε modes σε όλους ή σε επιλεγμένους, μόνο ακρόαση, ελάχιστη έκδοση.','Open or close modes for everyone or selected installations, listen-only, minimum version.'),
   'payments' => L('Δωρεές PayPal, ποιος πληρώνει και πόσα (€ και SEK ξεχωριστά) και αυτόματη ενεργοποίηση.','PayPal donations, who pays and how much (EUR and SEK separately) and automatic activation.'),
   'messages' => L('Μήνυμα σε όλους ή σε μία εγκατάσταση — εμφανίζεται μέσα στο πρόγραμμα.','A message to everyone or one installation — it shows inside the program.'),
   'demos' => L('Ποιος δοκιμάζει το πρόγραμμα, πόσο χρόνο έχει ακόμη και αν το χρησιμοποίησε.','Who is trying the program, how much time is left and whether it was used.'),
@@ -663,6 +702,64 @@ elseif ($p === 'licenses') {
     echo '<tr><td><span class="mono muted" style="white-space:nowrap">' . sprintf('DC-%05d', $r['rno']) . '</span><br><b>' . h($r['call'] ?: substr($r['id'], 0, 8)) . '</b>' . ($r['owner'] ? '<br><small>' . h($r['owner']) . '</small>' : '') . ($r['note'] ? '<br><small class="muted">' . h($r['note']) . '</small>' : '') . '</td><td>' . h($r['os'] ?: '—') . '</td><td>' . dc_lic_label($r) . '</td><td><small class="muted">' . h($r['lic_by'] ?: L('προεπιλογή', 'default')) . '</small></td><td class="muted">' . dc_dt(dc_last($r)) . '</td><td>' . lic_form($r, 'licenses') . '</td></tr>';
   }
   echo '</table></div></section>';
+}
+
+/* ===================== MODES / POLICIES ===================== */
+elseif ($p === 'modes') {
+  $hp = '<input type="hidden" name="p" value="modes">'; $MN = ['on' => L('Ενεργό', 'On'), 'off' => L('Κλειστό', 'Off'), 'beta' => L('Μόνο δοκιμαστές', 'Testers only')];
+  $total = (int)dc_scalar('SELECT COUNT(*) FROM dc_installs'); $tst = (int)dc_scalar('SELECT COUNT(*) FROM dc_installs WHERE tester=1');
+  $all = dc_q('SELECT rowid AS rno, * FROM dc_installs')->fetchAll();
+  $mc = ['on' => 'ok', 'off' => 'bad', 'beta' => 'o'];
+  echo '<section class="card"><h2>' . L('Modes — για όλους', 'Modes — for everyone') . '</h2><p class="muted">' . L('Κλείνεις ή ανοίγεις ένα mode σε όλες τις εγκαταστάσεις. «Μόνο δοκιμαστές» = ανοιχτό μόνο στις εγκαταστάσεις που έχεις σημάδει ως δοκιμαστές (παρακάτω). Η αλλαγή φτάνει στα προγράμματα στον επόμενο έλεγχο, χωρίς καμία ενέργεια από τον χρήστη.', 'Close or open a mode on every installation. “Testers only” = open only on installations you marked as testers (below). The change reaches the programs at their next check, with nothing for the user to do.') . '</p>'
+    . '<div class="mgrid">';
+  foreach (DC_MODES as $m) {
+    $g = dc_mode_global($m); $nOn = 0; foreach ($all as $r) if (dc_mode_for($r, $m) === 'on') $nOn++;
+    echo '<form method="post" class="mcard ' . $g . '">' . csrf() . $hp . '<input type="hidden" name="a" value="mode_set"><input type="hidden" name="mode" value="' . h($m) . '">'
+      . '<div class="mh"><b>' . h($m) . '</b><span class="pill ' . $mc[$g] . '">' . h($MN[$g]) . '</span></div>'
+      . '<div class="seg">';
+    foreach (['on', 'off', 'beta'] as $v) echo '<button name="state" value="' . $v . '" class="' . ($g === $v ? 'sel ' . $v : '') . '">' . h($MN[$v]) . '</button>';
+    echo '</div><small class="muted">' . sprintf(L('Ανοιχτό σε %d από %d εγκαταστάσεις', 'Open on %d of %d installations'), $nOn, $total) . '</small></form>';
+  }
+  echo '</div><div class="mall"><form method="post" style="display:inline">' . csrf() . $hp . '<input type="hidden" name="a" value="modes_all"><input type="hidden" name="state" value="on"><button class="btn sm">' . L('Άνοιγμα ΟΛΩΝ', 'Open ALL') . '</button></form> '
+    . '<form method="post" style="display:inline" onsubmit="return confirm(\'' . L('Να κλείσουν ΟΛΑ τα modes σε όλους;', 'Close ALL modes for everyone?') . '\')">' . csrf() . $hp . '<input type="hidden" name="a" value="modes_all"><input type="hidden" name="state" value="off"><button class="btn sm danger">' . L('Κλείσιμο ΟΛΩΝ', 'Close ALL') . '</button></form></div></section>';
+
+  $txg = dc_kv('tx_all', '1') !== '0';
+  echo '<section class="card"><h2>' . L('Εκπομπή, ελάχιστη έκδοση και μηνύματα', 'Transmit, minimum version and messages') . '</h2><form method="post" class="form">' . csrf() . $hp . '<input type="hidden" name="a" value="modes_note"><div class="g2">'
+    . '<label>' . L('Εκπομπή (PTT) στα προγράμματα', 'Transmit (PTT) in the programs') . '<select name="tx_all"><option value="1"' . ($txg ? ' selected' : '') . '>' . L('Επιτρέπεται', 'Allowed') . '</option><option value="0"' . (!$txg ? ' selected' : '') . '>' . L('Μόνο ακρόαση (χωρίς εκπομπή)', 'Listen only (no transmit)') . '</option></select></label>'
+    . '<label>' . L('Ελάχιστη έκδοση προγράμματος (κενό = καμία)', 'Minimum program version (empty = none)') . '<input name="min_version" value="' . h(dc_kv('min_version', '')) . '" placeholder="2.3.0" maxlength="14"></label>'
+    . '<label>' . L('Μήνυμα για κλειστό mode (Ελληνικά)', 'Message for a closed mode (Greek)') . '<textarea name="modes_note_el" rows="2" placeholder="Αυτό το mode δεν είναι ακόμη διαθέσιμο.">' . h(dc_kv('modes_note_el', '')) . '</textarea></label>'
+    . '<label>' . L('Μήνυμα για κλειστό mode (Αγγλικά)', 'Message for a closed mode (English)') . '<textarea name="modes_note_en" rows="2" placeholder="This mode is not available yet.">' . h(dc_kv('modes_note_en', '')) . '</textarea></label>'
+    . '<label>' . L('Μήνυμα όταν δεν επιτρέπεται εκπομπή (Ελληνικά)', 'Message when transmit is off (Greek)') . '<textarea name="tx_note_el" rows="2">' . h(dc_kv('tx_note_el', '')) . '</textarea></label>'
+    . '<label>' . L('Μήνυμα όταν δεν επιτρέπεται εκπομπή (Αγγλικά)', 'Message when transmit is off (English)') . '<textarea name="tx_note_en" rows="2">' . h(dc_kv('tx_note_en', '')) . '</textarea></label>'
+    . '<label>' . L('Μήνυμα για παλιά έκδοση (Ελληνικά)', 'Message for an old version (Greek)') . '<textarea name="min_msg_el" rows="2">' . h(dc_kv('min_msg_el', '')) . '</textarea></label>'
+    . '<label>' . L('Μήνυμα για παλιά έκδοση (Αγγλικά)', 'Message for an old version (English)') . '<textarea name="min_msg_en" rows="2">' . h(dc_kv('min_msg_en', '')) . '</textarea></label>'
+    . '</div><div class="help">' . L('Όσες εγκαταστάσεις έχουν έκδοση μικρότερη από την ελάχιστη κλείνουν όλα τα modes και ζητούν ενημέρωση (το κουμπί ενημέρωσης μένει ενεργό). Αν αφήσεις τα μηνύματα κενά, το πρόγραμμα δείχνει ένα έτοιμο κείμενο.', 'Installations older than the minimum close every mode and ask for an update (the update button stays available). Empty messages use a ready-made text.') . '</div><button class="btn pri">' . L('Αποθήκευση', 'Save') . '</button></form></section>';
+
+  // selected installations
+  $fq = trim($_GET['q'] ?? ''); $w = ''; $args = [];
+  if ($fq !== '') { $no = dc_no_filter($fq); $w = ' WHERE (id LIKE ? OR call LIKE ? OR note LIKE ? OR owner LIKE ? OR mail LIKE ? OR name LIKE ?' . ($no !== null ? ' OR rowid=' . $no : '') . ')'; $args = array_fill(0, 6, "%$fq%"); }
+  $rows = dc_q('SELECT rowid AS rno, * FROM dc_installs' . $w . ' ORDER BY MAX(COALESCE(last_ping,0), COALESCE(last_seen,0)) DESC LIMIT 400', $args)->fetchAll();
+  echo '<section class="card"><h2>' . L('Modes — σε επιλεγμένους', 'Modes — for selected installations') . ' <small>(' . count($rows) . ' / ' . $total . ' · ' . $tst . ' ' . L('δοκιμαστές', 'testers') . ')</small></h2>'
+    . '<form class="filters" method="get"><input type="hidden" name="p" value="modes"><input name="q" value="' . h($fq) . '" placeholder="' . L('Αναζήτηση: call, όνομα, αριθμός DC-…, ID, email', 'Search: call, name, number DC-…, ID, email') . '"><button class="btn">' . L('Φίλτρο', 'Filter') . '</button></form>'
+    . '<form method="post" class="form" id="mi">' . csrf() . $hp . '<input type="hidden" name="a" value="mode_inst">'
+    . '<div class="mbar"><div><b>' . L('1. Ποια modes', '1. Which modes') . '</b><div class="mchk">';
+  foreach (DC_MODES as $m) echo '<label class="chk"><input type="checkbox" name="modes[]" value="' . h($m) . '"> ' . h($m) . '</label>';
+  echo '</div></div><div><b>' . L('2. Τι να γίνει', '2. What to do') . '</b><select name="act"><option value="-">' . L('— τίποτα στα modes —', '— nothing for modes —') . '</option><option value="on">' . L('Άνοιγμα (ενεργό)', 'Open (on)') . '</option><option value="off">' . L('Κλείσιμο', 'Close') . '</option><option value="reset">' . L('Επαναφορά στη γενική ρύθμιση', 'Back to the general setting') . '</option></select></div>'
+    . '<div><b>' . L('Εκπομπή', 'Transmit') . '</b><select name="txset"><option value="-">—</option><option value="1">' . L('Επιτρέπεται', 'Allowed') . '</option><option value="0">' . L('Μόνο ακρόαση', 'Listen only') . '</option><option value="def">' . L('Όπως η γενική ρύθμιση', 'Like the general setting') . '</option></select></div>'
+    . '<div><b>' . L('Δοκιμαστής', 'Tester') . '</b><select name="testerset"><option value="-">—</option><option value="1">' . L('Ναι (δοκιμαστής)', 'Yes (tester)') . '</option><option value="0">' . L('Όχι', 'No') . '</option></select></div>'
+    . '<div style="align-self:end"><button class="btn pri">' . L('3. Εφαρμογή στους τσεκαρισμένους', '3. Apply to the ticked') . '</button></div></div>'
+    . '<div class="tw"><table class="tbl"><tr><th><input type="checkbox" id="mall" title="' . h(L('Όλοι', 'All')) . '"></th><th>Call</th><th>' . L('Έκδοση', 'Version') . '</th>';
+  foreach (DC_MODES as $m) echo '<th class="mh2">' . h($m) . '</th>';
+  echo '<th>TX</th><th>' . L('Δοκιμ.', 'Tester') . '</th></tr>';
+  foreach ($rows as $r) {
+    $ov = dc_mode_ovr($r);
+    echo '<tr><td><input type="checkbox" name="ids[]" value="' . h($r['id']) . '" class="mrow"></td><td><span class="mono muted">' . sprintf('DC-%05d', $r['rno']) . '</span> <b>' . h($r['call'] ?: substr($r['id'], 0, 8)) . '</b>' . ($r['name'] ? '<br><small class="muted">' . h($r['name']) . '</small>' : '') . '</td><td class="muted">' . h($r['version'] ?: '—') . '</td>';
+    foreach (DC_MODES as $m) { $e = dc_mode_for($r, $m); echo '<td><span class="dot ' . ($e === 'on' ? 'on' : 'off') . '" title="' . h($m . ': ' . $MN[$e] . (isset($ov[$m]) ? ' (' . L('δική του ρύθμιση', 'own setting') . ')' : '')) . '"></span>' . (isset($ov[$m]) ? '<sup>*</sup>' : '') . '</td>'; }
+    $tx = dc_tx_for($r);
+    echo '<td>' . ($tx ? '<span class="pill ok">TX</span>' : '<span class="pill bad">RX</span>') . ($r['tx_ovr'] !== null && $r['tx_ovr'] !== '' ? '<sup>*</sup>' : '') . '</td><td>' . (!empty($r['tester']) ? '<span class="pill o">' . L('δοκιμαστής', 'tester') . '</span>' : '<span class="muted">—</span>') . '</td></tr>';
+  }
+  echo '</table></div><p class="muted">' . L('Πράσινη τελεία = το mode δουλεύει σε αυτή την εγκατάσταση, γκρι = κλειστό. Το αστεράκι * σημαίνει ότι η εγκατάσταση έχει δική της ρύθμιση που υπερισχύει της γενικής.', 'Green dot = the mode works on this installation, grey = closed. The star * means the installation has its own setting that overrides the general one.') . '</p></form>'
+    . '<script>(function(){var a=document.getElementById("mall");if(a)a.addEventListener("change",function(){document.querySelectorAll(".mrow").forEach(function(c){c.checked=a.checked})})})();</script></section>';
 }
 
 /* ===================== PAYMENTS (same page as HAM Digi: who pays and how much; EUR and SEK are never added together) ===================== */
@@ -1376,6 +1473,7 @@ function activity_rows($rows) {
       case 'clone': $txt = '⚠ ' . L('Άδεια σε ΑΛΛΟΝ υπολογιστή: ', 'Licence on ANOTHER computer: ') . $who($d[0]) . (!empty($d[2]) ? ' · ' . h($d[2]) : '') . (!empty($d[3]) ? ' · ' . h($d[3]) : ''); $c = 'bad'; break;
       case 'reg_pending': $txt = '⏳ ' . L('Εγγραφή σε αναμονή έγκρισης: ', 'Registration waiting for approval: ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? '') . ' · <a href="?p=installs&q=' . h(dc_inst_no($d[0] ?? '')) . '">' . L('έγκριση', 'approve') . '</a>'; $c = 'o'; break;
       case 'reg_approve': $txt = L('Εγγραφή εγκρίθηκε: ', 'Registration approved: ') . '<b>' . h($d[1] ?? '') . '</b> ' . h($d[2] ?? ''); $c = 'g'; break;
+      case 'modes': $txt = L('Modes / πολιτικές: ', 'Modes / policies: ') . '<b>' . h($d[0] === 'all' ? L('όλοι', 'everyone') : $d[0] . L(' εγκαταστάσεις', ' installations')) . '</b> · ' . h($d[1] ?? ''); $c = 'b'; break;
       case 'hw_free': $txt = L('Ελευθερώθηκε ο υπολογιστής της ', 'Computer freed for ') . '<b>' . h($d[1] ?? '') . '</b>'; $c = 'b'; break;
       case 'reinstall': $txt = L('Επανεγκατάσταση: ', 'Reinstalled: ') . $who($d[0]) . ' ' . L('πήρε την κατάσταση της ', 'took the state of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>'; $c = 'b'; break;
       case 'payment':   $txt = L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? ''); $c = 'g'; break;
@@ -1427,7 +1525,8 @@ function login_page($err = '') {
   </body></html><?php
 }
 
-function css() { ?><style>
+function css() { ?><style>.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin:12px 0}.mcard{border:1px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg2);display:flex;flex-direction:column;gap:10px}.mcard.on{border-color:color-mix(in srgb,var(--rx) 55%,transparent)}.mcard.off{opacity:.92}.mcard .mh{display:flex;justify-content:space-between;align-items:center;font-size:16px}.seg{display:flex;gap:4px}.seg button{flex:1;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--text);border-radius:8px;padding:7px 4px}.seg button:hover{border-color:var(--acc)}.seg button.sel.on{background:var(--rx);border-color:var(--rx);color:#04140f}.seg button.sel.off{background:var(--bad);border-color:var(--bad);color:#fff}.seg button.sel.beta{background:var(--tx);border-color:var(--tx);color:#1b1200}.mall{display:flex;gap:8px}.mbar{display:flex;flex-wrap:wrap;gap:14px 22px;margin:12px 0}.mbar>div{display:flex;flex-direction:column;gap:6px}.mchk{display:flex;flex-wrap:wrap;gap:4px 12px}.mchk .chk{display:flex;flex-direction:row;gap:5px;align-items:center}.dot{display:inline-block;width:12px;height:12px;border-radius:50%}.dot.on{background:var(--rx)}.dot.off{background:var(--line2)}th.mh2{font-size:11px}
+
 :root{--bg:#070a10;--bg2:#0c111a;--card:#101722;--line:#1f2a3a;--line2:#2b3a50;--text:#e8eef5;--muted:#8d9cb0;--acc:#17c0a8;--acc2:#3cc8ff;--rx:#3ee08b;--tx:#ffad42;--bad:#ff5a6e;--mono:ui-monospace,Menlo,Consolas,monospace;--card2:#131c2a;--shadow:0 1px 0 rgba(255,255,255,.04) inset,0 8px 24px rgba(0,0,0,.35);color-scheme:dark}
 @media (prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#eef2f7;--bg2:#fff;--card:#fff;--line:#d9e1ea;--line2:#c3cfdc;--text:#111a26;--muted:#56677c;--acc:#0e9e8a;--acc2:#0a84c6;--rx:#14894d;--tx:#b96400;--bad:#c22a40;--card2:#f6f8fb;--shadow:0 1px 2px rgba(16,24,40,.06),0 6px 18px rgba(16,24,40,.06);color-scheme:light}}
 :root[data-theme=light]{--bg:#eef2f7;--bg2:#fff;--card:#fff;--line:#d9e1ea;--line2:#c3cfdc;--text:#111a26;--muted:#56677c;--acc:#0e9e8a;--acc2:#0a84c6;--rx:#14894d;--tx:#b96400;--bad:#c22a40;--card2:#f6f8fb;--shadow:0 1px 2px rgba(16,24,40,.06),0 6px 18px rgba(16,24,40,.06);color-scheme:light}

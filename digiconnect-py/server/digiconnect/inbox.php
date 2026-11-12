@@ -31,7 +31,7 @@ $raw = file_get_contents('php://input');
 $in = json_decode((string)$raw, true);
 if (!is_array($in)) $in = $_POST;
 
-$body = dc_clean($in['body'] ?? '', 4000);
+$body = dc_clean($in['body'] ?? '', substr(trim((string)($in['topic'] ?? '')), 0, 30) === 'diagnostics' ? 60000 : 4000);      // a diagnostics report (log end) is longer than a message
 if ($body === '') { http_response_code(400); echo json_encode(['ok' => 0, 'error' => 'empty']); exit; }
 
 $ip = dc_ip();

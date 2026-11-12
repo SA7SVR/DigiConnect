@@ -9,7 +9,7 @@ import json, os, sys, shutil, subprocess
 from pathlib import Path
 
 SHELL_VERSION = "2.2.0"          # raised only when the shell itself changes (engine, Qt, Python); then a full installer is needed
-BASE_VERSION = "2.3.0"           # version of the app/ code built into the shell (must equal app/version.py in the source tree; a test checks it)
+BASE_VERSION = "2.3.1"           # version of the app/ code built into the shell (must equal app/version.py in the source tree; a test checks it)
 
 
 def vtuple(v: str) -> tuple:

@@ -162,19 +162,21 @@ class MessageDialog(W.QDialog):
 class LicenceDialog(W.QDialog):
     """Licence status of this installation, the owner's messages and replies, activation code, and writing to the owner."""
     _got = Signal(object)
+    _sent = Signal(bool)
 
     def __init__(self, watcher, parent=None):
-        super().__init__(parent); self.watcher = watcher; self.lic = watcher.lic; self.setWindowTitle(tr("Licence and messages")); self.setMinimumSize(560, 560)
+        super().__init__(parent); self.watcher = watcher; self.lic = watcher.lic; self._sent.connect(self._sent_done); self.setWindowTitle(tr("Licence and messages")); self.setMinimumSize(560, 560)
         v = vbox(self, m=(24, 20, 24, 20), s=10)
         t = label(tr("Licence and messages")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
         self.status = label("", muted=True); self.status.setWordWrap(True); self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); v.addWidget(self.status)
         row = hbox(); self.code = button(tr("Activation code…")); self.donate = button("♥ " + tr("Donate")); self.write = button(tr("Write to the owner…"))
-        for b in (self.code, self.donate, self.write): row.addWidget(b)
+        self.diag_b = button(tr("Send diagnostics to the owner")); self.diag_b.setToolTip("Sends the program version, system and the end of the log (no passwords) so the owner can see why something does not work")
+        for b in (self.code, self.donate, self.write, self.diag_b): row.addWidget(b)
         row.addStretch(); v.addLayout(row)
         v.addWidget(label(tr("Messages"), muted=True))
         self.list = W.QListWidget(); self.list.setWordWrap(True); v.addWidget(self.list, 1)
         self.close_b = button(tr("Close")); r2 = hbox(); r2.addStretch(); r2.addWidget(self.close_b); v.addLayout(r2)
-        self.close_b.clicked.connect(self.accept); self.code.clicked.connect(self._code); self.write.clicked.connect(self._write)
+        self.close_b.clicked.connect(self.accept); self.code.clicked.connect(self._code); self.write.clicked.connect(self._write); self.diag_b.clicked.connect(self._diag)
         self.donate.clicked.connect(lambda: open_donate((self.lic.last.donate if self.lic.last else "")))
         self._got.connect(self._fill); self.render(); self.refresh()
 
@@ -207,6 +209,19 @@ class LicenceDialog(W.QDialog):
 
     def _write(self):
         MessageDialog(self.lic, self).exec(); self.refresh()
+
+    def _diag(self):
+        from ..diagnostics import report
+        self.diag_b.setEnabled(False); self.diag_b.setText(tr("Sending…"))
+        def work():
+            try: self.lic.inbox_send(report(getattr(self.lic, "store", None)), topic="diagnostics", subject="Diagnostics " + self.lic.params().get("v", ""), lang=lang_code()); ok = True
+            except Exception: ok = False
+            self._sent.emit(ok)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _sent_done(self, ok):
+        self.diag_b.setEnabled(True); self.diag_b.setText(tr("Send diagnostics to the owner"))
+        W.QMessageBox.information(self, tr("Diagnostics"), tr("Sent. Thank you — the owner can now see what happened.") if ok else tr("Could not send (no connection to the server). Try again later."))
 
     def _code(self):
         d = ActivationDialog(self.lic, self)

@@ -1,4 +1,4 @@
-﻿DigiConnect 2.3.0 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.3.1 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,9 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.3.0)
+What is new in this version (2.3.1)
+  • The owner of the server can open or close modes (DMR, D-STAR, C4FM, NXDN, P25, M17, AllStar) for everyone or for selected
+    users; a closed mode shows grey with a message and does not start.
   • The licence is bound to your computer and signed by the server: a copy of the program cannot be
     moved to another computer by copying the settings folder. If you change computer, the
     administrator frees the licence with one button.

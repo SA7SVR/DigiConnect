@@ -22,6 +22,7 @@ class Ctx(QtCore.QObject):
     hosts_changed = Signal()            # the worldwide server lists were (re)loaded
     _hosts_done = Signal(int, object)
     _asl_done = Signal(int, str)
+    policy_changed = Signal()           # the owner's server opened/closed a mode or switched transmitting
     asl_links_changed = Signal()        # the list of stations connected to an AllStar node was updated
     _asl_links_done = Signal(str, object)
 
@@ -41,6 +42,8 @@ class Ctx(QtCore.QObject):
         self.servers = getattr(self.engine, "servers", None) or Servers(self.store)      # one address book for the pages and the engine
         self._hosts_busy = False
         self._hosts_done.connect(self._on_hosts_done)
+        from .policy import Policy
+        self.policy = Policy()                # what the server allows (modes, transmit); the licence check updates it
         self.rules = SessionRules()
         self.rules.limit = self.store.settings.get("max_ptt", 120)
         self.rules.ducking = bool(self.store.settings.get("duck", True))
@@ -177,6 +180,7 @@ class Ctx(QtCore.QObject):
             r = next(r for r in self.rules.rx if r.target == t)
             self.rules.stop_listening(r.handle); self.engine.stop_rx(r.handle)
         else:
+            if not self.policy.allows(t.net): self._closed(t.net); return
             o = self.rules.listen(t)
             if not o.ok:
                 self.toast.emit("Maximum of 4 DMR receivers reached. Stop one before adding another."); return
@@ -191,6 +195,8 @@ class Ctx(QtCore.QObject):
         if self.rules.tx_connected:
             self.rules.disconnect_tx(); self.engine.disconnect_tx(); self.engine.ptt(False)
         else:
+            if not self.policy.allows(t.net): self._closed(t.net); return
+            if not self.policy.tx: self._no_tx(); return
             o = self.rules.connect_tx(t)
             if o.ok:
                 self.engine_msg = self.engine.connect_tx(t) or ""
@@ -198,6 +204,7 @@ class Ctx(QtCore.QObject):
         self.changed.emit()
 
     def ptt_down(self, latch=False):
+        if not self.policy.tx: self._no_tx(); return
         if self.rules.ptt and self.rules.latched and latch:
             self.rules.ptt_press(True); self.engine.ptt(False)
         elif self.rules.ptt_press(latch).ok:
@@ -274,6 +281,27 @@ class Ctx(QtCore.QObject):
         if hasattr(self.engine, "dmr_password"): self.engine.dmr_password = pw
 
     # ---- engine feedback ------------------------------------------------------
+    def _closed(self, net: str):
+        m = self.policy.reason(net); self.note_problem(m); self.toast.emit(m); self.changed.emit()
+
+    def _no_tx(self):
+        m = self.policy.tx_reason(); self.note_problem(m); self.toast.emit(m); self.changed.emit()
+
+    def apply_policy(self, pol) -> bool:
+        """The server's modes/transmit policy (from the signed licence answer). Whatever is now closed is stopped at once. Returns True when it changed."""
+        from .policy import Policy
+        new = Policy(pol)
+        if new == self.policy: return False
+        old, self.policy = self.policy, new
+        msg = ""
+        for r in list(self.rules.rx):
+            if not new.allows(r.target.net): self.rules.stop_listening(r.handle); self.engine.stop_rx(r.handle); msg = new.reason()
+        t = self.rules.tx_target
+        if self.rules.tx_connected and t is not None and (not new.allows(t.net) or not new.tx):
+            self.rules.disconnect_tx(); self.engine.ptt(False); self.engine.disconnect_tx(); msg = msg or (new.reason() if not new.allows(t.net) else new.tx_reason())
+        if msg: self.note_problem(msg); self.toast.emit(msg)
+        self.policy_changed.emit(); self.changed.emit(); return True
+
     def note_problem(self, text: str):
         import time; self._problem = (text, time.monotonic())
 
