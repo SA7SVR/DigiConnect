@@ -13,7 +13,9 @@ function h($s){ return dc_h($s); }
 $dlmsg=''; $dlok=false;
 if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['do']??'')==='dl') {
   $name=trim($_POST['name']??''); $call=strtoupper(trim($_POST['call']??'')); $mail=trim($_POST['mail']??''); $os=$_POST['os']??'mac';
-  if ($name==''||$call==''||!filter_var($mail,FILTER_VALIDATE_EMAIL)) {
+  if (($_POST['agree']??'')!=='1') {
+    $dlmsg=T('Για τη λήψη πρέπει να συμφωνήσεις με την επεξεργασία των στοιχείων σου (πολιτική απορρήτου).','To download you must agree to the processing of your details (privacy policy).','För att ladda ner måste du godkänna behandlingen av dina uppgifter (integritetspolicy).','Per scaricare devi accettare il trattamento dei tuoi dati (informativa sulla privacy).');
+  } elseif ($name==''||$call==''||!filter_var($mail,FILTER_VALIDATE_EMAIL)) {
     $dlmsg=T('Συμπλήρωσε ονοματεπώνυμο, διακριτικό και έγκυρο email — και τα τρία.','Fill in full name, callsign and a valid e-mail — all three.','Fyll i namn, anropssignal och en giltig e-post.','Inserisci nome, nominativo e un\'e-mail valida.');
   } else {
     $kc='c:'.$call; $km='m:'.strtolower($mail);
@@ -142,15 +144,16 @@ footer{border-top:1px solid var(--line);color:var(--muted);padding:26px 0;text-a
             <div><label>Email</label><input name="mail" type="email" required></div>
             <div><label><?= T('Σύστημα','System','System','Sistema') ?></label><select name="os"><option value="mac">macOS</option><option value="win">Windows</option><option value="linux">Linux</option></select></div>
           </div>
+          <label style="display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-weight:400"><input type="checkbox" name="agree" value="1" required style="width:auto;height:auto;margin-top:4px"><span><?= T('Συμφωνώ να αποθηκευτούν τα στοιχεία μου όπως περιγράφει η','I agree that my details are stored as described in the','Jag godkänner att mina uppgifter lagras enligt','Accetto che i miei dati siano conservati come descritto nell\'') ?> <a href="privacy.php?lang=<?= $LANG ?>" target="_blank"><?= T('πολιτική απορρήτου','privacy policy','integritetspolicyn','informativa sulla privacy') ?></a>.</span></label>
           <button class="btn pri" style="margin-top:16px"><?= T('Λήψη','Download','Hämta','Scarica') ?></button>
-          <div class="note"><?= T('Καταγράφονται ονοματεπώνυμο, διακριτικό, email και IP για την άδεια. Δεν κοινοποιούνται ποτέ.','Your full name, callsign, e-mail and IP are recorded for the licence. Never shared.','Dina uppgifter delas aldrig.','I tuoi dati non sono mai condivisi.') ?></div>
+          <div class="note"><?= T('Καταγράφονται ονοματεπώνυμο, διακριτικό, email και IP για την άδεια. Δεν κοινοποιούνται ποτέ. Το πρόγραμμα έχει δοκιμαστική περίοδο (demo) και επιλογή Donate.','Your full name, callsign, e-mail and IP are recorded for the licence. Never shared. The program has a trial (demo) period and a Donate option.','Namn, anropssignal, e-post och IP sparas för licensen och delas aldrig. Programmet har en demoperiod och ett Donate-alternativ.','Nome, nominativo, e-mail e IP sono registrati per la licenza e mai condivisi. Il programma ha un periodo demo e l\'opzione Donate.') ?></div>
         </form>
       <?php endif; ?>
     </div>
   </section>
 </div>
 
-<footer><div class="wrap">DigiConnect · © 2026 SA7SVR · HELLAS Zone Net · <a href="../hamdigi/?lang=<?= $LANG ?>">HAM Digi</a></div></footer>
+<footer><div class="wrap">DigiConnect · © 2026 SA7SVR · HELLAS Zone Net · <a href="../hamdigi/?lang=<?= $LANG ?>">HAM Digi</a> · <a href="privacy.php?lang=<?= $LANG ?>"><?= T('Απόρρητο','Privacy','Integritet','Privacy') ?></a></div></footer>
 <script>
 (function(){var root=document.documentElement,tb=document.getElementById('themebtn');function paint(){tb.textContent=root.getAttribute('data-theme')==='light'?'☀️':'🌙';}paint();
 tb.onclick=function(){var nx=root.getAttribute('data-theme')==='light'?'dark':'light';root.setAttribute('data-theme',nx);try{localStorage.setItem('dc_theme',nx);}catch(e){}paint();};

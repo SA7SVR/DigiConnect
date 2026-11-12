@@ -1,13 +1,15 @@
 """First-run registration window, the 'cannot continue' window (locked / demo ended / no connection) and the licence watcher."""
 import threading
 from ..qt import QtWidgets as W, QtCore, QtGui, Qt, Signal
-from ..i18n import tr
+from ..i18n import tr, code as lang_code
 from .. import license as lic_mod
 from .widgets import *
 
-PRIVACY = ("DigiConnect asks for these details so that the HELLAS Zone team knows who uses the program, can switch a copy on or off, and can offer the demo period. "
-           "They are stored on the HELLAS Zone server (hellaszone.com) together with the program version, the operating system and your IP address, "
-           "and are not given to anyone else. You can ask to have them erased at any time (contact SA7SVR through hellaszone.com).")
+PRIVACY = ("Controller: Panagiotis Tsekouras (SA7SVR), HELLAS Zone Net. Data: name, callsign, DMR ID, email, plus installation ID, program version, operating system, language and IP address. "
+           "Purpose: licensing (demo period, switching a copy on or off). Legal basis: your consent and providing the program. "
+           "Not shared with anyone, not used for advertising; kept while you use the program or until you ask for erasure. "
+           "You have the right to access, correct or erase your data and to withdraw your consent at any time, and to complain to your data protection authority.")
+PRIVACY_URL = lic_mod.BASE + "privacy.php"
 ERRORS = {"name": "Enter your name.", "call": "Enter a valid callsign (for example SA7SVR).", "dmr_id": "Enter your DMR ID: 6 to 9 digits.",
           "mail": "Enter a valid email address.", "consent": "Please tick the box to agree."}
 
@@ -33,6 +35,8 @@ class RegistrationDialog(W.QDialog):
         for k, title in (("name", "Name"), ("call", "Callsign"), ("dmr_id", "DMR ID"), ("mail", "Email")): v.addWidget(field(tr(title), self.f[k]))
         self.agree = checkbox(tr("I agree that these details are stored on the HELLAS Zone server for this purpose.")); v.addWidget(self.agree)
         p = label(tr(PRIVACY), muted=True); p.setWordWrap(True); v.addWidget(p)
+        self.policy = button(tr("Privacy policy")); self.policy.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(PRIVACY_URL + (f"?lang={lang_code()}" if lang_code() in ("el", "en", "sv", "it") else ""))))
+        v.addWidget(self.policy, 0, Qt.AlignmentFlag.AlignLeft)
         self.err = label("", tone="amber"); self.err.setWordWrap(True); v.addWidget(self.err)
         row = hbox(); self.quit = button(tr("Quit")); self.ok = button(tr("Register"), "primary"); row.addWidget(self.quit); row.addStretch(); row.addWidget(self.ok); v.addLayout(row)
         self.ok.clicked.connect(self._send); self.quit.clicked.connect(self.reject); self._done.connect(self._finished)

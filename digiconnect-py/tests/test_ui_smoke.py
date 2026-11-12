@@ -248,3 +248,12 @@ def test_microphone_meter_only_when_transmit_is_connected(win):
     assert ctx.rules.tx_connected and not ws.tx.knob.isHidden() and not w.dock.knob.isHidden()
     ws.tx.connect.click(); app.processEvents()
     assert not ctx.rules.tx_connected and ws.tx.knob.isHidden() and w.dock.knob.isHidden()
+
+
+def test_registration_dialog_links_to_privacy_policy(win):
+    from app.ui.license_dialog import RegistrationDialog, PRIVACY_URL
+    w, ctx, app = win
+    assert PRIVACY_URL == "https://hellaszone.com/digiconnect/privacy.php"
+    d = RegistrationDialog(_FakeLic([]), ctx.store)
+    assert d.policy.text()
+    assert any("Panagiotis Tsekouras" in l.text() for l in d.findChildren(QtWidgets.QLabel))          # the standard notice names the controller
