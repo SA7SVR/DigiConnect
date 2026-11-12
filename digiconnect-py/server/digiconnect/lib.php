@@ -105,3 +105,7 @@ function dc_state(array $in): array {
 const DC_ONLINE_S = 180;
 function dc_last($r): int { return max((int)($r['last_ping'] ?? 0), (int)($r['last_seen'] ?? 0)); }
 function dc_online($r): bool { return (int)($r['last_ping'] ?? 0) >= time() - DC_ONLINE_S; }
+
+// installation number shown everywhere instead of the long id: DC-00001 (row number of the installation)
+function dc_inst_no($id): string { $n = (int)(dc_one('SELECT rowid n FROM dc_installs WHERE id=?', [(string)$id])['n'] ?? 0); return $n ? sprintf('DC-%05d', $n) : ''; }
+function dc_no_filter(string $q): ?int { return preg_match('/^\s*(?:DC-?)?0*(\d{1,6})\s*$/i', $q, $m) ? (int)$m[1] : null; }

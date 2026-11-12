@@ -61,7 +61,7 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   if ($a === 'disable')  { dc_q("UPDATE dc_installs SET enabled=0, state='disabled' WHERE id=?", [$iid]); dc_event('disable', $iid); flash('ok', L('Απενεργοποιήθηκε', 'Disabled')); }
   if ($a === 'note')     { dc_q("UPDATE dc_installs SET note=? WHERE id=?", [$_POST['note'] ?? '', $iid]); flash('ok', L('Σημείωση αποθηκεύτηκε', 'Note saved')); }
   if ($a === 'ident')    { dc_q("UPDATE dc_installs SET call=?, name=?, mail=? WHERE id=?", [strtoupper(trim($_POST['call'] ?? '')), trim($_POST['name'] ?? ''), trim($_POST['mail'] ?? ''), $iid]); flash('ok', L('Στοιχεία ενημερώθηκαν', 'Details updated')); }
-  if ($a === 'del_inst') { dc_q("DELETE FROM dc_installs WHERE id=?", [$iid]); dc_event('del_inst', $iid); flash('ok', L('Διαγράφηκε', 'Deleted')); }
+  if ($a === 'del_inst') { $who = dc_inst_no($iid) . '|' . (dc_one('SELECT call FROM dc_installs WHERE id=?', [$iid])['call'] ?? ''); dc_q("DELETE FROM dc_installs WHERE id=?", [$iid]); dc_event('del_inst', $who); flash('ok', L('Διαγράφηκε', 'Deleted')); }
   // releases
   if ($a === 'rel_activate') { dc_q("UPDATE dc_releases SET status='archived' WHERE status='active'"); dc_q("UPDATE dc_releases SET status='active', published=? WHERE version=?", [time(), $_POST['version']]); dc_event('rel_activate', $_POST['version']); flash('ok', L('Ενεργή έκδοση: ', 'Active release: ') . $_POST['version']); }
   if ($a === 'rel_rollout')  { $r = max(0, min(100, (int)$_POST['rollout'])); dc_q("UPDATE dc_releases SET rollout=? WHERE version=?", [$r, $_POST['version']]); flash('ok', "Rollout $r%"); }
@@ -219,7 +219,7 @@ if ($p === 'dashboard') {
   $ev = dc_q("SELECT * FROM dc_events ORDER BY t DESC LIMIT 12")->fetchAll();
   echo '<section class="card"><h2>' . L('Πρόσφατη δραστηριότητα','Recent activity') . '</h2>' . activity_rows($ev) . '<a class="more" href="?p=activity">' . L('όλα →','all →') . '</a></section></div>';
   // live stations list (who is connecting) — like the HAM Digi panel
-  $stn = dc_q("SELECT * FROM dc_installs ORDER BY (COALESCE(last_ping,0)>=" . (time()-DC_ONLINE_S) . ") DESC, MAX(COALESCE(last_ping,0),COALESCE(last_seen,0)) DESC LIMIT 60")->fetchAll();
+  $stn = dc_q("SELECT rowid AS rno, * FROM dc_installs ORDER BY (COALESCE(last_ping,0)>=" . (time()-DC_ONLINE_S) . ") DESC, MAX(COALESCE(last_ping,0),COALESCE(last_seen,0)) DESC LIMIT 60")->fetchAll();
   $onC = 0; foreach ($stn as $r2) if (dc_online($r2)) $onC++;
   echo '<section class="card"><h2>' . L('Σταθμοί','Stations') . ' <small><span style="color:var(--rx)">● ' . $onC . ' ' . L('online','online') . '</span> · ' . (count($stn) - $onC) . ' offline · ' . L('ανανεώνεται κάθε 30″','auto-refresh 30s') . '</small></h2>' . station_cards($stn) . '</section>';
   echo '<script>setTimeout(function(){location.reload();},30000);</script>';
@@ -289,20 +289,20 @@ elseif ($p === 'releases') {
 elseif ($p === 'installs') {
   $qf = trim($_GET['q'] ?? ''); $sf = $_GET['st'] ?? '';
   $w = []; $args = [];
-  if ($qf !== '') { $w[] = '(call LIKE ? OR id LIKE ? OR name LIKE ? OR mail LIKE ?)'; array_push($args, "%$qf%", "%$qf%", "%$qf%", "%$qf%"); }
+  if ($qf !== '') { $no = dc_no_filter($qf); $w[] = '(call LIKE ? OR id LIKE ? OR name LIKE ? OR mail LIKE ?' . ($no !== null ? ' OR rowid=' . $no : '') . ')'; array_push($args, "%$qf%", "%$qf%", "%$qf%", "%$qf%"); }
   if (in_array($sf, ['demo','full','locked','disabled'], true)) { $w[] = 'state=?'; $args[] = $sf; }
   $where = $w ? ('WHERE ' . implode(' AND ', $w)) : '';
-  $rows = dc_q("SELECT * FROM dc_installs $where ORDER BY last_seen DESC LIMIT 500", $args)->fetchAll();
+  $rows = dc_q("SELECT rowid AS rno, * FROM dc_installs $where ORDER BY MAX(COALESCE(last_ping,0),COALESCE(last_seen,0)) DESC LIMIT 500", $args)->fetchAll();
   echo '<section class="card"><h2>' . L('Εγκαταστάσεις','Installations') . ' <small>(' . count($rows) . ')</small></h2>'
-    . '<form class="filters" method="get"><input type="hidden" name="p" value="installs"><input name="q" value="' . h($qf) . '" placeholder="' . L('callsign, ID, email…','callsign, ID, email…') . '">'
+    . '<form class="filters" method="get"><input type="hidden" name="p" value="installs"><input name="q" value="' . h($qf) . '" placeholder="' . L('διακριτικό, DC-…, email…','callsign, DC-…, email…') . '">'
     . '<select name="st"><option value="">' . L('όλες','all') . '</option>'
     . '<option value="demo"' . ($sf==='demo'?' selected':'') . '>demo</option><option value="full"' . ($sf==='full'?' selected':'') . '>full</option><option value="locked"' . ($sf==='locked'?' selected':'') . '>locked</option><option value="disabled"' . ($sf==='disabled'?' selected':'') . '>disabled</option></select>'
     . '<button class="btn sm">' . L('Φίλτρο','Filter') . '</button></form>'
-    . '<div class="tw"><table class="tbl"><tr><th>' . L('Διακριτικό / ID','Callsign / ID') . '</th><th>' . L('Έκδοση','Version') . '</th><th>OS</th><th>' . L('Κατάσταση','State') . '</th><th>' . L('Τελευταία','Last seen') . '</th><th style="width:38%">' . L('Ενέργειες','Actions') . '</th></tr>';
+    . '<div class="tw"><table class="tbl"><tr><th>' . L('Διακριτικό / Αρ. εγκατάστασης','Callsign / Installation no.') . '</th><th>' . L('Έκδοση','Version') . '</th><th>OS</th><th>' . L('Κατάσταση','State') . '</th><th>' . L('Τελευταία','Last seen') . '</th><th style="width:38%">' . L('Ενέργειες','Actions') . '</th></tr>';
   foreach ($rows as $r) {
     list($st, $lf) = dc_state($r);
     $online = dc_online($r);
-    echo '<tr><td><b>' . h($r['call'] ?: '—') . '</b><br><span class="muted mono" style="font-size:11px">' . h(substr($r['id'], 0, 16)) . '</span>'
+    echo '<tr><td><b>' . h($r['call'] ?: '—') . '</b><br><span class="muted mono" style="font-size:12px"><b>' . sprintf('DC-%05d', $r['rno']) . '</b></span>'
        . ($r['name'] ? '<br><span class="muted" style="font-size:11px">' . h($r['name']) . '</span>' : '') . '</td>'
        . '<td>' . h($r['version'] ?: '—') . '</td><td>' . h($r['os'] ?: '—') . '</td>'
        . '<td><span class="pill onl ' . ($online?'ok':'') . '"><i></i>' . h($st) . ($lf ? ' · ' . h($lf) : '') . '</span></td>'
@@ -445,7 +445,7 @@ function station_cards($rows) {
       . '<div class="stn-s">' . ($online
           ? '<span style="color:var(--rx)">● ' . h($st) . ($lf ? ' · ' . h($lf) : '') . '</span>'
           : '<span class="muted">' . L('Τελευταία φορά: ','Last seen: ') . dc_dt(dc_last($r)) . '</span>') . '</div>'
-      . '<div class="stn-m">' . h($os) . ' · v' . h($r['version'] ?: '—') . ' · ' . h(substr($r['id'], 0, 10)) . '</div>'
+      . '<div class="stn-m">' . h($os) . ' · v' . h($r['version'] ?: '—') . ' · ' . h(dc_inst_no($r['id'])) . '</div>'
       . '</div></div>';
   }
   return $out . '</div>';
@@ -484,7 +484,7 @@ function rail_html() {
       $st = '<span class="rs on"><i></i>Online</span>';
     } else { $msg = L('Τελευταία φορά online: ', 'Last online: ') . ago($r['_t']); $st = '<span class="rs"><i></i>Offline</span>'; }
     $osn = ['windows' => 'Windows', 'macos' => 'macOS', 'linux' => 'Linux'][$r['os']] ?? ($r['os'] ?: '?');
-    return '<a class="rc ' . ($isOn ? 'on' : 'off') . ($tx ? ' tx' : '') . '" href="?p=installs&q=' . urlencode($r['id']) . '" title="' . h(dc_dt($r['_t'])) . '">'
+    return '<a class="rc ' . ($isOn ? 'on' : 'off') . ($tx ? ' tx' : '') . '" href="?p=installs&q=' . urlencode(sprintf('DC-%05d', $r['rno'])) . '" title="' . h(dc_dt($r['_t'])) . '">'
       . '<div class="pcw">' . trx_icon($isOn, $tx) . '<small>' . h($osn) . '</small></div>'
       . '<div class="rb"><div class="r1"><b>' . h($call) . '</b>' . $st . '</div>'
       . (($r['name'] || $r['grid']) ? '<div class="r2">' . h($r['name']) . ($r['name'] && $r['grid'] ? ' · ' : '') . ($r['grid'] ? '<span class="mono">' . h($r['grid']) . '</span>' : '') . '</div>' : '')
@@ -502,11 +502,39 @@ function rail_html() {
 
 function activity_rows($rows) {
   if (!$rows) return '<p class="muted">' . L('Τίποτα ακόμη.','Nothing yet.') . '</p>';
-  $cls = ['activate'=>'g','demo'=>'b','lock'=>'o','disable'=>'r','del_inst'=>'r','rel_activate'=>'g','rel_forceall'=>'o','rel_upload'=>'b','admin_login'=>'','msg_send'=>'b'];
+  $osn = function ($o, $a = '') { $n = ['windows' => 'Windows', 'macos' => 'macOS', 'linux' => 'Linux'][$o] ?? $o; return trim($n . ' ' . $a); };
+  // "DC-00003 · SA7SVR" as a link to the installation; a deleted or unknown id is not shown as a code
+  $who = function ($id) {
+    $r = dc_one('SELECT rowid AS rno, call FROM dc_installs WHERE id=?', [(string)$id]);
+    if (!$r) return '<span class="muted">' . L('(εγκατάσταση που δεν υπάρχει πια)', '(an installation that no longer exists)') . '</span>';
+    $no = sprintf('DC-%05d', $r['rno']);
+    return '<a class="mono" href="?p=installs&q=' . $no . '"><b>' . $no . '</b></a>' . ($r['call'] ? ' · <b>' . h($r['call']) . '</b>' : '');
+  };
   $out = '<ul class="act">';
-  foreach ($rows as $r) {
-    $c = $cls[$r['kind']] ?? '';
-    $out .= '<li class="' . $c . '"><span class="t">' . dc_dt($r['t']) . '</span><span><b>' . h($r['kind']) . '</b> ' . h($r['detail']) . '</span></li>';
+  foreach ($rows as $e) {
+    $d = explode('|', (string)$e['detail']); $k = $e['kind']; $c = '';
+    switch ($k) {
+      case 'install':   $txt = L('Νέα εγκατάσταση ', 'New installation ') . $who($d[0]) . ' · v' . h($d[1] ?? '') . ' · ' . h($osn($d[2] ?? '', $d[3] ?? '')); $c = 'g'; break;
+      case 'demo':      $txt = L('Demo ', 'Demo ') . h($d[1] ?? '') . L(' ημέρες · ', ' days · ') . $who($d[0]); $c = 'b'; break;
+      case 'activate':  $txt = L('Ενεργοποίηση (full) · ', 'Activated (full) · ') . $who($d[0]); $c = 'g'; break;
+      case 'lock':      $txt = L('Κλείδωμα · ', 'Locked · ') . $who($d[0]); $c = 'o'; break;
+      case 'enable':    $txt = L('Ενεργοποιήθηκε · ', 'Enabled · ') . $who($d[0]); $c = 'g'; break;
+      case 'disable':   $txt = L('Απενεργοποιήθηκε · ', 'Disabled · ') . $who($d[0]); $c = 'r'; break;
+      case 'del_inst':  $txt = L('Διαγραφή εγκατάστασης ', 'Installation deleted ') . (preg_match('/^DC-\d+$/', $d[0]) ? '<b class="mono">' . h($d[0]) . '</b>' . (!empty($d[1]) ? ' · <b>' . h($d[1]) . '</b>' : '') : ''); $c = 'r'; break;
+      case 'redeem':    $txt = L('Κωδικός ', 'Code ') . '<b class="mono">' . h($d[1] ?? '') . '</b>' . L(' χρησιμοποιήθηκε από ', ' used by ') . $who($d[0]); $c = 'g'; break;
+      case 'codes_make': $txt = L('Δημιουργία κωδικών: ', 'Codes created: ') . h($e['detail']); $c = 'b'; break;
+      case 'rel_upload': $txt = L('Ανέβασμα έκδοσης ', 'Release uploaded ') . '<b>v' . h($e['detail']) . '</b>'; $c = 'b'; break;
+      case 'rel_activate': $txt = L('Ενεργή έκδοση ', 'Active release ') . '<b>v' . h($e['detail']) . '</b>'; $c = 'g'; break;
+      case 'rel_forceall': $txt = L('Επιβολή σε όλους ', 'Forced to everyone ') . '<b>v' . h($e['detail']) . '</b>'; $c = 'o'; break;
+      case 'dl_pkg':    $txt = L('Λήψη αναβάθμισης v', 'Update downloaded v') . h($d[1] ?? '') . (!empty($d[0]) ? ' · ' . $who($d[0]) : ''); $c = ''; break;
+      case 'msg_send':  $txt = L('Μήνυμα προς τους χρήστες: ', 'Message to users: ') . '<b>' . h($e['detail']) . '</b>'; $c = 'b'; break;
+      case 'hostsync':  $txt = L('Ανανέωση λιστών servers · ', 'Server lists refreshed · ') . h(preg_replace('/^[^·]*·\s*/u', '', (string)$e['detail'])); $c = ''; break;
+      case 'webdl':     $txt = L('Λήψη από τη σελίδα · ', 'Website download · ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($osn($d[1] ?? '')); $c = 'b'; break;
+      case 'admin_login': $txt = L('Είσοδος στο panel', 'Panel sign-in') . ' · <span class="mono">' . h($e['detail']) . '</span>'; break;
+      case 'admin_login_failed': $txt = '⚠ ' . L('Αποτυχημένη είσοδος στο panel', 'Failed panel sign-in') . ' · <span class="mono">' . h($e['detail']) . '</span>'; $c = 'r'; break;
+      default:          $txt = h($k) . ' ' . h(preg_match('/^[0-9a-f]{24,}$/', (string)$e['detail']) ? '' : $e['detail']);
+    }
+    $out .= '<li class="' . $c . '"><span class="t">' . dc_dt($e['t']) . '</span><span>' . $txt . '</span></li>';
   }
   return $out . '</ul>';
 }
@@ -573,6 +601,7 @@ input,select,textarea{font:inherit;color:var(--text);background:var(--bg);border
 .stn-s{font-size:12px;margin-top:3px}.stn-m{color:var(--muted);font-size:11px;font-family:var(--mono);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lang.theme a{min-width:34px;text-align:center}
 .bars{display:flex;align-items:flex-end;gap:3px;height:140px;padding-top:6px}.bars span{flex:1;height:100%;display:flex;align-items:flex-end;background:color-mix(in srgb,var(--line) 55%,transparent);border-radius:3px}.bars i{display:block;width:100%;background:var(--acc);border-radius:3px 3px 0 0}.bars.o i{background:var(--tx)}.bars.g i{background:var(--rx)}
+.act .mono{white-space:nowrap}
 .bax{display:flex;justify-content:space-between;color:var(--muted);font:11px var(--mono);margin-top:4px}
 .rail{display:none}
 @media (min-width:1280px){body{grid-template-columns:230px minmax(0,1280px) 320px;justify-content:start}.rail{display:block;position:sticky;top:0;height:100vh;overflow:auto;padding:18px 12px;border-left:1px solid var(--line2);background:var(--bg2)}}
