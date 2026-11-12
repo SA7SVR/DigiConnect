@@ -135,7 +135,7 @@ jobs:
           grep -q '"ev":"hello"' hello.txt
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - name: Engine loopback (diagnostic: full engine output, process sample if it hangs)
+      - name: Engine loopback (diagnostic - full engine output and a process sample if it hangs)
         continue-on-error: true
         run: |
           DC_ENGINE_STDERR=1 DC_SAMPLE_AFTER=12 python3 engine/tests/check_ysf_loopback.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 2>&1 | tail -150
