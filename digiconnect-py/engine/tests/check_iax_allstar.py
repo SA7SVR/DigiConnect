@@ -47,7 +47,7 @@ def ies(buf):
 def frame(dcall, ftype, sub, body=b"", oseq=0, iseq=1):
     return struct.pack(">HHIBBBB", 0x8000 | 1, dcall & 0x7fff, 0, oseq, iseq, ftype, sub) + body
 
-seen = {"new": [], "authrep": None}; stop = threading.Event(); secret = b"allstar"
+seen = {"new": [], "authrep": None, "dtmf": []}; stop = threading.Event(); secret = b"allstar"
 challenge = b"1234567890"
 def node():
     while not stop.is_set():
@@ -55,6 +55,7 @@ def node():
         except socket.timeout: continue
         if len(data) < 12 or not (data[0] & 0x80): continue
         client_call = ((data[0] & 0x7f) << 8) | data[1]
+        if data[10] == 1: seen["dtmf"].append(chr(data[11])); continue          # AST_FRAME_DTMF: the key is the subclass
         if data[10] != AST_FRAME_IAX: continue
         sub = data[11]
         if sub == CMD["NEW"]:
@@ -90,6 +91,9 @@ check("calling number is the node", new.get(IE_CALLING_NUM) == NODE.encode(), ne
 check("calling name is TOKEN/CALLSIGN", new.get(IE_CALLING_NAME) == f"{TOKEN}/{CALL}".encode(), new.get(IE_CALLING_NAME))
 check("user is allstar-public", new.get(IE_USER) == b"allstar-public", new.get(IE_USER))
 check("MD5 answer with the shared secret", seen["authrep"] == hashlib.md5(challenge + secret).hexdigest().encode(), seen["authrep"])
+
+send("dtmf", keys="*3#"); time.sleep(1.0)
+check("DTMF keys reach the node", seen["dtmf"] == ["*", "3", "#"], seen["dtmf"])
 
 send("quit"); time.sleep(0.5); stop.set()
 try: p.wait(timeout=4)

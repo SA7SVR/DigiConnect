@@ -15,7 +15,7 @@ DEFAULTS = dict(callsign="", locator="", module="D", equipment="", radio_message
                 language="English", theme="dark", text_size=14, max_ptt=120, fav_view="Full cards",
                 mic="", speakers="", mic_gain=100, duck=True, rec_path="", listen_mode="multiple",
                 dmr_id="", nxdn_id="", essid="", dmr_server="", dmr_port=62031, slot=2, cc=1,
-                remember_pw=True, echolink_call="", share_presence=True, asl_user="", asl_client_id="", asl_remember=True, asl_pw="")
+                remember_pw=True, echolink_call="", share_presence=True, asl_user="", asl_client_id="", asl_remember=True, asl_pw="", dmr_pw="")
 
 
 class Store:

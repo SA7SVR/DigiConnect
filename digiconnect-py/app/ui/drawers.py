@@ -30,9 +30,9 @@ class SettingsDrawer(W.QFrame):
         def le(k, ph=""):
             e = W.QLineEdit(str(s.get(k, ""))); e.setPlaceholderText(ph); self.f[k] = e; return e
         p1 = W.QWidget(); l1 = vbox(p1, m=(16, 4, 16, 4), s=8)
-        l1.addWidget(field("Callsign", le("callsign"))); r = hbox(); r.addWidget(field("Grid locator", le("locator"))); r.addWidget(field("Module", le("module"))); l1.addLayout(r)
+        l1.addWidget(field("Callsign", le("callsign"))); l1.addWidget(field("Grid locator", le("locator")))
         self.share = checkbox("Show my station as online on the HELLAS Zone server"); self.share.setChecked(bool(s.get("share_presence", True))); self.share.setToolTip("Sends only: callsign, locator, program version, system and what you are listening to. No audio.")
-        l1.addWidget(field("Equipment", le("equipment"))); l1.addWidget(field("Radio message", le("radio_message"))); l1.addWidget(self.share)
+        l1.addWidget(field("Equipment", le("equipment"))); l1.addWidget(self.share)
         self.lang = W.QComboBox(); self.lang.addItems(list(i18n.LANGS)); self.lang.setCurrentText(s["language"]); l1.addWidget(field("Language", self.lang))
         self.theme = W.QComboBox(); self.theme.addItem(tr("Dark"), "dark"); self.theme.addItem(tr("Light"), "light"); i18n.combo_item(self.theme, 0, "Dark"); i18n.combo_item(self.theme, 1, "Light"); self.sync_theme(); l1.addWidget(field("Theme", self.theme))
         self.size = W.QSpinBox(); self.size.setRange(11, 20); self.size.setValue(s["text_size"]); self.ptt = W.QComboBox(); self.ptt.addItems(["60 s", "120 s", "180 s"]); self.ptt.setCurrentText(f"{s['max_ptt']} s")
@@ -42,13 +42,34 @@ class SettingsDrawer(W.QFrame):
         self.load = button("Load"); pr.addWidget(self.prof, 1); pr.addWidget(self.load); l1.addLayout(pr)
         self.pname = W.QLineEdit(); l1.addWidget(field("Profile name", self.pname)); self.saveprof = button("Save profile"); l1.addWidget(self.saveprof, 0, Qt.AlignmentFlag.AlignLeft); l1.addStretch()
         # -- Radio networks
-        p2 = W.QWidget(); l2 = vbox(p2, m=(16, 4, 16, 4), s=8); l2.addWidget(label("DMR", section=True))
-        r = hbox(); r.addWidget(field("DMR ID (also used for P25)", le("dmr_id"))); r.addWidget(field("ESSID", le("essid"))); l2.addLayout(r); l2.addWidget(field("NXDN ID", le("nxdn_id")))
-        l2.addWidget(field("DMR master server (host)", le("dmr_server", "hostname"))); r = hbox(); r.addWidget(field("DMR master port", le("dmr_port")))
-        self.slot = W.QComboBox(); self.slot.addItems(["1", "2"]); self.slot.setCurrentText(str(s["slot"])); r.addWidget(field("Time slot", self.slot)); l2.addLayout(r)
-        l2.addWidget(field("Color code", le("cc"))); self.dpw = W.QLineEdit(); self.dpw.setEchoMode(W.QLineEdit.EchoMode.Password); l2.addWidget(field("Password", self.dpw))
-        l2.addWidget(label("Passwords are kept for the current session only in this build (not written to disk).", muted=True))
-        l2.addWidget(label("These fields are for the DMR master only. Every other station shows its own server and port on its page (Selected station › Server).", muted=True))
+        p2 = W.QWidget(); l2 = vbox(p2, m=(16, 4, 16, 4), s=8)
+        self.grp: dict[str, list] = {}              # network -> widgets shown only for that network (see set_mode)
+        def group(net, title, *widgets, note=""):
+            ws = []
+            h = label(title, section=True); l2.addWidget(h); ws.append(h)
+            for w in widgets: l2.addWidget(w); ws.append(w)
+            if note:
+                n = label(note, muted=True); n.setWordWrap(True); l2.addWidget(n); ws.append(n)
+            self.grp[net] = ws
+        def row(*fs):
+            w = W.QWidget(); h = hbox(w, s=8)
+            for f_ in fs: h.addWidget(f_)
+            return w
+        self.dmrid_field = field("DMR ID", le("dmr_id")); self.essid_field = field("ESSID", le("essid"))
+        self.slot = W.QComboBox(); self.slot.addItems(["1", "2"]); self.slot.setCurrentText(str(s["slot"]))
+        self.dpw = W.QLineEdit(); self.dpw.setEchoMode(W.QLineEdit.EchoMode.Password); self.dpw.setText(ctx.dmr_password); self._dpw_shown = ctx.dmr_password
+        group("DMR", "DMR", row(self.dmrid_field, self.essid_field), field("DMR master server (host)", le("dmr_server", "hostname")),
+              row(field("DMR master port", le("dmr_port")), field("Time slot", self.slot)), field("Color code", le("cc")), field("Password (your BrandMeister hotspot password)", self.dpw),
+              note="The server and the password are also on the DMR page. Every other station shows its own server and port on its page.")
+        p25id = W.QLineEdit(str(s.get("dmr_id", ""))); main_id = self.f["dmr_id"]              # the same setting as the DMR ID, shown again in the P25 group
+        p25id.textChanged.connect(main_id.setText); main_id.textChanged.connect(p25id.setText)
+        group("P25", "P25", field("Radio ID (your DMR ID)", p25id), note="P25 uses your DMR ID. The talkgroup server is on the P25 page.")
+        group("NXDN", "NXDN", field("NXDN ID", le("nxdn_id")), note="The NXDN talkgroup server is on the NXDN page.")
+        group("D-Star", "D-Star", note="No extra settings: D-Star uses your callsign. The reflector and its module are chosen on the D-Star page.")
+        group("C4FM", "C4FM / YSF", note="No extra settings: C4FM uses your callsign. The reflector address is on the C4FM page.")
+        group("M17", "M17", note="No extra settings: M17 uses your callsign. The reflector and its module are on the M17 page.")
+        group("EchoLink", "EchoLink", note="EchoLink is not available in this build yet.")
+        group("AllStar", "AllStarLink", note="Sign in with your AllStarLink portal account on the AllStar page (username, password).")
         l2.addWidget(label("SERVER LISTS", section=True)); self.lists = label("", muted=True); self.lists.setWordWrap(True); self.lists.setTextFormat(Qt.TextFormat.RichText); l2.addWidget(self.lists)
         self.dl = button("Download the server lists now"); l2.addWidget(self.dl, 0, Qt.AlignmentFlag.AlignLeft); self.dl.clicked.connect(lambda: (ctx.refresh_hosts(True), self._lists_text()))
         ctx.hosts_changed.connect(self._lists_text); self._lists_text(); l2.addStretch()
@@ -70,10 +91,16 @@ class SettingsDrawer(W.QFrame):
         foot = hbox(m=(16, 8, 16, 14), s=8); self.save = button("Save", "primary"); cl = button("Close"); foot.addWidget(self.save); foot.addWidget(cl); foot.addStretch(); v.addLayout(foot)
         cl.clicked.connect(self.closed.emit); self.save.clicked.connect(self._save); self.saveprof.clicked.connect(self._saveprof); self.load.clicked.connect(self._load)
         self.bk.clicked.connect(self._backup); self.rs.clicked.connect(self._restore); self.dg.clicked.connect(self._diag); self.choose.clicked.connect(self._choose)
-        self._tab(0)
+        self.mode = None; self.set_mode(None); self._tab(0)
 
     def sync_theme(self):
         self.theme.setCurrentIndex(max(0, self.theme.findData(self.ctx.store.settings.get("theme", "dark"))))
+
+    # which network groups the Radio networks tab shows: only the one of the page you are on; every group (each with its heading) elsewhere
+    def set_mode(self, net):
+        self.mode = net
+        for k, ws in self.grp.items():
+            for w in ws: w.setVisible(net is None or k == net)
 
     def _tab(self, i):
         self.stack.setCurrentIndex(i)
@@ -91,7 +118,7 @@ class SettingsDrawer(W.QFrame):
 
     def _collect(self):
         s = self.ctx.store.settings
-        self.ctx.set_dmr_password(self.dpw.text())
+        if self.dpw.text() != self._dpw_shown: self.ctx.set_dmr_password(self.dpw.text()); self._dpw_shown = self.dpw.text()      # only when changed here
         for k, e in self.f.items():
             val = e.text().strip()
             if k in ("dmr_port", "cc"):

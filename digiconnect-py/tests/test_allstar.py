@@ -129,3 +129,44 @@ def test_workspace_and_directory(tmp_path):
     ws.asl_rem.setChecked(False); assert st.settings["asl_pw"] == "" and ctx.asl_password == "secret" and Ctx(Store(tmp_path)).asl_password == ""    # not remembered: memory only
     ws.list.setCurrentRow(0); assert ctx.selected.net == "AllStar" and ctx.selected.id == "1999"
     assert ctx.servers.info(ctx.selected)[0]["host"] == "1999.nodes.allstarlink.org"
+
+
+def test_dtmf(tmp_path, monkeypatch):
+    monkeypatch.setattr(engine_client, "Link", FakeLink)
+    from app.context import Ctx
+    st = Store(tmp_path); st.settings["callsign"] = "SA7SVR"; fake_exe = tmp_path / "dcengine"; fake_exe.write_text("x")
+    eng = EngineClient(str(fake_exe), st); eng.asl_password = "pw"; eng.token_fn = lambda u, p, c: ("TOK", ""); eng.dns_fn = lambda n, d: d("h.example", 4569)
+    ctx = Ctx(st, eng); ctx.set_asl_login("SA7SVR", "pw"); t = Target("AllStar", "1999", "Hub")
+    assert not ctx.send_dtmf("*3")                                              # nothing selected / connected
+    ctx.select(t); ctx.toggle_listen(); ln = eng.links["AllStar:1999"]
+    assert not ctx.send_dtmf("*3")                                              # not connected yet: refused, nothing sent
+    ln.state = "connected"
+    assert not ctx.send_dtmf("12X") and not ctx.send_dtmf("")                   # invalid keys
+    assert ctx.send_dtmf("*3a#") and ("dtmf", {"keys": "*3A#"}) in ln.sent
+
+
+def test_favorite_tile_shows_listening_and_dmr_password_is_kept(tmp_path):
+    from app.context import Ctx
+    from app.ui.favorites import Favorites
+    from app.ui.workspace import Workspace
+    st = Store(tmp_path); st.settings["callsign"] = "SA7SVR"; st.toggle_fav("C4FM", "00006", "Test reflector"); ctx = Ctx(st)
+    fv = Favorites(ctx, lambda *a: None); card = fv.cards[0]
+    assert card.badge.isHidden()                                           # not listening: no badge
+    ctx.select(Target("C4FM", "00006", "Test reflector")); ctx.rules.listen(Target("C4FM", "00006", "Test reflector")); ctx.changed.emit()
+    assert not card.badge.isHidden() and "Listening" in card.badge.text()   # listening: the tile says so
+    ctx.rules.stop_listening(ctx.rules.rx[0].handle); ctx.changed.emit(); assert card.badge.isHidden()
+    ws = Workspace(ctx, "DMR", lambda *a: None); ws.dm_pw.setText("bm-secret")
+    assert ctx.dmr_password == "bm-secret" and Ctx(Store(tmp_path)).dmr_password == "bm-secret"      # entered once on the DMR page, kept
+    ws.dm_rem.setChecked(False); assert Ctx(Store(tmp_path)).dmr_password == "" and ctx.dmr_password == "bm-secret"
+
+
+def test_settings_follow_the_mode(tmp_path):
+    from app.context import Ctx
+    from app.ui.drawers import SettingsDrawer
+    d = SettingsDrawer(Ctx(Store(tmp_path)))
+    shown = lambda: {k for k, ws in d.grp.items() if all(not w.isHidden() for w in ws)}
+    d.set_mode("DMR"); assert shown() == {"DMR"}
+    for net in ("NXDN", "P25", "D-Star", "C4FM", "M17", "EchoLink", "AllStar"): d.set_mode(net); assert shown() == {net}
+    d.set_mode(None); assert shown() == set(d.grp)                       # pages without a mode: every group, each with its heading
+    assert "module" not in d.f and "radio_message" not in d.f             # settings that did nothing are gone
+    d.set_mode("P25"); d.f["dmr_id"].setText("2401234"); assert d.grp["P25"][1].findChildren(W.QLineEdit)[0].text() == "2401234"

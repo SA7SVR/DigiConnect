@@ -15,7 +15,8 @@ class Card(W.QFrame):
         self.setMinimumHeight(70 if names_only else 160); self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         v = vbox(self, m=(14, 10, 12, 10), s=4)
         top = hbox(); net = label(fav["net"], net=fav["net"])
-        star = label("★", tone="amber"); top.addWidget(net); top.addStretch(); top.addWidget(star); v.addLayout(top)
+        star = label("★", tone="amber"); self.badge = label(""); self.badge.setVisible(False); self.badge.setStyleSheet("font-weight:700;")
+        top.addWidget(net); top.addStretch(); top.addWidget(self.badge); top.addWidget(star); v.addLayout(top)
         self.name = label(fav["name"]); self.name.setStyleSheet("font-size:15px;font-weight:700;"); self.name.setWordWrap(True); v.addWidget(self.name)
         if not names_only:
             v.addWidget(label(f"{fav['id']} · {'YSF' if fav['net'] == 'C4FM' else fav['net']}", muted=True))
@@ -78,7 +79,11 @@ class Favorites(W.QWidget):
         self.ctx.toast.emit("Select a station in a network tab and press ☆ Add favorite (or use Manual entry).")
 
     def _dtmf(self):
-        r = self.ctx.rules
+        r = self.ctx.rules; at = self.ctx.dtmf_target()
+        if at is not None:
+            s, ok = W.QInputDialog.getText(self, "DTMF", tr("Node {}\nSequence (0-9 A-D * #, up to 32):").format(at.id))
+            if ok: self.ctx.send_dtmf(s, at)
+            return
         if not (r.tx_connected and r.tx_target and r.tx_target.net == "EchoLink"):
             self.ctx.toast.emit("DTMF is sent to the connected EchoLink peer. Sign in and enable Connect (TX) on that peer first."); return
         s, ok = W.QInputDialog.getText(self, "DTMF", tr("Peer {}\nSequence (0-9 A-D * #, up to 32):").format(r.tx_target.id))
@@ -121,6 +126,11 @@ class Favorites(W.QWidget):
         for c in getattr(self, "cards", []):
             t = Target(c.fav["net"], c.fav["id"]); rx = next((x for x in r.rx if x.target == t), None)
             c.setProperty("state", r.card_state(rx).value if rx else "neutral")
+            st = r.card_state(rx).value if rx else "neutral"           # a text badge too, so the listened stations are seen at a glance
+            c.badge.setVisible(rx is not None)
+            if rx is not None:
+                c.badge.setText("● " + tr({"amber": "Receiving audio", "green": "Listening · traffic"}.get(st, "Listening")))
+                c.badge.setStyleSheet(f"font-weight:700;color:{C[{'amber': 'amber', 'green': 'green'}.get(st, 'pink')]};")
             c.setProperty("sel", bool(r.selected == t)); repolish(c)
             if hasattr(c, "tx"): c.tx.setText("Transmit ready" if r.tx_connected and r.tx_target == t else "Transmit disconnected")
         self.updated.setText(tr("Updated {}").format(self.ctx.utc_now().strftime("%H:%M:%S UTC")))

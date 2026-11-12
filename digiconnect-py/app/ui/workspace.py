@@ -59,9 +59,17 @@ class Workspace(W.QWidget):
         self.srv_src = label("", muted=True); self.srv_src.setWordWrap(True); sv.addWidget(self.srv_src)
         br = FlowLayout(hspace=6, vspace=6); self.srv_save = button("Use this address"); self.srv_reset = button("Back to the list value"); br.addWidget(self.srv_save); br.addWidget(self.srv_reset)
         self.choose = button("Choose DMR server"); self.choose.setVisible(net == "DMR"); br.addWidget(self.choose); sv.addLayout(br)
+        if net == "DMR":
+            self.dm_pw = W.QLineEdit(); self.dm_pw.setEchoMode(W.QLineEdit.EchoMode.Password); self.dm_pw.setText(ctx.dmr_password)
+            sv.addWidget(field("Password (your BrandMeister hotspot password)", self.dm_pw))
+            self.dm_rem = checkbox("Remember on this computer (enter it only once)"); self.dm_rem.setChecked(bool(ctx.store.settings.get("remember_pw", True))); sv.addWidget(self.dm_rem)
+            self.dm_note = label("Needed to connect to a DMR master. When ticked, it is kept in this program's settings file on this computer (not encrypted).", muted=True); self.dm_note.setWordWrap(True); sv.addWidget(self.dm_note)
+            self.dm_pw.textChanged.connect(lambda: ctx.set_dmr_password(self.dm_pw.text(), self.dm_rem.isChecked())); self.dm_rem.toggled.connect(lambda: ctx.set_dmr_password(self.dm_pw.text(), self.dm_rem.isChecked()))
         self.txname = label(""); self.txname.setVisible(False)
         mv.addWidget(self.srvcard)
         self.addfav = button("☆  Add favorite"); mv.addWidget(self.addfav, 0, Qt.AlignmentFlag.AlignLeft)
+        self.dtmf = button("DTMF", "", "grid"); self.dtmf.setVisible(net == "AllStar"); self.dtmf.setToolTip("Send DTMF digits to the connected AllStarLink node (control codes of the node)")
+        mv.addWidget(self.dtmf, 0, Qt.AlignmentFlag.AlignLeft); self.dtmf.clicked.connect(self._dtmf)
         self.tx = TxControls(ctx, on_new_qso); mv.addWidget(self.tx)
         mv.addWidget(label("AUDIO", section=True))
         if net == "EchoLink":
@@ -97,6 +105,12 @@ class Workspace(W.QWidget):
         self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded)
         self.srv_save.clicked.connect(self._srv_save); self.srv_reset.clicked.connect(self._srv_reset); self._srv_key = None
         ctx.changed.connect(self.refresh); self._hosts_loaded()
+
+    def _dtmf(self):
+        t = self.ctx.dtmf_target()
+        if t is None: self.ctx.toast.emit("DTMF is sent to the connected AllStarLink node. Select the node and connect first."); return
+        s, ok = W.QInputDialog.getText(self, "DTMF", tr("Node {}\nSequence (0-9 A-D * #, up to 32):").format(t.id))
+        if ok: self.ctx.send_dtmf(s, t)
 
     def _asl_login(self):
         self.ctx.set_asl_login(self.asl_user.text(), self.asl_pw.text(), self.asl_rem.isChecked())
@@ -216,6 +230,12 @@ class Workspace(W.QWidget):
             self.count.setText(f"{self.net} · worldwide list not downloaded yet — press Refresh (needs internet)")
         self.pager.setText(f"{a + 1 if total else 0}–{min(total, a + PAGE)} / {total}")
         self.prev.setEnabled(self.page > 0); self.next.setEnabled((self.page + 1) * PAGE < total)
+        if self.net == "DMR":
+            n_tg = sum(1 for e in self.ctx.hosts.entries if e["proto"] == "TG"); n_ms = len(self.ctx.hosts.dmr_masters())
+            if not n_tg or not n_ms:
+                why = lambda k: (self.ctx.hosts.status.get(k, "") or "not downloaded yet").replace("failed: ", "")
+                bits = ([tr("TG list: {}").format(tr(why('TG')))] if not n_tg else []) + ([tr("DMR master list: {}").format(tr(why('DMR')))] if not n_ms else [])
+                self.count.setText(tr("BrandMeister · {} entries (built-in only) — {} — press Refresh").format(total, " · ".join(bits)))
         if self.net == "AllStar":
             self.count.setText(f"AllStarLink · {total} nodes" if self.ctx.asl_nodes.nodes else "AllStarLink · node list not downloaded yet — press Refresh (needs internet), or type a node number")
         if self.net == "EchoLink" and not total: self.count.setText("EchoLink · 0 entries — the directory appears after signing in")

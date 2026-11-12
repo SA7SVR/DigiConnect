@@ -239,6 +239,13 @@ class EngineClient(QtCore.QObject, Engine):
         for ln in self.links.values():
             if ln.tx and ln.state == "connected": ln.send("ptt", on=bool(on))
 
+    def send_dtmf(self, target, keys: str) -> str:
+        """DTMF digits to the node of this target (AllStarLink uses them to control the node). Returns '' or the reason it was not sent."""
+        ln = self.links.get(f"{target.net}:{target.id}")
+        if ln is None or ln.state != "connected": return "DTMF can only be sent while the connection to that node is up."
+        if protocol_for(target) != "IAX": return "DTMF is available for AllStarLink nodes."
+        ln.send("dtmf", keys=keys); return ""
+
     def mic_gain(self) -> float:
         """Microphone level from the settings (percent; 100 = device level, above 100 = software gain)."""
         try: return max(0.0, min(4.0, float(self.store.settings.get("mic_gain", 100)) / 100.0))

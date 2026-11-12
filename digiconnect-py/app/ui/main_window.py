@@ -140,6 +140,7 @@ class MainWindow(W.QMainWindow):
         elif key == "heard": self.pages.setCurrentWidget(self.heard); self.heard.reload()
         elif key.startswith("net:"):
             n = key[4:]; self.pages.setCurrentWidget(self.ws[n]); self.ctx.last_net = n
+        self.settings.set_mode(key[4:] if key.startswith("net:") else None)         # the settings follow the mode of the page
         self._sync_chrome()
 
     def _sync_chrome(self):

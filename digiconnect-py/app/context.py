@@ -34,8 +34,10 @@ class Ctx(QtCore.QObject):
             self.rules.mode = ListenMode.MULTIPLE
         self.last_net = "DMR"
         self.engine_msg = ""
+        self._problem = ("", 0.0)                # the last refusal / failure, kept visible in the status line for a while
         self.last_heard: list[dict] = []        # newest first
-        self.dmr_password = ""                   # session only, never written to disk
+        self.dmr_password = (self.store.settings.get("dmr_pw") or "") if self.store.settings.get("remember_pw", True) else ""      # saved on this computer only while "Remember" is ticked
+        if hasattr(self.engine, "dmr_password"): self.engine.dmr_password = self.dmr_password
         self.asl_password = (self.store.settings.get("asl_pw") or "") if self.store.settings.get("asl_remember", True) else ""    # AllStarLink portal password: kept in the settings file only when "Remember" is ticked
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = self.asl_password
         if hasattr(self.engine, "status"):
@@ -184,6 +186,23 @@ class Ctx(QtCore.QObject):
         self.store.settings["mic_gain"] = int(pct); self.store.save_settings()
         if hasattr(self.engine, "set_mic_gain"): self.engine.set_mic_gain(pct)
 
+    def dtmf_target(self):
+        """The AllStar node DTMF goes to: the selected node, else the Connect (TX) node."""
+        t, r = self.selected, self.rules
+        if t is not None and t.net == "AllStar": return t
+        if r.tx_connected and r.tx_target is not None and r.tx_target.net == "AllStar": return r.tx_target
+        return None
+
+    def send_dtmf(self, keys: str, target=None) -> bool:
+        from .rules import valid_dtmf
+        keys = (keys or "").strip().upper(); target = target or self.dtmf_target()
+        if target is None: self.toast.emit("DTMF is sent to the connected AllStarLink node. Select the node and connect first."); return False
+        if not valid_dtmf(keys): self.toast.emit("DTMF accepts 1 to 32 characters from 0-9, A-D, * and #."); return False
+        if not hasattr(self.engine, "send_dtmf"): self.toast.emit("No protocol engine connected (UI preview)"); return False
+        err = self.engine.send_dtmf(target, keys)
+        self.toast.emit(err or f"DTMF sent: {keys}")
+        return not err
+
     def set_asl_login(self, user: str, pw: str, remember=None):
         """AllStarLink portal account, entered once. The password is saved on this computer (settings file) only while "Remember" is on."""
         s = self.store.settings
@@ -195,11 +214,20 @@ class Ctx(QtCore.QObject):
         self.asl_password = pw
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = pw
 
-    def set_dmr_password(self, pw: str):
+    def set_dmr_password(self, pw: str, remember=None):
+        s = self.store.settings
+        if remember is None: remember = bool(s.get("remember_pw", True))
+        changed = False
+        for k, v in (("remember_pw", bool(remember)), ("dmr_pw", pw if remember else "")):
+            if s.get(k) != v: s[k] = v; changed = True
+        if changed: self.store.save_settings()
         self.dmr_password = pw
         if hasattr(self.engine, "dmr_password"): self.engine.dmr_password = pw
 
     # ---- engine feedback ------------------------------------------------------
+    def note_problem(self, text: str):
+        import time; self._problem = (text, time.monotonic())
+
     def _reject_if_failed(self, t: Target, handle, rx: bool):
         """The engine refused synchronously (no callsign, no server address...): undo the rules state."""
         m = self.engine_msg
@@ -208,12 +236,13 @@ class Ctx(QtCore.QObject):
         else: self.rules.disconnect_tx()
         self.engine_msg = ""
         if m == "NEED_ENDPOINT": self._no_address(t, rx)
-        else: self.toast.emit(m)
+        else: self.note_problem(m); self.toast.emit(m)
 
     def _no_address(self, t: Target, rx: bool):
         """The entry is not in the downloaded worldwide list: never ask the user for host:port.
         Download the lists once and retry by itself; if it still is not there, say so."""
         if t.net == "DMR":
+            self.note_problem("Choose a DMR master server in the list first (Master server), then press Listen.")
             self.toast.emit("Choose a DMR master server in the list first (Master server), then press Listen."); return
         if not self.hosts.entries and not self._hosts_busy and not getattr(self, "_auto_dl", False):
             self._auto_dl = True; self._retry = self.toggle_listen if rx else self.toggle_tx
@@ -227,7 +256,7 @@ class Ctx(QtCore.QObject):
         elif state in ("error", "timeout"):
             for h in list(ln.rx): self.rules.stop_listening(h)
             if ln.tx: self.rules.disconnect_tx()
-            self.toast.emit(f"{t.name or t.id}: {msg or state}")
+            self.note_problem(f"{t.name or t.id}: {msg or state}"); self.toast.emit(f"{t.name or t.id}: {msg or state}")
         self.changed.emit()
 
     def _on_heard(self, ln, e: dict):
@@ -256,6 +285,9 @@ class Ctx(QtCore.QObject):
 
     # ---- text helpers -----------------------------------------------------
     def status_text(self) -> str:
+        import time
+        text, at = self._problem
+        if text and time.monotonic() - at < 25: return "⚠ " + text            # why the last Listen / Connect did not start
         r = self.rules
         if not r.rx: return "Listening stopped"
         n = len(r.rx)
