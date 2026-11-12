@@ -21,6 +21,7 @@ class Ctx(QtCore.QObject):
         self.hosts = HostLists.for_root(self.store.root)
         from .allstar import NodeDirectory
         self.asl_nodes = NodeDirectory.for_root(self.store.root)
+        self.closing = False                  # set when the program quits: background threads then stop emitting Qt signals
         self._asl_busy = False
         self._asl_done.connect(self._on_asl_done)
         from .servers import Servers
@@ -60,7 +61,7 @@ class Ctx(QtCore.QObject):
         def work():
             try: n, problems = self.hosts.download()
             except Exception as ex: n, problems = 0, [str(ex)]
-            self._hosts_done.emit(n, problems)
+            if not self.closing: self._hosts_done.emit(n, problems)
         threading.Thread(target=work, daemon=True).start()
 
     def refresh_asl(self, force=False):
@@ -74,7 +75,7 @@ class Ctx(QtCore.QObject):
         def work():
             try: n, problem = self.asl_nodes.download()
             except Exception as ex: n, problem = 0, str(ex)
-            self._asl_done.emit(n, problem)
+            if not self.closing: self._asl_done.emit(n, problem)
         threading.Thread(target=work, daemon=True).start()
 
     def _on_asl_done(self, n, problem):

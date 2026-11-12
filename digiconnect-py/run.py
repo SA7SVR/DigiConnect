@@ -27,6 +27,7 @@ def _run(ov):
     w = MainWindow(ctx); w.updater = Updater(store); w.bind_updater(); w.presence = Presence(ctx, w.updater); w.show(); ctx.refresh_hosts(); ctx.refresh_asl()
     ctx._list_timer = QtCore.QTimer(ctx); ctx._list_timer.setInterval(30 * 60 * 1000); ctx._list_timer.timeout.connect(lambda: (ctx.refresh_hosts(), ctx.refresh_asl())); ctx._list_timer.start()   # lists stay current while the program runs
     QtCore.QTimer.singleShot(15000, bootstrap.started_ok)      # up for 15 s: this start counts as good
+    app.aboutToQuit.connect(lambda: setattr(ctx, 'closing', True))
     app.aboutToQuit.connect(bootstrap.started_ok)               # a normal exit is not a crash
     QtCore.QTimer.singleShot(6000, w.presence.start)            # tell the server this station is online (can be switched off in Settings)
     QtCore.QTimer.singleShot(4000, w.updater.start)             # first check shortly after the window is up
