@@ -141,3 +141,27 @@ def test_licence_per_major_version(srv):
     assert call(srv, "manifest.php", id="v1", v="3.1.0", hw=HW1)["state"] == "full"
     srv.sql("UPDATE dc_installs SET state='free', lic_major=2 WHERE id='v1'")
     assert call(srv, "manifest.php", id="v1", v="9.0.0", hw=HW1)["state"] == "full"            # a free (no limit) installation is never limited
+
+
+def test_update_offer_is_signed_and_bound_to_the_request(srv):
+    srv.sql("INSERT INTO dc_releases(version,min_shell,sha256,size,status,published) VALUES('9.9.9','2.2.0',?,1234,'active',?)", "ab" * 32, 1)
+    a = call(srv, "manifest.php", id="u1", v="2.3.0", hw=HW1, n="1" * 32)
+    assert a["update"] == "available" and sigverify.verify(srv.pub, a["upd"].encode(), a["upd_sig"])
+    d = json.loads(a["upd"]); assert (d["version"], d["sha256"], d["size"], d["n"]) == ("9.9.9", "ab" * 32, 1234, "1" * 32)
+    b = call(srv, "manifest.php", id="u1", v="2.3.0", hw=HW1, n="2" * 32)
+    assert json.loads(b["upd"])["n"] == "2" * 32 and b["upd_sig"] != a["upd_sig"]                    # another request, another signature
+    assert not sigverify.verify(srv.pub, a["upd"].replace("ab" * 32, "cd" * 32).encode(), a["upd_sig"])   # a changed hash does not verify
+    assert "upd" not in call(srv, "manifest.php", id="u1", v="9.9.9", hw=HW1, n="3" * 32)             # nothing to install when up to date
+
+
+def test_program_accepts_the_servers_update_offer_and_refuses_a_forged_one(srv, tmp_path):
+    from app import updater as U
+    from app.store import Store
+    srv.sql("INSERT INTO dc_releases(version,min_shell,sha256,size,status,published) VALUES('9.9.9','2.2.0',?,1234,'active',?)", "ab" * 32, 1)
+    (tmp_path / "d").mkdir(); u = U.Updater(Store(tmp_path / "d"), tmp_path / "u", srv.base + "manifest.php", pubkeys=[srv.pub])
+    m = call(srv, "manifest.php", id="u1", v="2.3.0", hw=HW1, n="5" * 32)
+    assert u.verify_update(m, "5" * 32) == {"version": "9.9.9", "sha256": "ab" * 32, "size": 1234, "min_shell": "2.2.0"}
+    with pytest.raises(U.UpdateError, match="replay"): u.verify_update(m, "6" * 32)
+    forged = dict(m, upd=m["upd"].replace("ab" * 32, "00" * 32))
+    with pytest.raises(U.UpdateError, match="wrong signature"): u.verify_update(forged, "5" * 32)
+    with pytest.raises(U.UpdateError, match="not signed"): u.verify_update({k: v for k, v in m.items() if k != "upd_sig"}, "5" * 32)

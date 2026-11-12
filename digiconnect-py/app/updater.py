@@ -85,8 +85,10 @@ class Updater(QtCore.QObject):
     _done = Signal(str, str)
     _pct = Signal(int)
 
-    def __init__(self, store, root: Path | None = None, url: str | None = None):
+    def __init__(self, store, root: Path | None = None, url: str | None = None, pubkeys: list | None = None):
         super().__init__()
+        from . import license as _lic
+        self.pubkeys = list(_lic.PUBKEYS if pubkeys is None else pubkeys)                 # an update is accepted only when HELLAS Zone signed it
         self.store, self.root = store, root or bootstrap.updates_root()
         self.url = url or store.settings.get("update_url") or DEFAULT_URL
         self.state, self.message, self.pending = "idle", "", None     # pending = version waiting for a restart
@@ -122,10 +124,17 @@ class Updater(QtCore.QObject):
     def _work(self):
         try:
             from urllib.parse import urlencode
-            m = json.loads(net.get(self.url + ("&" if "?" in self.url else "?") + urlencode(self.params()), 15, 1024 * 1024).decode("utf-8"))
+            import secrets
+            nonce = secrets.token_hex(16)
+            m = json.loads(net.get(self.url + ("&" if "?" in self.url else "?") + urlencode(dict(self.params(), n=nonce)), 15, 1024 * 1024).decode("utf-8"))
             every = int(m.get("checkEvery") or 0)
             if every >= 60: self._every = every
-            if m.get("update") != "available" or not bootstrap.newer(str(m.get("version", "0")), self.running if not self.pending else self.pending):
+            if m.get("update") != "available":
+                self._done.emit("uptodate", ""); return
+            # what to install (version, hash, size, shell) is believed only from the part the server SIGNED; a nonce stops an old answer being replayed
+            sig = self.verify_update(m, nonce)
+            m = dict(m, **sig)
+            if not bootstrap.newer(str(m.get("version", "0")), self.running if not self.pending else self.pending):
                 self._done.emit("uptodate", ""); return
             ver = str(m["version"])
             self.info = {"version": ver, "size": int(m.get("size") or 0), "notes": notes_for(m, store_lang(self.store)), "min_shell": str(m.get("min_shell") or "")}
@@ -138,6 +147,16 @@ class Updater(QtCore.QObject):
             self._done.emit("ready", cur["version"])
         except UpdateError as e: self._done.emit("error", f"update rejected: {e}")
         except Exception as e: self._done.emit("error", f"{type(e).__name__}: {e}")
+
+    def verify_update(self, m: dict, nonce: str) -> dict:
+        """The signed facts of an update offer: {version, sha256, size, min_shell}. Raises UpdateError when the offer is not signed by us or is an old answer."""
+        from . import sigverify
+        up, sg = m.get("upd"), m.get("upd_sig")
+        if not up or not sg: raise UpdateError("the update offer is not signed by HELLAS Zone")
+        if not any(sigverify.verify(k, str(up).encode(), str(sg)) for k in self.pubkeys): raise UpdateError("the update offer has a wrong signature")
+        d = json.loads(up)
+        if d.get("n") != nonce: raise UpdateError("old update offer (replay)")
+        return {k: d[k] for k in ("version", "sha256", "size", "min_shell") if k in d}
 
     def _on_pct(self, p):
         self.pct = p; self.progress.emit(p)

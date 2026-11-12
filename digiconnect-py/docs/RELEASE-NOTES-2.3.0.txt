@@ -8,6 +8,7 @@ DigiConnect 2.3.0 — Release notes / Σημειώσεις έκδοσης / Vers
   πατά «Ελευθέρωση υπολογιστή» (Εγκαταστάσεις).
 • Υπογεγραμμένες άδειες (Ed25519): το πρόγραμμα πιστεύει μόνο απαντήσεις που υπογράφονται από τον server HELLAS Zone.
   Τροποποίηση του αρχείου ρυθμίσεων ή «ηχογραφημένη» παλιά απάντηση δεν δουλεύουν.
+• Υπογεγραμμένες αναβαθμίσεις: το πρόγραμμα εγκαθιστά ΜΟΝΟ προσφορά αναβάθμισης (έκδοση, sha256, μέγεθος) που υπέγραψε ο server HELLAS Zone και απαντά στο συγκεκριμένο αίτημα· ψεύτικο ή ξαναπαιγμένο πακέτο απορρίπτεται.
 • Offline: οι κανόνες (απαιτείται σύνδεση / περίοδος χάριτος / επιτρέπεται) ισχύουν από την τελευταία υπογεγραμμένη
   απάντηση. Το demo δεν συνεχίζεται πέρα από τη λήξη του ούτε χωρίς σύνδεση. Αν αλλάξει η ώρα του υπολογιστή προς τα πίσω, η
   περίοδος χάριτος δεν παρατείνεται.
@@ -28,6 +29,7 @@ ENGLISH
   "Free the computer" (Installations).
 • Signed licences (Ed25519): the program believes only answers signed by the HELLAS Zone server. Editing the settings file or
   replaying a recorded old answer does not work.
+• Signed updates: the program installs ONLY an update offer (version, sha256, size) that the HELLAS Zone server signed and that answers this very request; a forged or replayed package is refused.
 • Offline: the rules (connection required / grace period / allowed) come from the last signed answer. A demo cannot go on past
   its end, not even without a connection. Setting the computer clock back does not extend the grace period.
 • "Licence" button in the top bar: status, activation code, messages from the owner (with an unread counter), replies and
@@ -46,6 +48,7 @@ SVENSKA
   (Installationer).
 • Signerade licenser (Ed25519): programmet litar bara på svar som signerats av HELLAS Zone-servern. Att ändra inställningsfilen
   eller spela upp ett inspelat gammalt svar fungerar inte.
+• Signerade uppdateringar: programmet installerar BARA ett uppdateringserbjudande (version, sha256, storlek) som HELLAS Zone-servern signerat och som svarar på just denna förfrågan; ett förfalskat eller återuppspelat paket avvisas.
 • Offline: reglerna (anslutning krävs / respitperiod / tillåtet) gäller från det senaste signerade svaret. En demo kan inte
   fortsätta efter sitt slut, inte heller utan anslutning. Att ställa tillbaka datorns klocka förlänger inte respitperioden.
 • Knappen «Licens» i översta raden: status, aktiveringskod, meddelanden från ägaren (med räknare för olästa), svar och att skriva

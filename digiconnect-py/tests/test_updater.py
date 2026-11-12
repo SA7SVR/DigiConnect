@@ -8,6 +8,8 @@ import bootstrap
 from app import updater as U
 from app.qt import QtWidgets as W, QtCore
 from app.store import Store
+import ed25519_sign as ES
+SEED, PUB = ES.keypair()                                   # the test stands in for the HELLAS Zone server's signing key
 
 
 def pkg(version="2.0.1", min_shell="2.0.0", extra=None, bad_py=False, app="digiconnect-py"):
@@ -72,7 +74,11 @@ def server(tmp_path):
         def do_GET(self):
             state["hits"].append(self.path)
             if self.path.startswith("/manifest.php"):
-                body = json.dumps(state["manifest"]).encode(); ct = "application/json"
+                import urllib.parse as up
+                n = (up.parse_qs(up.urlparse(self.path).query).get("n") or [""])[0]
+                man = state["manifest"]
+                if man.get("update") == "available" and not state.get("unsigned"): man = ES.signed_update(man, state.get("nonce") or n, SEED)
+                body = json.dumps(man).encode(); ct = "application/json"
             else: body = (www / self.path.split("?")[0].lstrip("/")).read_bytes(); ct = "application/octet-stream"
             self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H); threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -93,7 +99,7 @@ def test_download_from_server_end_to_end(tmp_path, server):
     blob = pkg("2.8.7"); (www / "DigiConnect-2.8.7.dcpkg").write_bytes(blob)
     state["manifest"] = dict(ok=True, checkEvery=3600, state="demo", update="available", version="2.8.7", min_shell="2.0.0", pkg=base + "/DigiConnect-2.8.7.dcpkg",
                              sha256=hashlib.sha256(blob).hexdigest(), size=len(blob))
-    (tmp_path / "data").mkdir(); root = tmp_path / "upd"; st = Store(tmp_path / "data"); u = U.Updater(st, root, base + "/manifest.php"); states = []; u.changed.connect(lambda s, m: states.append((s, m)))
+    (tmp_path / "data").mkdir(); root = tmp_path / "upd"; st = Store(tmp_path / "data"); u = U.Updater(st, root, base + "/manifest.php", pubkeys=[PUB]); states = []; u.changed.connect(lambda s, m: states.append((s, m)))
     u.check(); assert _wait(app, lambda: u.state == "ready"), states
     assert u.pending == "2.8.7" and bootstrap.current(root)["version"] == "2.8.7" and ("downloading", "2.8.7") in states
     q = state["hits"][0]; assert "id=" in q and f"v={bootstrap.BASE_VERSION}" in q and f"shell={bootstrap.SHELL_VERSION}" in q and "os=" in q
@@ -103,6 +109,17 @@ def test_download_from_server_end_to_end(tmp_path, server):
     state["manifest"].update(version="3.0.0", min_shell="3.0.0"); u.check(); assert _wait(app, lambda: u.state == "needs_installer") and bootstrap.current(root)["version"] == "2.8.7"
     # a damaged download is rejected and the installed update stays
     state["manifest"].update(version="2.8.8", min_shell="2.0.0", sha256="0" * 64); u.check(); assert _wait(app, lambda: u.state == "error") and bootstrap.current(root)["version"] == "2.8.7"
+    # an offer that is not signed, signed by someone else, or an old answer replayed is refused — nothing is downloaded
+    good = hashlib.sha256(blob).hexdigest(); n0 = len(state["hits"])
+    state["manifest"].update(version="2.9.0", sha256=good); state["unsigned"] = True
+    u.check(); assert _wait(app, lambda: u.state == "error") and "not signed" in u.message
+    state["unsigned"] = False; u2 = U.Updater(st, root, base + "/manifest.php", pubkeys=[ES.keypair(b"\x09" * 32)[1]])
+    u2.check(); assert _wait(app, lambda: u2.state == "error") and "wrong signature" in u2.message
+    state["nonce"] = "f" * 32; u.check(); assert _wait(app, lambda: u.state == "error") and "replay" in u.message
+    assert not any("DigiConnect-2.9.0" in h for h in state["hits"][n0:]) and bootstrap.current(root)["version"] == "2.8.7"
+    # the unsigned fields cannot steer the install: a tampered hash outside the signed part is ignored
+    state["nonce"] = None; state["manifest"].update(version="2.8.9", sha256=good); (www / "DigiConnect-2.8.9.dcpkg").write_bytes(pkg("2.8.9")); state["manifest"]["pkg"] = base + "/DigiConnect-2.8.9.dcpkg"; state["manifest"]["size"] = len(pkg("2.8.9")); state["manifest"]["sha256"] = hashlib.sha256(pkg("2.8.9")).hexdigest()
+    u.check(); assert _wait(app, lambda: u.state == "ready") and bootstrap.current(root)["version"] == "2.8.9"
 
 
 def test_build_tool_makes_a_valid_package(tmp_path):
@@ -134,7 +151,16 @@ def test_progress_and_steps_in_a_real_download(tmp_path, monkeypatch):
     """A real local HTTP server: the updater reports percent while downloading and passes verifying -> installing -> ready; the dialog shows notes and size."""
     blob = pkg("2.7.0", extra={"assets/big.bin": "x" * 400000})
     srv = tmp_path / "srv"; srv.mkdir(); (srv / "p.dcpkg").write_bytes(blob)
-    h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(srv))
+    class SignedHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            if self.path.startswith("/m.json"):
+                import urllib.parse as up
+                n = (up.parse_qs(up.urlparse(self.path).query).get("n") or [""])[0]
+                body = json.dumps(ES.signed_update(json.loads((srv / "m.json").read_text()), n, SEED)).encode()
+                self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+            else: super().do_GET()
+    h = functools.partial(SignedHandler, directory=str(srv))
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), h); port = httpd.server_address[1]
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     man = {"update": "available", "version": "2.7.0", "min_shell": "2.0.0", "pkg": f"http://127.0.0.1:{port}/p.dcpkg", "size": len(blob), "sha256": hashlib.sha256(blob).hexdigest(), "notes": "- Fix A\n- Fix B"}
@@ -145,7 +171,7 @@ def test_progress_and_steps_in_a_real_download(tmp_path, monkeypatch):
     real = ur.urlopen
     monkeypatch.setattr(ur, "urlopen", lambda req, timeout=0, context=None: real(req, timeout=timeout))
     (tmp_path / "data").mkdir(); st = Store(tmp_path / "data")
-    u = U.Updater(st, root=tmp_path / "upd", url=f"http://127.0.0.1:{port}/m.json")
+    u = U.Updater(st, root=tmp_path / "upd", url=f"http://127.0.0.1:{port}/m.json", pubkeys=[PUB])
     states, pcts = [], []
     u.changed.connect(lambda s, m: states.append(s)); u.progress.connect(pcts.append)
     u.check()

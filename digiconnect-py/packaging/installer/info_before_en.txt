@@ -12,6 +12,7 @@ What is new in this version (2.3.0)
     administrator frees the licence with one button.
   • "Licence" button in the top bar: licence status, activation code, messages from the owner with
     an unread counter, replies, and writing a message to the owner.
+  • Signed updates: only what the HELLAS Zone server signs is installed.
   • Bottom licence card with logo, installation number, licence and callsign.
   • A demo cannot go on past its end, not even without a connection.
   • EchoLink: under construction - coming soon (the page is there, it does not connect yet).

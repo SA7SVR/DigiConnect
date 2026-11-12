@@ -6,6 +6,7 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
 $id    = $_REQUEST['id'] ?? '';
+$nonce = substr(preg_replace('/[^a-f0-9]/', '', strtolower((string)($_REQUEST['n'] ?? ''))), 0, 32);
 $v     = $_REQUEST['v'] ?? '';
 $os    = $_REQUEST['os'] ?? '';
 $arch  = $_REQUEST['arch'] ?? '';
@@ -46,6 +47,9 @@ if ($rel) {
     $out['pkg']       = $base . '/download.php?f=pkg&v=' . rawurlencode($rel['version']) . ($id ? '&id=' . rawurlencode($id) : '');
     $out['sha256']    = $rel['sha256'];
     $out['size']      = (int)$rel['size'];
+    // the offer is signed: the program installs only what is in here (version, hash, size) — and only when it answers THIS request (nonce)
+    $up = json_encode(['v' => 1, 'version' => $rel['version'], 'sha256' => (string)$rel['sha256'], 'size' => (int)$rel['size'], 'min_shell' => (string)$rel['min_shell'], 'n' => $nonce, 'now' => time()], JSON_UNESCAPED_SLASHES);
+    $out['upd'] = $up; $out['upd_sig'] = dc_sign($up);
     $out['notes']     = ['el' => $rel['notes_el'], 'en' => $rel['notes_en'], 'sv' => $rel['notes_sv'], 'it' => $rel['notes_it']];
   }
 } else {
