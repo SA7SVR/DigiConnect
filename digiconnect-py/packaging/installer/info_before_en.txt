@@ -1,4 +1,4 @@
-﻿DigiConnect 2.0.2 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.0.3 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,13 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.0.2)
+What is new in this version (2.0.3)
+  • Your station appears as "online" in the HELLAS Zone control panel (callsign,
+    program version, what you listen to). You can switch this off in
+    Settings > My station. No audio or passwords are ever sent.
+  • New installer with our logo, Greek/English, shortcuts with the DigiConnect icon.
+  • Updates window with version, what is new, size and real download progress.
+  Also new since 2.0.1:
   • Microphone: the very low level on C4FM is fixed. New "Microphone volume"
     setting (0-300%) and real detection of the microphone's sample format.
   • "Refresh devices", "Test microphone", "Test speakers" work and show a result
@@ -18,7 +24,6 @@ What is new in this version (2.0.2)
     each list in Settings. No entry is invented - everything comes from a real list.
   • "Last heard": a structured list with UTC time, station, destination, network, duration.
   • Greek in more places in the program.
-  • Updates window with version, what is new, size and download progress.
 
 Before you continue
   If DigiConnect is open, Setup will close it. Your settings, favorites and

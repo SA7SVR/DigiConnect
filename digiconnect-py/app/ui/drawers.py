@@ -31,7 +31,8 @@ class SettingsDrawer(W.QFrame):
             e = W.QLineEdit(str(s.get(k, ""))); e.setPlaceholderText(ph); self.f[k] = e; return e
         p1 = W.QWidget(); l1 = vbox(p1, m=(16, 4, 16, 4), s=8)
         l1.addWidget(field("Callsign", le("callsign"))); r = hbox(); r.addWidget(field("Grid locator", le("locator"))); r.addWidget(field("Module", le("module"))); l1.addLayout(r)
-        l1.addWidget(field("Equipment", le("equipment"))); l1.addWidget(field("Radio message", le("radio_message")))
+        self.share = checkbox("Show my station as online on the HELLAS Zone server"); self.share.setChecked(bool(s.get("share_presence", True))); self.share.setToolTip("Sends only: callsign, locator, program version, system and what you are listening to. No audio.")
+        l1.addWidget(field("Equipment", le("equipment"))); l1.addWidget(field("Radio message", le("radio_message"))); l1.addWidget(self.share)
         self.lang = W.QComboBox(); self.lang.addItems(list(i18n.LANGS)); self.lang.setCurrentText(s["language"]); l1.addWidget(field("Language", self.lang))
         self.theme = W.QComboBox(); self.theme.addItem(tr("Dark"), "dark"); self.theme.addItem(tr("Light"), "light"); i18n.combo_item(self.theme, 0, "Dark"); i18n.combo_item(self.theme, 1, "Light"); self.sync_theme(); l1.addWidget(field("Theme", self.theme))
         self.size = W.QSpinBox(); self.size.setRange(11, 20); self.size.setValue(s["text_size"]); self.ptt = W.QComboBox(); self.ptt.addItems(["60 s", "120 s", "180 s"]); self.ptt.setCurrentText(f"{s['max_ptt']} s")
@@ -100,7 +101,7 @@ class SettingsDrawer(W.QFrame):
             else:
                 s[k] = val
         s.update(language=self.lang.currentText(), theme=self.theme.currentData() or "dark", text_size=self.size.value(), max_ptt=int(self.ptt.currentText().split()[0]), fav_view=self.favview.currentData() or "Full cards",
-                 slot=int(self.slot.currentText()), duck=self.duck.isChecked())
+                 slot=int(self.slot.currentText()), duck=self.duck.isChecked(), share_presence=self.share.isChecked())
 
     def _save(self):
         self._collect(); s = self.ctx.store.settings

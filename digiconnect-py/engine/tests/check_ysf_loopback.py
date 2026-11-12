@@ -19,7 +19,19 @@ sock.settimeout(0.2)
 events: "queue.Queue[dict]" = queue.Queue()
 env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
 p = subprocess.Popen([engine_bin], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                     stderr=subprocess.DEVNULL, env=env, text=True, bufsize=1)
+                     stderr=(None if os.environ.get("DC_ENGINE_STDERR") else subprocess.DEVNULL), env=env, text=True, bufsize=1)
+
+def sample_later():
+    """Diagnostic for CI: if the engine is still waiting after N seconds, print where each thread is (macOS 'sample')."""
+    n = float(os.environ.get("DC_SAMPLE_AFTER", "0") or 0)
+    if n <= 0: return
+    time.sleep(n)
+    if p.poll() is None and not pings[0]:
+        print("--- no YSFP seen after %.0f s: process sample ---" % n, flush=True)
+        try: print(subprocess.run(["sample", str(p.pid), "2"], capture_output=True, text=True, timeout=30).stdout[-6000:], flush=True)
+        except Exception as ex: print("sample failed:", ex, flush=True)
+pings = [0]
+threading.Thread(target=sample_later, daemon=True).start()
 
 def reader():
     for line in p.stdout:
@@ -47,7 +59,6 @@ def wait_ev(pred, timeout=8.0):
 peer = [None]
 captured: list = []
 stop = threading.Event()
-pings = [0]
 def reflector():
     while not stop.is_set():
         try:

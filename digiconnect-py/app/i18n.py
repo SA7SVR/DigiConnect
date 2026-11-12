@@ -115,6 +115,7 @@ EL: dict[str, str] = {
     "Full cards": "Πλήρεις κάρτες", "Names only": "Μόνο ονόματα", "PROFILES": "ΠΡΟΦΙΛ", "Load": "Φόρτωση", "Profile name": "Όνομα προφίλ", "Save profile": "Αποθήκευση προφίλ",
     "DMR ID": "DMR ID", "ESSID": "ESSID", "Server": "Διακομιστής", "Port": "Θύρα", "Time slot": "Χρονοθυρίδα", "Color code": "Color code",
     "Passwords are kept for the current session only in this build (not written to disk).": "Οι κωδικοί κρατιούνται μόνο για την τρέχουσα συνεδρία (δεν γράφονται στον δίσκο).",
+    "Show my station as online on the HELLAS Zone server": "Εμφάνιση του σταθμού μου ως online στον server του HELLAS Zone", "Sends only: callsign, locator, program version, system and what you are listening to. No audio.": "Στέλνει μόνο: διακριτικό, locator, έκδοση προγράμματος, σύστημα και τι ακούς. Καθόλου ήχο.",
     "Lower other channels while transmitting": "Χαμήλωμα των άλλων καναλιών κατά την εκπομπή", "RECORDINGS": "ΗΧΟΓΡΑΦΗΣΕΙΣ", "Choose": "Επιλογή",
     "Preferred callbook": "Προτιμώμενο callbook", "Callbook lookups are not connected in this build.": "Η αναζήτηση callbook δεν είναι συνδεδεμένη σε αυτή την έκδοση.",
     "Back up application": "Αντίγραφο ασφαλείας εφαρμογής", "Restore a backup": "Επαναφορά αντιγράφου", "Export diagnostics": "Εξαγωγή διαγνωστικών",
