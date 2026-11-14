@@ -130,6 +130,27 @@ class License:
         if not m.get("ok"): raise LicenseError(str(m.get("error") or "refused"))
         return True
 
+    # ---- the conversation with the owner (one thread per installation, shared with the website and the control panel) ----
+    def chat_poll(self, after: int = 0, read: bool = False) -> dict:
+        """New messages of the conversation after message number `after`: {msgs:[{id,t,who,body,img,del,rd}], upd, on, typ}.
+        read=True only while the conversation window is open: it marks the owner's messages as read for the owner."""
+        q = dict(chat="poll", id=self._p()["id"], after=int(after))
+        if read: q["read"] = 1
+        m = self._get(self.base + "inbox.php?" + urlencode(q))
+        if not m.get("ok"): raise LicenseError(str(m.get("error") or "refused"))
+        return m
+
+    def chat_send(self, body: str, lang: str = "") -> int:
+        """One message from the user into the conversation. Returns its number."""
+        p = self._p(); c = self.cache()
+        f = dict(chat="send", id=p["id"], os=p["os"], version=p["v"], lang=lang, body=body, src="app", call=c.get("call", ""))
+        m = self._get(self.base + "inbox.php", urlencode(f).encode())
+        if not m.get("ok"): raise LicenseError(str(m.get("error") or "refused"))
+        return int(m.get("id") or 0)
+
+    def chat_image_url(self, mid: int) -> str:
+        return self.base + "inbox.php?" + urlencode(dict(chat="img", id=self._p()["id"], m=int(mid)))
+
     def replies(self) -> list:
         """The owner's replies to this installation (newest first): [{id, t, subject, reply}]."""
         m = self._get(self.base + "inbox.php?" + urlencode(dict(poll="1", id=self._p()["id"])))

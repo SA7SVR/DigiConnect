@@ -82,9 +82,13 @@ function dc_db(): PDO {
   if (!$mc) { $pdo->exec('CREATE TABLE IF NOT EXISTS dc_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, scope TEXT, target TEXT, title TEXT, body TEXT, active INT DEFAULT 1)'); $mc = ['id']; }
   foreach (['title_el' => 'TEXT', 'title_en' => 'TEXT', 'body_el' => 'TEXT', 'body_en' => 'TEXT', 'link' => 'TEXT', 'until' => 'INT DEFAULT 0'] as $c => $t)
     if (!in_array($c, $mc, true)) $pdo->exec("ALTER TABLE dc_messages ADD COLUMN \"$c\" $t");
+  // one conversation per person: a thread of an installed program is linked to its installation (inst), a website visitor's thread has none
+  $tc = array_column($pdo->query('PRAGMA table_info(dc_chat_th)')->fetchAll(), 'name');
+  if (!in_array('inst', $tc, true)) $pdo->exec("ALTER TABLE dc_chat_th ADD COLUMN inst TEXT DEFAULT ''");
   // activation codes as in HAM Digi: the code itself can expire (valid_until); uses = 0 means unlimited
   $hc = array_column($pdo->query('PRAGMA table_info(dc_codes)')->fetchAll(), 'name');
   if (!in_array('valid_until', $hc, true)) $pdo->exec('ALTER TABLE dc_codes ADD COLUMN valid_until INT DEFAULT 0');
+  try { dc_chat_unify(); } catch (Throwable $e) { error_log('dc_chat_unify: ' . $e->getMessage()); }   // one-time: the old inbox moves into the conversations (never breaks the page)
   return $pdo;
 }
 
@@ -408,6 +412,48 @@ function dc_chat_purge_old(): void { // pictures of deleted messages are removed
   foreach (dc_q("SELECT id,img FROM dc_chat WHERE del=1 AND img<>''")->fetchAll() as $r) { @unlink(dc_chat_dir() . '/' . basename($r['img'])); dc_q("UPDATE dc_chat SET img='' WHERE id=?", [$r['id']]); }
 }
 
+// ---- ONE conversation per person (website visitor, or an installed program) --------------------------------------------------
+// The thread of an installed program has a fixed token made from its installation id, so the program, the website and the panel always meet in the same thread.
+function dc_inst_token(string $id): string { return substr(md5('dcinst|' . $id), 0, 32); }
+// the contact details the panel shows for a thread that belongs to an installation
+function dc_inst_contact(string $id): array {
+  $r = dc_one('SELECT id,"call",name,mail,last_ping,last_seen,version,os FROM dc_installs WHERE id=?', [$id]);
+  return $r ?: [];
+}
+// a message written by a user of an installed program (or by an old program through inbox.php): stored in the installation's thread
+function dc_chat_user_post(string $install, string $body, string $ip = '', array $extra = []): int {
+  $in = dc_inst_contact($install); $tok = dc_inst_token($install);
+  $call = strtoupper(preg_replace('/[^A-Za-z0-9\/]/', '', (string)($extra['call'] ?? ($in['call'] ?? ''))));
+  $name = (string)($extra['name'] ?? ($in['name'] ?? '')); $mail = (string)($extra['email'] ?? ($in['mail'] ?? ''));
+  $first = (int)dc_scalar('SELECT COUNT(*) FROM dc_chat WHERE token=?', [$tok]) === 0;
+  dc_q('INSERT INTO dc_chat(token,t,who,body,img,"call",email,name,ip,read_owner) VALUES(?,?,?,?,?,?,?,?,?,0)', [$tok, (int)($extra['t'] ?? time()), 'user', $body, '', $call, $mail, $name, $ip]);
+  $id = (int)dc_db()->lastInsertId();
+  dc_upsert('dc_chat_th', ['token' => $tok], ['inst' => $install, 'typ_u' => 0]);
+  $prev = mb_substr($body, 0, 60);
+  if (empty($extra['quiet'])) { if ($first) dc_event('chat_new', ($call ?: 'app') . '|' . $tok . '|' . $prev); else dc_event('chat_msg', $tok . '|' . $prev); }
+  return $id;
+}
+// the old inbox (messages + the owner's replies) becomes conversations, once. Diagnostics reports stay in the inbox: they are reports, not talk.
+function dc_chat_unify(): void {
+  static $done = false; if ($done) return; $done = true;
+  if (dc_kv('chat_unified_v1', '') !== '') return;
+  $db = dc_db(); $db->beginTransaction();
+  try {
+    foreach ($db->query("SELECT * FROM dc_inbox WHERE COALESCE(topic,'')<>'diagnostics' ORDER BY t ASC")->fetchAll() as $m) {
+      $inst = (string)($m['install'] ?? ''); $tok = $inst !== '' ? dc_inst_token($inst) : substr(md5('dcinbox|' . $m['id']), 0, 32);
+      $subj = trim((string)($m['subject'] ?? '')); $tp = trim((string)($m['topic'] ?? ''));
+      $body = ($subj !== '' && $subj !== 'Message' && $subj !== $tp ? $subj . "\n\n" : '') . (string)$m['body'];
+      $call = strtoupper(preg_replace('/[^A-Za-z0-9\/]/', '', (string)($m['call'] ?? '')));
+      $read = ($m['status'] ?? 'new') === 'new' ? 0 : 1;
+      dc_q('INSERT INTO dc_chat(token,t,who,body,img,"call",email,name,ip,read_owner,read_user) VALUES(?,?,?,?,?,?,?,?,?,?,1)', [$tok, (int)$m['t'], 'user', $body, '', $call, (string)($m['email'] ?? ''), (string)($m['name'] ?? ''), (string)($m['ip'] ?? ''), $read]);
+      if ((string)($m['reply'] ?? '') !== '') dc_q("INSERT INTO dc_chat(token,t,who,body,img,read_owner,read_user) VALUES(?,?,'owner',?,'',1,1)", [$tok, (int)($m['reply_t'] ?: $m['t'] + 1), (string)$m['reply']]);
+      if ($inst !== '') dc_upsert('dc_chat_th', ['token' => $tok], ['inst' => $inst]);
+    }
+    $db->exec("UPDATE dc_inbox SET status='closed' WHERE COALESCE(topic,'')<>'diagnostics'");      // they live on in the conversations now
+    dc_kv_set('chat_unified_v1', (string)time()); $db->commit();
+  } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
+}
+
 
 // =============================================================================================================================
 // Computer binding + signed licences (phase 2).
@@ -475,7 +521,7 @@ function dc_rev(string $id): string {
   $p = json_decode((string)($a['payload'] ?? ''), true); if (!is_array($p)) $p = [];
   unset($p['now'], $p['n']);
   $m = []; foreach (dc_messages_for($id, (int)$in['first_seen']) as $x) $m[] = $x['id'];
-  $rep = (int)dc_scalar("SELECT COALESCE(MAX(reply_t),0) FROM dc_inbox WHERE install=?", [$id]);
+  $rep = (int)dc_scalar("SELECT COALESCE(MAX(reply_t),0) FROM dc_inbox WHERE install=?", [$id]) . ':' . (int)dc_scalar("SELECT COALESCE(MAX(id),0) FROM dc_chat WHERE token=? AND who='owner'", [dc_inst_token($id)]);
   return substr(md5(json_encode([$p, $m, $rep, (string)($in['hw'] ?? '')])), 0, 12);
 }
 

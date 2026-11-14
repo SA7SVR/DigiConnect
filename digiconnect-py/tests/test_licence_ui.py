@@ -38,15 +38,31 @@ def test_activation_dialog_good_bad_and_used_codes(srv, win):
     assert pump(app, lambda: "already been used" in d2.err.text() or "ήδη χρησιμοποιηθεί" in d2.err.text()) and d2.answer is None     # one-computer code
 
 
-def test_message_to_owner_reaches_the_inbox_and_the_reply_comes_back(srv, win):
+def test_the_conversation_window_sends_and_shows_the_owners_answer_at_once(srv, win):
     w, ctx, app = win; l = lic(srv); l.register(PERSON)
-    d = LD.MessageDialog(l); d.subject.setText("Hello"); d.body.setPlainText("Please help"); d.send.click()
-    assert pump(app, lambda: "Sent" in d.msg.text() or "Στάλθηκε" in d.msg.text())
-    row = srv.sql("SELECT install, call, subject, body, src FROM dc_inbox")[0]
-    assert (row["install"], row["subject"], row["body"], row["src"]) == ("inst-1", "Hello", "Please help", "app") and row["call"] == "SA7SVR"
-    srv.sql("UPDATE dc_inbox SET reply='We are on it', reply_t=?, status='answered'", int(time.time()))
-    assert l.replies()[0]["reply"] == "We are on it"
-    d2 = LD.MessageDialog(l); d2.send.click(); assert "first" in d2.msg.text() or "πρώτα" in d2.msg.text()                 # empty message is not sent
+    d = LD.ChatDialog(l); d.body.setPlainText("Please help"); d.send.click()
+    assert pump(app, lambda: any(m["body"] == "Please help" for m in d._msgs.values()))
+    row = srv.sql("SELECT token, who, body, \"call\" FROM dc_chat")[0]
+    assert (row["who"], row["body"], row["call"]) == ("user", "Please help", "SA7SVR")                    # one conversation, the same the owner reads in his panel
+    assert srv.sql("SELECT inst FROM dc_chat_th WHERE token=?", row["token"])[0]["inst"] == "inst-1"
+    srv.sql("INSERT INTO dc_chat(token,t,who,body,read_owner,read_user) VALUES(?,?,'owner','We are on it',1,0)", row["token"], int(time.time()))
+    d.poll()
+    assert pump(app, lambda: "We are on it" in d.view.toPlainText())                                      # the owner's answer shows up in the open window
+    assert srv.sql("SELECT read_user FROM dc_chat WHERE who='owner'")[0]["read_user"] == 1                  # and the owner sees that it was read
+    d2 = LD.ChatDialog(l); d2.send.click(); assert "first" in d2.msg.text() or "πρώτα" in d2.msg.text()   # an empty message is not sent
+    assert srv.sql("SELECT COUNT(*) n FROM dc_chat WHERE who='user'")[0]["n"] == 1
+
+
+def test_a_new_message_from_the_owner_lights_the_badge_until_the_window_shows_it(srv, win):
+    w, ctx, app = win; l = lic(srv); l.register(PERSON); l.evaluate()
+    wt = LD.Watcher(l); w.bind_license(wt)
+    d0 = LD.ChatDialog(l); d0.body.setPlainText("hello"); d0.send.click(); assert pump(app, lambda: bool(d0._msgs)); d0._t.stop()
+    tok = srv.sql("SELECT token FROM dc_chat")[0]["token"]
+    srv.sql("INSERT INTO dc_chat(token,t,who,body,read_owner,read_user) VALUES(?,?,'owner','Hi from the owner',1,0)", tok, int(time.time()))
+    wt.poll_chat(); assert pump(app, lambda: wt.unread() == 1)                                            # found by the light background check
+    assert srv.sql("SELECT read_user FROM dc_chat WHERE who='owner'")[0]["read_user"] == 0                # the background check does not mark it read
+    d = LD.ChatDialog(l, None, wt); assert pump(app, lambda: "Hi from the owner" in d.view.toPlainText()) and pump(app, lambda: wt.unread() == 0)
+    assert srv.sql("SELECT read_user FROM dc_chat WHERE who='owner'")[0]["read_user"] == 1
 
 
 def test_unread_badge_and_licence_dialog_list(srv, win):

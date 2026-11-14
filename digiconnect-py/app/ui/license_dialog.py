@@ -88,7 +88,7 @@ class BlockDialog(W.QDialog):
 
     def _contact(self):
         lic = getattr(self.check, "__self__", None)
-        if lic is not None: MessageDialog(lic, self).exec()
+        if lic is not None: ChatDialog(lic, self).exec()
 
     def _retry(self):
         self.msg.setText(tr("Checking…")); W.QApplication.processEvents()
@@ -129,34 +129,91 @@ class ActivationDialog(W.QDialog):
         self.answer = m; self.accept()
 
 
-class MessageDialog(W.QDialog):
-    """Write to the owner (the message appears in his control panel; the answer comes back into this program)."""
-    _done = Signal(str)
+class _ChatInput(W.QPlainTextEdit):
+    """Enter sends, Shift+Enter makes a new line."""
+    submit = Signal()
 
-    def __init__(self, lic, parent=None):
-        super().__init__(parent); self.lic = lic
-        self.setWindowTitle(tr("Message to the owner")); self.setModal(True); self.setMinimumWidth(460)
-        v = vbox(self, m=(24, 20, 24, 20), s=10)
-        t = label(tr("Message to the owner")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
-        self.subject = W.QLineEdit(); self.subject.setPlaceholderText(tr("Subject")); v.addWidget(self.subject)
-        self.body = W.QPlainTextEdit(); self.body.setMinimumHeight(140); v.addWidget(self.body)
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (e.modifiers() & Qt.KeyboardModifier.ShiftModifier): self.submit.emit(); return
+        super().keyPressEvent(e)
+
+
+class ChatDialog(W.QDialog):
+    """The conversation with the owner: the same thread the owner sees in his control panel (and a website visitor's chat is the same kind of thread).
+    While this window is open it asks the server every 3 seconds, so a reply appears at once."""
+    _got = Signal(object)
+    _sent = Signal(str)
+    POLL_MS = 3000
+
+    def __init__(self, lic, parent=None, watcher=None):
+        super().__init__(parent); self.lic = lic; self.watcher = watcher; self._after = 0; self._msgs: dict = {}; self._busy = False; self._online = False; self._typing = False
+        self.setWindowTitle(tr("Conversation with the owner")); self.setMinimumSize(480, 520)
+        v = vbox(self, m=(20, 18, 20, 16), s=8)
+        t = label(tr("Conversation with the owner")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
+        self.state = label("", muted=True); v.addWidget(self.state)
+        self.view = W.QTextBrowser(); self.view.setOpenExternalLinks(True); v.addWidget(self.view, 1)
+        self.body = _ChatInput(); self.body.setFixedHeight(76); self.body.setPlaceholderText(tr("Write your message…") + "  (Enter = " + tr("Send") + ", Shift+Enter = " + tr("new line") + ")"); v.addWidget(self.body)
         self.msg = label("", tone="amber"); self.msg.setWordWrap(True); v.addWidget(self.msg)
         row = hbox(); self.close_b = button(tr("Close")); self.send = button(tr("Send"), "primary"); row.addWidget(self.close_b); row.addStretch(); row.addWidget(self.send); v.addLayout(row)
-        self.close_b.clicked.connect(self.reject); self.send.clicked.connect(self._send); self._done.connect(self._finished)
+        self.close_b.clicked.connect(self.accept); self.send.clicked.connect(self._send); self.body.submit.connect(self._send)
+        self._got.connect(self._fill); self._sent.connect(self._finished)
+        self._t = QtCore.QTimer(self); self._t.setInterval(self.POLL_MS); self._t.timeout.connect(self.poll)
+        self._render(); self.poll(); self._t.start()
+        self.finished.connect(lambda *_: self._t.stop())
 
+    # ---- asking the server ----
+    def poll(self):
+        if self._busy: return
+        self._busy = True; after = self._after
+        def work():
+            try: r = self.lic.chat_poll(after, read=True)
+            except Exception: r = None
+            self._busy = False; self._got.emit(r)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _fill(self, r):
+        if not r: self.state.setText(tr("No connection to the server right now — it will try again.")); return
+        for m in r.get("msgs") or []: self._msgs[m["id"]] = m; self._after = max(self._after, m["id"])
+        for m in r.get("upd") or []:
+            if m["id"] in self._msgs: self._msgs[m["id"]].update(m)
+        self._online = bool(r.get("on")); self._typing = bool(r.get("typ"))
+        owner = [m["id"] for m in self._msgs.values() if m["who"] == "owner" and not m.get("del")]
+        if self.watcher is not None and owner: self.watcher.mark_chat_seen(max(owner))
+        self._render()
+
+    def _render(self):
+        from html import escape
+        self.state.setText(("● " + tr("The owner is online now") if self._online else tr("You will see the answer here as soon as the owner replies.")) + ("  ·  " + tr("the owner is typing…") if self._typing else ""))
+        out = []; day = ""
+        for mid in sorted(self._msgs):
+            m = self._msgs[mid]; mine = m["who"] == "user"
+            d = time.strftime("%Y-%m-%d", time.localtime(m["t"]))
+            if d != day: day = d; out.append(f'<p align="center"><small>{d}</small></p>')
+            if m.get("del"): text = "<i>" + escape(tr("This message was removed")) + "</i>"
+            else:
+                text = escape(m.get("body") or "").replace("\n", "<br>")
+                if m.get("img"): text += (("<br>" if text else "") + f'<a href="{escape(self.lic.chat_image_url(mid))}">📷 ' + escape(tr("Open the picture")) + "</a>")
+            hm = time.strftime("%H:%M", time.localtime(m["t"])); tick = (" ✓✓" if m.get("rd") else " ✓") if mine else ""
+            who = escape(tr("You")) if mine else "SA7SVR"
+            align, bg = ("right", "#1f4f8a") if mine else ("left", "#2b3340")
+            out.append(f'<table width="100%"><tr><td align="{align}"><table cellpadding="7" style="background:{bg}"><tr><td><b>{who}</b> <small>{hm}{tick}</small><br>{text}</td></tr></table></td></tr></table>')
+        self.view.setHtml("".join(out) or "<p><i>" + escape(tr("No messages yet. Write the first one below.")) + "</i></p>")
+        self.view.verticalScrollBar().setValue(self.view.verticalScrollBar().maximum())
+
+    # ---- writing ----
     def _send(self):
         b = self.body.toPlainText().strip()
         if not b: self.msg.setText(tr("Write your message first.")); return
-        self.msg.setText(tr("Sending…")); self.send.setEnabled(False); subj = self.subject.text().strip(); lang = lang_code()
+        self.msg.setText(""); self.send.setEnabled(False); lang = lang_code()
         def work():
-            try: self.lic.inbox_send(b, "app", subj, lang); self._done.emit("")
-            except lic_mod.LicenseError as ex: self._done.emit(str(ex))
+            try: self.lic.chat_send(b, lang); self._sent.emit("")
+            except lic_mod.LicenseError as ex: self._sent.emit(str(ex))
         threading.Thread(target=work, daemon=True).start()
 
     def _finished(self, err):
         self.send.setEnabled(True)
         if err: self.msg.setText(tr("Could not send ({}). Try again later.").format(tr("too many messages, try later") if err == "too_many" else err)); return
-        self.body.clear(); self.subject.clear(); self.msg.setText(tr("Sent. The answer will appear here."))
+        self.body.clear(); self.msg.setText(""); self.poll()
 
 
 class LicenceDialog(W.QDialog):
@@ -182,7 +239,7 @@ class LicenceDialog(W.QDialog):
         head.addLayout(hv, 1); v.addLayout(head)
         t = label(tr("Licence and messages")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
         self.status = label("", muted=True); self.status.setWordWrap(True); self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse); v.addWidget(self.status)
-        row = hbox(); self.code = button(tr("Activation code…")); self.donate = button("♥ " + tr("Donate")); self.write = button(tr("Write to the owner…"))
+        row = hbox(); self.code = button(tr("Activation code…")); self.donate = button("♥ " + tr("Donate")); self.write = button(tr("Conversation with the owner…"))
         self.diag_b = button(tr("Send diagnostics to the owner")); self.diag_b.setToolTip("Sends the program version, system and the end of the log (no passwords) so the owner can see why something does not work")
         for b in (self.code, self.donate, self.write, self.diag_b): row.addWidget(b)
         row.addStretch(); v.addLayout(row)
@@ -208,25 +265,20 @@ class LicenceDialog(W.QDialog):
         self.status.setText("\n".join(lines)); self.donate.setVisible(i.get("offer", "donate") != "none")
 
     def refresh(self):
-        def work():
-            try: r = self.lic.replies()
-            except Exception: r = []
-            self._got.emit(r)
-        threading.Thread(target=work, daemon=True).start()
+        self._got.emit([])                                           # the owner's words are in the conversation window now; this list shows the announcements
 
     def _fill(self, replies):
         self.list.clear(); items = []
         for m in self.lic.msgs:
             el = lang_code() == "el"
             items.append((m.get("t", 0), m["id"], (m.get("title_el") if el else m.get("title_en")) or "", (m.get("el") if el else m.get("en")) or ""))
-        for r in replies: items.append((r.get("t", 0), r["id"], tr("Reply") + ": " + (r.get("subject") or ""), r.get("reply", "")))
         for t, mid, title, body in sorted(items, reverse=True):
             it = W.QListWidgetItem((title + "\n" if title else "") + body); it.setData(Qt.ItemDataRole.UserRole, mid); self.list.addItem(it)
         if not items: self.list.addItem(tr("No messages."))
         self.watcher.mark_seen([i[1] for i in items])
 
     def _write(self):
-        MessageDialog(self.lic, self).exec(); self.refresh()
+        ChatDialog(self.lic, self, self.watcher).exec(); self.refresh()
 
     def _diag(self):
         from ..diagnostics import report
@@ -267,13 +319,43 @@ class Watcher(QtCore.QObject):
     changed = Signal(object)
     unread_changed = Signal(int)
     _got = Signal(object)
+    _chat_got = Signal(object)
+    CHAT_EVERY_S = 20
 
     def __init__(self, lic, every_s: int = 1800):
         super().__init__(); self.lic = lic; self._busy = False
         self._got.connect(self._arrived)
         self._t = QtCore.QTimer(self); self._t.setInterval(every_s * 1000); self._t.timeout.connect(self.check)
+        self.chat_unread = 0; self._chat_busy = False; self._chat_after = 0; self._chat_owner: list = []
+        self._chat_got.connect(self._chat_arrived)
+        self._ct = QtCore.QTimer(self); self._ct.setInterval(self.CHAT_EVERY_S * 1000); self._ct.timeout.connect(self.poll_chat)
 
-    def start(self): self._t.start(); self.check()
+    def start(self): self._t.start(); self._ct.start(); self.check(); self.poll_chat()
+
+    # ---- the owner's messages in the conversation: a light check every 20 s (the open window asks every 3 s) ----
+    def poll_chat(self):
+        if self._chat_busy or self.lic.last is None: return
+        self._chat_busy = True; after = self._chat_after
+        def work():
+            try: r = self.lic.chat_poll(after, read=False)
+            except Exception: r = None
+            self._chat_busy = False; self._chat_got.emit(r)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _chat_arrived(self, r):
+        if not r: return
+        for m in r.get("msgs") or []:
+            self._chat_after = max(self._chat_after, m["id"])
+            if m["who"] == "owner" and not m.get("del") and not m.get("rd") and m["id"] not in self._chat_owner: self._chat_owner.append(m["id"])   # rd = the server already has it as read
+        self._recount()
+
+    def _recount(self):
+        n = len(self._chat_owner)
+        if n != self.chat_unread: self.chat_unread = n; self.unread_changed.emit(self.unread())
+
+    def mark_chat_seen(self, mid: int):
+        """The conversation window showed the owner's messages up to number `mid` (the server marks them read at the same time)."""
+        self._chat_owner = [i for i in self._chat_owner if i > mid]; self._recount()
 
     def check(self):
         if self._busy: return
@@ -281,8 +363,6 @@ class Watcher(QtCore.QObject):
         def work():
             try:
                 v = self.lic.evaluate()
-                try: self.lic.reply_ids = [r["id"] for r in self.lic.replies()]
-                except Exception: pass
             finally: self._busy = False
             self._got.emit(v)
         threading.Thread(target=work, daemon=True).start()
@@ -292,8 +372,8 @@ class Watcher(QtCore.QObject):
 
     def unread(self) -> int:
         seen = set(self.lic.store.settings.get("msgs_seen") or [])
-        ids = [m["id"] for m in (self.lic.msgs or [])] + list(getattr(self.lic, "reply_ids", []) or [])
-        return len([i for i in ids if i not in seen])
+        ids = [m["id"] for m in (self.lic.msgs or [])]
+        return len([i for i in ids if i not in seen]) + self.chat_unread
 
     def mark_seen(self, ids):
         s = self.lic.store.settings; cur = set(s.get("msgs_seen") or []); new = cur | set(ids)

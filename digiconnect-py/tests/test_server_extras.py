@@ -31,22 +31,73 @@ def test_every_panel_page_renders_without_php_errors(srv):
         assert f"?p={p}" in a.page("dashboard")                                                    # in the menu
 
 
-def test_contact_form_to_inbox_reply_and_the_user_gets_it(srv):
+def chat_api(a, action, **f):
+    """The panel's chat API as its page script calls it (GET for lists, POST with the page's CSRF token for sending)."""
+    if not f: return json.loads(a.op.open(a.base + "?chatapi=" + action).read())
+    c = re.search(r'CSRF="([0-9a-f]+)"', a.page("chat")).group(1)
+    return json.loads(a.op.open(a.base + "?chatapi=" + action, urllib.parse.urlencode(dict(csrf=c, **f)).encode()).read())
+
+
+def test_a_message_from_the_program_is_a_conversation_the_owner_answers_and_the_user_gets(srv):
     l = lic(srv, "inst-1"); l.register(PERSON)
     assert 'id="ctf"' in get(srv, "index.php") and "talk.php" in get(srv, "index.php")            # the public page has the form and the chat link
     r = post_json(srv, "inbox.php", dict(src="app", id="inst-1", call="sa7svr", topic="bug", subject="Hi", body="it crashes", version="2.2.0"))
-    assert r["ok"] == 1
+    assert r["ok"] == 1 and post_json(srv, "inbox.php", dict(body=""))["ok"] == 0
+    assert srv.sql("SELECT COUNT(*) n FROM dc_inbox")[0]["n"] == 0                                 # not in the inbox any more: it is a conversation
+    a = Admin(srv.base); th = chat_api(a, "threads")["threads"]
+    t = [x for x in th if x["inst"] == "inst-1"][0]
+    assert t["unread"] == 1 and "it crashes" in t["last"] and t["call"]                            # the thread belongs to the installation
+    assert chat_api(a, "send", token=t["token"], body="please update")["ok"] == 1
+    poll = json.loads(get(srv, "inbox.php?chat=poll&id=inst-1&after=0"))                           # the program asks for its conversation
+    assert [m["body"] for m in poll["msgs"]] == ["Hi\n\nit crashes", "please update"] and [m["who"] for m in poll["msgs"]] == ["user", "owner"]
+    assert "please update" in get(srv, "inbox.php?poll=1&id=inst-1")                               # older programs still get the owner's words as replies
+    assert json.loads(get(srv, "inbox.php?chat=poll&id=inst-1&after=%d" % poll["msgs"][-1]["id"]))["msgs"] == []
+    assert chat_api(a, "msgs&t=" + t["token"] + "&after=0")["msgs"][1]["rd"] == 0                  # fetched in the background: not "read" yet
+    get(srv, "inbox.php?chat=poll&id=inst-1&after=0&read=1")                                          # the user opens the conversation
+    assert chat_api(a, "msgs&t=" + t["token"] + "&after=0")["msgs"][1]["rd"] == 1                  # now the owner sees that it was read
+
+
+def test_the_owner_can_start_a_conversation_with_any_user_from_the_users_list(srv):
+    l = lic(srv, "inst-7"); l.register(PERSON)
+    a = Admin(srv.base)
+    users = chat_api(a, "threads&users=1")["threads"]
+    u = [x for x in users if x["inst"] == "inst-7"][0]                                              # listed although the user never wrote
+    assert u["token"] and chat_api(a, "threads&users=1&q=zzzz-none")["threads"] == []
+    info = chat_api(a, "msgs&t=" + u["token"] + "&after=0&i=inst-7")
+    assert info["ok"] == 1 and info["msgs"] == [] and info["inst"] == "inst-7"
+    assert chat_api(a, "send", token=u["token"], inst="inst-7", body="Hello, new version is out")["ok"] == 1
+    poll = json.loads(get(srv, "inbox.php?chat=poll&id=inst-7&after=0"))
+    assert [(m["who"], m["body"]) for m in poll["msgs"]] == [("owner", "Hello, new version is out")]
+    post_form(srv, "inbox.php", chat="send", id="inst-7", body="thank you")                          # the user answers in the same conversation
+    th = [x for x in chat_api(a, "threads")["threads"] if x["inst"] == "inst-7"]
+    assert len(th) == 1 and th[0]["unread"] == 1 and th[0]["on"] == 1 and "thank you" in th[0]["last"]
+    assert json.loads(get(srv, "inbox.php?chat=poll&id=nobody&after=0"))["msgs"] == []              # an unknown id never creates a conversation
+    assert srv.sql("SELECT COUNT(*) n FROM dc_chat WHERE token=?", chat_api(a, "threads")["threads"][0]["token"])[0]["n"] == 2
+
+
+def test_diagnostics_stay_reports_and_a_web_form_message_without_an_installation_stays_in_the_inbox(srv):
+    l = lic(srv, "inst-2"); l.register(PERSON)
+    d = post_json(srv, "inbox.php", dict(src="app", id="inst-2", topic="diagnostics", subject="Diagnostics 2.3", body="LOG LINE " * 50))
     w = post_json(srv, "inbox.php", dict(src="web", lang="en", topic="reinstall", email="x@example.org", body="lost the installer"))
-    assert w["ok"] == 1 and post_json(srv, "inbox.php", dict(body=""))["ok"] == 0
+    assert d["ok"] == 1 and w["ok"] == 1
     a = Admin(srv.base); html = a.page("inbox")
-    assert "it crashes" in html and "lost the installer" in html and "x@example.org" in html
-    a.post("inbox", "inbox_reply", iid_msg=str(r["id"]), reply="please update")
-    m = srv.sql("SELECT status, reply FROM dc_inbox WHERE id=?", r["id"])[0]
-    assert (m["status"], m["reply"]) == ("replied", "please update")
-    assert srv.sql("SELECT target, body FROM dc_messages")[0] == dict(target="inst-1", body="please update")   # queued as a message for that installation
-    assert "please update" in get(srv, "inbox.php?poll=1&id=inst-1")                                 # and visible to the poll
+    assert "LOG LINE" in html and "lost the installer" in html and "x@example.org" in html
+    assert srv.sql("SELECT COUNT(*) n FROM dc_chat")[0]["n"] == 0                                    # reports are not talk
     a.post("inbox", "inbox_close", iid_msg=str(w["id"]))
     assert "lost the installer" not in a.page("inbox")
+
+
+def test_the_old_inbox_moves_into_the_conversations_once_and_nothing_is_lost(srv):
+    l = lic(srv, "inst-3"); l.register(PERSON)
+    srv.sql("INSERT INTO dc_inbox(t,install,call,topic,subject,body,ip,src,status,reply,reply_t) VALUES(1000,'inst-3','SA7SVR','bug','Old','old problem','1.1.1.1','app','replied','old answer',2000)")
+    srv.sql("INSERT INTO dc_inbox(t,install,call,topic,subject,body,ip,src,status) VALUES(1500,'','','diagnostics','Diag','report','1.1.1.1','app','new')")
+    srv.sql("DELETE FROM dc_kv WHERE k='chat_unified_v1'")
+    a = Admin(srv.base); a.page("chat")                                                              # the next page load runs the move
+    poll = json.loads(get(srv, "inbox.php?chat=poll&id=inst-3&after=0"))
+    assert [(m["who"], m["body"]) for m in poll["msgs"]] == [("user", "Old\n\nold problem"), ("owner", "old answer")]
+    assert srv.sql("SELECT COUNT(*) n FROM dc_inbox WHERE status<>'closed'")[0]["n"] == 1             # only the diagnostics report is still open
+    a.page("chat"); a.page("dashboard")
+    assert len(json.loads(get(srv, "inbox.php?chat=poll&id=inst-3&after=0"))["msgs"]) == 2             # a second run adds nothing
 
 
 def test_inbox_flood_guard(srv):

@@ -58,23 +58,37 @@ if ($auth && (isset($_GET['chatapi']) || isset($_GET['chatimg']))) {
   if ((int)dc_kv('chat_owner_seen', 0) < time() - 5) dc_kv_set('chat_owner_seen', time());   // "SA7SVR is online" for the visitors
   try {
     if ($ca === 'threads') {
-      $arch = (int)($_GET['arch'] ?? 0) ? 1 : 0; $needle = mb_strtolower(trim((string)($_GET['q'] ?? '')));
+      $arch = (int)($_GET['arch'] ?? 0) ? 1 : 0; $needle = mb_strtolower(trim((string)($_GET['q'] ?? ''))); $usersMode = (int)($_GET['users'] ?? 0) ? 1 : 0;
       $rows = dc_q("SELECT c.token, MAX(c.t) lt, SUM(c.who='user' AND c.read_owner=0 AND c.del=0) unread, COUNT(*) n,
           (SELECT CASE WHEN c2.del=1 THEN '' WHEN c2.body='' AND c2.img<>'' THEN '\u{1F4F7}' ELSE c2.body END FROM dc_chat c2 WHERE c2.token=c.token ORDER BY c2.id DESC LIMIT 1) last,
           (SELECT c2.who FROM dc_chat c2 WHERE c2.token=c.token ORDER BY c2.id DESC LIMIT 1) lastwho,
           (SELECT \"call\" FROM dc_chat c3 WHERE c3.token=c.token AND \"call\"<>'' ORDER BY c3.id ASC LIMIT 1) callsign,
           (SELECT name FROM dc_chat c4 WHERE c4.token=c.token AND name<>'' ORDER BY c4.id ASC LIMIT 1) name,
           (SELECT email FROM dc_chat c5 WHERE c5.token=c.token AND email<>'' ORDER BY c5.id ASC LIMIT 1) email,
-          COALESCE(h.arch,0) arch, COALESCE(h.pin,0) pin, COALESCE(h.seen_u,0) seen_u, COALESCE(h.typ_u,0) typ_u
+          COALESCE(h.arch,0) arch, COALESCE(h.pin,0) pin, COALESCE(h.seen_u,0) seen_u, COALESCE(h.typ_u,0) typ_u, COALESCE(h.inst,'') inst
         FROM dc_chat c LEFT JOIN dc_chat_th h ON h.token=c.token GROUP BY c.token ORDER BY COALESCE(h.pin,0) DESC, lt DESC LIMIT 400")->fetchAll();
-      $out = []; $unreadAll = 0; $archN = 0; $now = time();
+      $out = []; $unreadAll = 0; $archN = 0; $now = time(); $have = [];
       foreach ($rows as $r) {
+        $in = $r['inst'] !== '' ? dc_inst_contact($r['inst']) : [];
+        if ($in) { $r['name'] = $r['name'] ?: (string)($in['name'] ?? ''); $r['callsign'] = $r['callsign'] ?: (string)($in['call'] ?? ''); $r['email'] = $r['email'] ?: (string)($in['mail'] ?? ''); $have[$r['inst']] = 1; }
         if ((int)$r['arch']) { $archN++; if ((int)$r['unread'] > 0) { dc_q('UPDATE dc_chat_th SET arch=0 WHERE token=?', [$r['token']]); $r['arch'] = 0; $archN--; } }   // a new message brings a chat back from the archive
         $unreadAll += (int)$r['unread'];
-        if ((int)$r['arch'] !== $arch) continue;
+        if ($usersMode || (int)$r['arch'] !== $arch) continue;
         $hay = mb_strtolower($r['name'] . ' ' . $r['callsign'] . ' ' . $r['email'] . ' ' . $r['last']);
         if ($needle !== '' && mb_strpos($hay, $needle) === false) continue;
-        $out[] = ['token' => $r['token'], 'name' => (string)$r['name'], 'call' => (string)$r['callsign'], 'email' => (string)$r['email'], 'last' => mb_substr((string)$r['last'], 0, 90), 'lastwho' => $r['lastwho'], 'lt' => (int)$r['lt'], 'unread' => (int)$r['unread'], 'pin' => (int)$r['pin'], 'on' => $r['seen_u'] > $now - 15 ? 1 : 0, 'typ' => $r['typ_u'] > $now - 4 ? 1 : 0];
+        $on = ($r['seen_u'] > $now - 40 && $r['inst'] !== '') || $r['seen_u'] > $now - 15 || ($in && (int)($in['last_ping'] ?? 0) > $now - 90);
+        $out[] = ['token' => $r['token'], 'inst' => (string)$r['inst'], 'name' => (string)$r['name'], 'call' => (string)$r['callsign'], 'email' => (string)$r['email'], 'last' => mb_substr((string)$r['last'], 0, 90), 'lastwho' => $r['lastwho'], 'lt' => (int)$r['lt'], 'unread' => (int)$r['unread'], 'pin' => (int)$r['pin'], 'on' => $on ? 1 : 0, 'typ' => $r['typ_u'] > $now - 4 ? 1 : 0];
+      }
+      if ($usersMode) {   // everybody who has the program, also those who never wrote: pick one and write to them
+        $byInst = []; foreach ($rows as $r) if ($r['inst'] !== '') $byInst[$r['inst']] = $r;
+        foreach (dc_q("SELECT id,\"call\",name,mail,version,os,last_ping,last_seen FROM dc_installs ORDER BY CASE WHEN last_ping>? THEN 0 ELSE 1 END, last_seen DESC LIMIT 600", [$now - 90])->fetchAll() as $in) {
+          $hay = mb_strtolower($in['name'] . ' ' . $in['call'] . ' ' . $in['mail'] . ' ' . $in['version'] . ' ' . dc_inst_no($in['id']));
+          if ($needle !== '' && mb_strpos($hay, $needle) === false) continue;
+          $r = $byInst[$in['id']] ?? null;
+          $out[] = ['token' => dc_inst_token($in['id']), 'inst' => $in['id'], 'name' => (string)$in['name'], 'call' => (string)$in['call'], 'email' => (string)$in['mail'],
+            'last' => $r ? mb_substr((string)$r['last'], 0, 90) : trim(($in['version'] ? 'v' . $in['version'] : '') . ' ' . $in['os']), 'lastwho' => $r ? $r['lastwho'] : '', 'lt' => $r ? (int)$r['lt'] : (int)$in['last_seen'],
+            'unread' => $r ? (int)$r['unread'] : 0, 'pin' => 0, 'on' => (int)$in['last_ping'] > $now - 90 ? 1 : 0, 'typ' => 0];
+        }
       }
       dc_chat_json(['ok' => 1, 'threads' => $out, 'unread' => $unreadAll, 'archived' => $archN, 'now' => $now]);
     }
@@ -87,8 +101,13 @@ if ($auth && (isset($_GET['chatapi']) || isset($_GET['chatimg']))) {
       $th = dc_q('SELECT * FROM dc_chat_th WHERE token=?', [$tk])->fetch() ?: [];
       $who = dc_q("SELECT \"call\",email,name FROM dc_chat WHERE token=? AND who='user' AND (\"call\"<>'' OR name<>'' OR email<>'') ORDER BY id ASC LIMIT 1", [$tk])->fetch() ?: [];
       $first = (int)dc_scalar('SELECT MIN(t) FROM dc_chat WHERE token=?', [$tk]);
-      $inst = $who ? dc_inst_for($who['call'] ?? '', $who['email'] ?? '') : false;
-      dc_chat_json(['ok' => 1, 'msgs' => $msgs, 'upd' => $upd, 'on' => (int)($th['seen_u'] ?? 0) > $now - 15 ? 1 : 0, 'typ' => (int)($th['typ_u'] ?? 0) > $now - 4 ? 1 : 0, 'arch' => (int)($th['arch'] ?? 0), 'pin' => (int)($th['pin'] ?? 0), 'note' => (string)($th['note'] ?? ''),
+      $iid = (string)($th['inst'] ?? '');
+      if ($iid === '') { $q = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($_GET['i'] ?? '')); if ($q !== '' && dc_inst_token($q) === $tk && dc_inst_contact($q)) $iid = $q; }   // an installation the owner starts to write to
+      $ic = $iid !== '' ? dc_inst_contact($iid) : [];
+      if ($ic) { $who = ['call' => ($who['call'] ?? '') ?: (string)($ic['call'] ?? ''), 'name' => ($who['name'] ?? '') ?: (string)($ic['name'] ?? ''), 'email' => ($who['email'] ?? '') ?: (string)($ic['mail'] ?? '')]; }
+      $inst = $ic ? ['id' => $iid] : ($who ? dc_inst_for($who['call'] ?? '', $who['email'] ?? '') : false);
+      $onl = (int)($th['seen_u'] ?? 0) > $now - ($iid !== '' ? 40 : 15) || ($ic && (int)($ic['last_ping'] ?? 0) > $now - 90);
+      dc_chat_json(['ok' => 1, 'msgs' => $msgs, 'upd' => $upd, 'on' => $onl ? 1 : 0, 'typ' => (int)($th['typ_u'] ?? 0) > $now - 4 ? 1 : 0, 'arch' => (int)($th['arch'] ?? 0), 'pin' => (int)($th['pin'] ?? 0), 'note' => (string)($th['note'] ?? ''),
         'name' => (string)($who['name'] ?? ''), 'call' => (string)($who['call'] ?? ''), 'email' => (string)($who['email'] ?? ''), 'first' => $first, 'inst' => $inst ? $inst['id'] : '', 'now' => $now]);
     }
     if (!$post) dc_chat_json(['ok' => 0]);
@@ -97,6 +116,8 @@ if ($auth && (isset($_GET['chatapi']) || isset($_GET['chatimg']))) {
       $body = trim((string)($_POST['body'] ?? '')); if (function_exists('mb_substr')) $body = mb_substr($body, 0, 4000);
       try { $img = dc_chat_save_image('image'); } catch (Exception $e) { dc_chat_json(['ok' => 0, 'err' => dc_chat_img_error($e->getMessage(), $LANG)]); }
       if ($body === '' && $img === '') dc_chat_json(['ok' => 0]);
+      $ii = preg_replace('/[^A-Za-z0-9_-]/', '', (string)($_POST['inst'] ?? ''));
+      if ($ii !== '' && dc_inst_token($ii) === $tk && dc_inst_contact($ii)) dc_upsert('dc_chat_th', ['token' => $tk], ['inst' => $ii]);   // the owner wrote first: the thread now belongs to that installation
       dc_q("INSERT INTO dc_chat(token,t,who,body,img,read_owner,read_user) VALUES(?,?,'owner',?,?,1,0)", [$tk, time(), $body, $img]);
       $id = (int)dc_db()->lastInsertId(); dc_q("UPDATE dc_chat SET read_owner=1 WHERE token=? AND who='user'", [$tk]); dc_q('UPDATE dc_chat_th SET typ_o=0 WHERE token=?', [$tk]);
       dc_event('chat_reply', $tk . '|' . mb_substr($body !== '' ? $body : '[photo]', 0, 60));
@@ -169,7 +190,7 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       $te = substr(trim($_POST['title_el'] ?? ''), 0, 200); $tn = substr(trim($_POST['title_en'] ?? ''), 0, 200);
       dc_q("INSERT INTO dc_messages(t,scope,target,title,body,title_el,title_en,body_el,body_en,link,until,active) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)", [time(), $target ? 'one' : 'all', $target, $te ?: $tn, substr($el ?: $en, 0, 4000), $te, $tn, substr($el, 0, 4000), substr($en, 0, 4000), $link, $days ? time() + $days * 86400 : 0]);
       dc_event('msg_send', ($target ? dc_inst_no($target) : 'all') . '|' . substr($el ?: $en, 0, 60));
-      flash('ok', L('Το μήνυμα στάλθηκε. Ο server το προσφέρει σε κάθε έλεγχο· το πρόγραμμα δεν το εμφανίζει ακόμη.', 'Message sent. The server offers it at every check; the program does not show it yet.'));
+      flash('ok', L('Η ανακοίνωση στάλθηκε· το πρόγραμμα την παίρνει στον επόμενο έλεγχο.', 'Announcement sent; the program picks it up at its next check.'));
     }
   }
   if ($a === 'msg_send') { dc_q("INSERT INTO dc_messages(t,scope,target,title,body,active) VALUES(?,?,?,?,?,1)", [time(), ($_POST['scope'] ?? 'all'), trim($_POST['target'] ?? ''), trim($_POST['title'] ?? ''), trim($_POST['body'] ?? '')]); dc_event('msg_send', $_POST['title'] ?? ''); flash('ok', L('Το μήνυμα στάλθηκε', 'Message sent')); }
@@ -368,7 +389,7 @@ if (!empty($_SESSION['dc_flash'])) { $flash = $_SESSION['dc_flash']; unset($_SES
 $p = $_GET['p'] ?? 'dashboard';
 $PAGES = ['dashboard' => L('Επισκόπηση','Overview','Översikt'), 'stats' => L('Στατιστικά','Statistics','Statistik'), 'releases' => L('Εκδόσεις','Releases','Versioner'),
   'installs' => L('Εγκαταστάσεις','Installations','Installationer'), 'demos' => L('Demo','Demo','Demo'), 'downloads' => L('Λήψεις / Εγγραφές','Downloads / Sign-ups','Nedladdningar'),
-  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'modes' => L('Modes / Πολιτικές','Modes / Policies','Lägen / Regler'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Μηνύματα','Messages','Meddelanden'), 'inbox' => L('Μηνύματα χρηστών','From users','Från användare'), 'chat' => L('Συνομιλίες','Chats','Chattar'),
+  'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'modes' => L('Modes / Πολιτικές','Modes / Policies','Lägen / Regler'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Ανακοινώσεις','Announcements','Meddelanden till alla'), 'inbox' => L('Αναφορές','Reports','Rapporter'), 'chat' => L('Συνομιλίες','Chats','Chattar'),
   'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
 if (!isset($PAGES[$p])) $p = 'dashboard';
 
@@ -439,7 +460,7 @@ $SUB = ['stats' => L('Νέες εγκαταστάσεις και λήψεις α
   'payments' => L('Δωρεές PayPal, ποιος πληρώνει και πόσα (€ και SEK ξεχωριστά) και αυτόματη ενεργοποίηση.','PayPal donations, who pays and how much (EUR and SEK separately) and automatic activation.'),
   'messages' => L('Μήνυμα σε όλους ή σε μία εγκατάσταση — εμφανίζεται μέσα στο πρόγραμμα.','A message to everyone or one installation — it shows inside the program.'),
   'demos' => L('Ποιος δοκιμάζει το πρόγραμμα, πόσο χρόνο έχει ακόμη και αν το χρησιμοποίησε.','Who is trying the program, how much time is left and whether it was used.'),
-  'inbox' => L('Μηνύματα που στέλνουν οι χρήστες· απάντησε από εδώ.','Messages from users; reply from here.'),
+  'inbox' => L('Αναφορές διαγνωστικών και μηνύματα από τη φόρμα του site· οι συζητήσεις με χρήστες είναι στις Συνομιλίες.','Diagnostics reports and messages from the website form; conversations with users are in Chats.'),
   'chat' => L('Ζωντανές συνομιλίες από τη σελίδα του DigiConnect.','Live chats from the DigiConnect website.'),
   'activity' => L('Όλα όσα έγιναν, με τη σειρά.','Everything that happened, in order.'),
   'settings' => L('Ενημερώσεις, έλεγχος άδειας και συντήρηση.','Updates, licence gate and maintenance.')];
@@ -892,13 +913,13 @@ elseif ($p === 'servers') {
 
 /* ===================== MESSAGES ===================== */
 elseif ($p === 'messages') {
-  echo '<section class="card"><h2>' . L('Νέο μήνυμα', 'New message') . '</h2><form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="messages"><input type="hidden" name="a" value="msg_new"><div class="g2">'
+  echo '<section class="card"><h2>' . L('Νέα ανακοίνωση', 'New announcement') . '</h2><form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="messages"><input type="hidden" name="a" value="msg_new"><div class="g2">'
     . '<label>' . L('Προς (κενό = όλοι, ή αριθμός DC-…)', 'To (empty = everyone, or a DC-… number)') . '<input name="target" placeholder="' . L('όλοι', 'everyone') . '"></label><label>' . L('Εμφανίζεται για (ημέρες, 0 = πάντα)', 'Shown for (days, 0 = always)') . '<input name="days" type="number" min="0" value="30"></label>'
     . '<label>' . L('Τίτλος (Ελληνικά)', 'Title (Greek)') . '<input name="title_el" maxlength="200"></label><label>' . L('Τίτλος (Αγγλικά)', 'Title (English)') . '<input name="title_en" maxlength="200"></label>'
     . '<label>' . L('Κείμενο (Ελληνικά)', 'Text (Greek)') . '<textarea name="body_el" rows="5"></textarea></label><label>' . L('Κείμενο (Αγγλικά)', 'Text (English)') . '<textarea name="body_en" rows="5"></textarea></label>'
     . '<label style="grid-column:1/-1">' . L('Σύνδεσμος (προαιρετικό, https://…)', 'Link (optional, https://…)') . '<input name="link"></label></div>'
-    . '<div class="help">' . L('Ο server προσφέρει το μήνυμα σε κάθε έλεγχο (όλοι ή μία εγκατάσταση). Προσοχή: το πρόγραμμα DigiConnect δεν το εμφανίζει ακόμη — χρειάζεται αλλαγή στο πρόγραμμα.', 'The server offers the message at every check (everyone or one installation). Note: the DigiConnect program does not show it yet — that needs a change in the program.') . '</div><button class="btn pri">' . L('Αποστολή', 'Send') . '</button></form></section>';
-  echo '<section class="card"><h2>' . L('Μηνύματα', 'Messages') . '</h2><div class="tw"><table class="tbl"><tr><th>' . L('Ώρα', 'Time') . '</th><th>' . L('Προς', 'To') . '</th><th>' . L('Μήνυμα', 'Message') . '</th><th>' . L('Κατάσταση', 'State') . '</th><th></th></tr>';
+    . '<div class="help">' . L('Ανακοίνωση: το πρόγραμμα την εμφανίζει στο παράθυρο «Άδεια και μηνύματα». Για να γράψεις σε ΕΝΑΝ χρήστη, χρησιμοποίησε Συνομιλίες › Χρήστες.', 'An announcement: the program shows it in the “Licence and messages” window. To write to ONE user, use Chats › Users.') . '</div><button class="btn pri">' . L('Αποστολή', 'Send') . '</button></form></section>';
+  echo '<section class="card"><h2>' . L('Ανακοινώσεις', 'Announcements') . '</h2><div class="tw"><table class="tbl"><tr><th>' . L('Ώρα', 'Time') . '</th><th>' . L('Προς', 'To') . '</th><th>' . L('Μήνυμα', 'Message') . '</th><th>' . L('Κατάσταση', 'State') . '</th><th></th></tr>';
   foreach (dc_q('SELECT * FROM dc_messages ORDER BY t DESC LIMIT 200')->fetchAll() as $m) {
     $live = $m['active'] && (!(int)$m['until'] || (int)$m['until'] > time()); $ttl = $m['title_el'] ?: ($m['title_en'] ?: $m['title']); $bd = $m['body_el'] ?: ($m['body_en'] ?: $m['body']);
     echo '<tr><td>' . dc_dt($m['t']) . '</td><td>' . ($m['target'] ? '<a href="?p=installs&q=' . urlencode(dc_inst_no($m['target'])) . '">' . h(dc_inst_no($m['target']) ?: $m['target']) . '</a>' : L('όλοι', 'everyone')) . '</td><td><b>' . h($ttl) . '</b><br><small>' . nl2br(h(mb_substr((string)$bd, 0, 300))) . '</small></td><td>' . ($live ? '<span class="pill ok">' . L('ενεργό', 'active') . '</span>' . ((int)$m['until'] ? '<br><small class="muted">' . L('έως ', 'until ') . dc_dt($m['until']) . '</small>' : '') : '<span class="pill">' . L('τέλος', 'ended') . '</span>') . '</td><td>'
@@ -1029,7 +1050,7 @@ elseif ($p === 'inbox') {
 /* ===================== LIVE CHATS ===================== */
 elseif ($p === 'chat') {
   // ---- live chats from the website (talk.php): two-pane messenger, pictures, formatting, emoji, archive — everything stays on this server ----
-  $LB = ['title' => L('Συνομιλίες', 'Chats'), 'pick' => L('Διάλεξε μια συνομιλία από τα αριστερά.', 'Pick a chat from the list.'), 'drop' => L('Άφησε τη φωτογραφία εδώ', 'Drop the picture here'),
+  $LB = ['users' => L('Χρήστες', 'Users'), 'nousers' => L('Κανένας χρήστης δεν έχει εγκαταστήσει ακόμη το πρόγραμμα.', 'Nobody has installed the program yet.'), 'title' => L('Συνομιλίες', 'Chats'), 'pick' => L('Διάλεξε μια συνομιλία από τα αριστερά.', 'Pick a chat from the list.'), 'drop' => L('Άφησε τη φωτογραφία εδώ', 'Drop the picture here'),
     'hint' => L('Enter = αποστολή · Shift+Enter = νέα γραμμή', 'Enter = send · Shift+Enter = new line'), 'send' => L('Αποστολή', 'Send'), 'det' => L('Στοιχεία', 'Details'), 'note' => L('Ιδιωτική σημείωση', 'Private note'),
     'notehint' => L('Τη βλέπεις μόνο εσύ — δεν φαίνεται στον επισκέπτη.', 'Only you see this — never shown to the visitor.'), 'search' => L('Αναζήτηση…', 'Search…'), 'active' => L('Ενεργές', 'Active'), 'archived' => L('Αρχείο', 'Archive'),
     'ph' => L('Γράψε μήνυμα…', 'Write a message…'), 'newmsg' => L('νέα μηνύματα', 'new messages'), 'info' => L('Στοιχεία επισκέπτη', 'Visitor details'), 'pin' => L('Καρφίτσωμα', 'Pin'), 'archive' => L('Αρχειοθέτηση', 'Archive'), 'unarchive' => L('Επαναφορά από το αρχείο', 'Restore from archive'),
@@ -1147,7 +1168,7 @@ body{grid-template-columns:230px minmax(0,1fr)!important}.rail{display:none!impo
   <div class="hc-lh">
    <h2>💬 <span id="L_title"></span> <span class="bd" id="hcBadge" style="display:none"></span></h2>
    <div class="hc-srch"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="hcQ" type="search" autocomplete="off"></div>
-   <div class="hc-tabs"><button id="tabA" class="on"></button><button id="tabB"></button></div>
+   <div class="hc-tabs"><button id="tabA" class="on"></button><button id="tabU"></button><button id="tabB"></button></div>
   </div>
   <div class="hc-list" id="hcList"></div>
  </div>
@@ -1197,9 +1218,9 @@ body{grid-template-columns:230px minmax(0,1fr)!important}.rail{display:none!impo
 (function(){
 var C=window.DCChat, CSRF=__CSRF__, LB=__LBL__, OPEN=__TOKEN__;
 var $=function(i){return document.getElementById(i);};
-var cur='', last=0, arch=0, threads=[], lastUnread=-1, stick=true, pendingFile=null, sending=false, lastDay='', lastWho='', typSent=0, srch='', loadedFirst=false, now=Math.floor(Date.now()/1000), seenIds={}, info={};
+var cur='', curInst='', usersMode=0, last=0, arch=0, threads=[], lastUnread=-1, stick=true, pendingFile=null, sending=false, lastDay='', lastWho='', typSent=0, srch='', loadedFirst=false, now=Math.floor(Date.now()/1000), seenIds={}, info={};
 ['title','pick','drop','hint','send','det','note','notehint'].forEach(function(k){var e=$('L_'+k);if(e)e.textContent=LB[k];});
-$('hcQ').placeholder=LB.search;$('tabA').textContent=LB.active;$('hcTa').placeholder=LB.ph;$('hcNew').textContent='↓ '+LB.newmsg;
+$('hcQ').placeholder=LB.search;$('tabA').textContent=LB.active;$('tabU').textContent=LB.users;$('hcTa').placeholder=LB.ph;$('hcNew').textContent='↓ '+LB.newmsg;
 $('bInfo').title=LB.info;$('bPin').title=LB.pin;$('bArch').title=LB.archive;$('bDel').title=LB.delthread;$('tP').title=LB.photo;$('tB').title='**'+LB.bold+'**';$('tI').title='*'+LB.ital+'*';$('tC').title=LB.code;
 function api(a,fd){var u='?chatapi='+a;if(!fd)return fetch(u,{credentials:'same-origin'}).then(function(r){return r.json();});return fetch(u,{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();});}
 function post(a,o){var fd=new FormData();fd.append('csrf',CSRF);fd.append('token',cur);for(var k in o)fd.append(k,o[k]);return api(a,fd);}
@@ -1211,24 +1232,24 @@ function setBadge(n){var b=$('hcBadge');b.style.display=n?'':'none';b.textConten
 /* ---------- thread list ---------- */
 function renderList(){
  var L=$('hcList');L.innerHTML='';
- if(!threads.length){L.innerHTML='<div class="hc-none">'+C.esc(arch?LB.noarch:(srch?LB.nores:LB.nochats))+'</div>';return;}
+ if(!threads.length){L.innerHTML='<div class="hc-none">'+C.esc(usersMode?(srch?LB.nores:LB.nousers):(arch?LB.noarch:(srch?LB.nores:LB.nochats)))+'</div>';return;}
  threads.forEach(function(t){
   var d=document.createElement('div');d.className='hc-th'+(t.token===cur?' on':'');d.dataset.t=t.token;
   var pv=t.typ?'<span class="typ">'+C.esc(LB.typing)+'</span>':'<span>'+(t.lastwho==='owner'?C.esc(LB.you)+': ':'')+C.esc(t.last.replace(/[*`_~]/g,''))+'</span>';
   d.innerHTML='<div class="hc-av" style="background:'+hue(t.token)+'">'+C.esc(ini(t))+'<i class="'+(t.on?'on':'')+'"></i></div><div class="hc-tb"><div class="hc-t1"><b>'+C.esc(nm(t))+'</b>'+(t.pin?'<svg class="hc-pin" viewBox="0 0 24 24"><path d="M12 17v5M9 3h6l-1 6 4 4H6l4-4z"/></svg>':'')+'<small>'+C.ago(t.lt,now,LB)+'</small></div><div class="hc-t2">'+pv+(t.unread?'<em>'+t.unread+'</em>':'')+'</div></div>';
-  d.addEventListener('click',function(){openThread(t.token);});
+  d.addEventListener('click',function(){openThread(t.token,t.inst);});
   L.appendChild(d);});
 }
 var listBusy=false;
 function loadList(){if(listBusy)return;listBusy=true;
- api('threads&arch='+arch+'&q='+encodeURIComponent(srch)).then(function(j){listBusy=false;if(!j||!j.ok)return;
+ api('threads&arch='+arch+'&users='+usersMode+'&q='+encodeURIComponent(srch)).then(function(j){listBusy=false;if(!j||!j.ok)return;
   now=j.now;threads=j.threads;renderList();setBadge(j.unread);$('tabB').textContent=LB.archived+(j.archived?' ('+j.archived+')':'');
   if(lastUnread>=0&&j.unread>lastUnread){C.beep();}lastUnread=j.unread;
   var t=threads.filter(function(x){return x.token===cur;})[0];if(t&&cur){$('hSub').className=t.on?'on':'';}
  }).catch(function(){listBusy=false;});}
 /* ---------- conversation ---------- */
-function openThread(tk){
- cur=tk;last=0;lastDay='';lastWho='';seenIds={};stick=true;info={};$('hcFeed').innerHTML='';$('hcErr').textContent='';clearAtt();
+function openThread(tk,inst){
+ cur=tk;curInst=inst||'';last=0;lastDay='';lastWho='';seenIds={};stick=true;info={};$('hcFeed').innerHTML='';$('hcErr').textContent='';clearAtt();
  $('hcEmpty').style.display='none';$('hcConv').style.display='flex';$('hc').classList.add('open');
  try{history.replaceState(null,'','?p=chat&t='+tk);}catch(e){}
  renderList();loadMsgs(true);setTimeout(function(){$('hcTa').focus();},50);}
@@ -1249,7 +1270,7 @@ function addMsgs(ms){
  if(stick)f.scrollTop=f.scrollHeight;else if(ms.length)$('hcNew').style.display='block';}
 function loadMsgs(first){
  if(!cur)return;var tk=cur;
- api('msgs&t='+tk+'&after='+last).then(function(j){if(!j||!j.ok||tk!==cur)return;now=j.now;
+ api('msgs&t='+tk+'&after='+last+(curInst?'&i='+encodeURIComponent(curInst):'')).then(function(j){if(!j||!j.ok||tk!==cur)return;now=j.now;
   info={name:j.name,call:j.call,email:j.email};
   var nw=j.msgs.filter(function(m){return m.who==='user'&&!seenIds[m.id];}).length;
   addMsgs(j.msgs);
@@ -1274,7 +1295,7 @@ function setFile(f){
 function send(){
  if(sending||!cur)return;var body=$('hcTa').value.trim();if(!body&&!pendingFile)return;
  sending=true;$('hcSend').disabled=true;setErr('');
- var fd=new FormData();fd.append('csrf',CSRF);fd.append('token',cur);fd.append('body',body);if(pendingFile)fd.append('image',pendingFile,pendingFile.name);
+ var fd=new FormData();fd.append('csrf',CSRF);fd.append('token',cur);fd.append('inst',curInst);fd.append('body',body);if(pendingFile)fd.append('image',pendingFile,pendingFile.name);
  api('send',fd).then(function(j){sending=false;$('hcSend').disabled=false;
   if(!j||!j.ok){setErr((j&&j.err)||LB.errsend);return;}
   $('hcTa').value='';$('hcTa').style.height='';clearAtt();stick=true;addMsgs([j.msg]);loadList();$('hcTa').focus();
@@ -1306,8 +1327,10 @@ $('bArch').onclick=function(){var v=$('bArch').classList.contains('on')?0:1;post
 $('bDel').onclick=function(){if(confirm(LB.delthreadq)){post('delthread',{}).then(function(){closeThread();loadList();});}};
 $('hcBack').onclick=closeThread;
 $('hcNote').addEventListener('blur',function(){if(cur)post('note',{note:this.value});});
-$('tabA').onclick=function(){arch=0;$('tabA').classList.add('on');$('tabB').classList.remove('on');loadList();};
-$('tabB').onclick=function(){arch=1;$('tabB').classList.add('on');$('tabA').classList.remove('on');loadList();};
+function setTab(a,u){arch=a;usersMode=u;$('tabA').classList.toggle('on',!a&&!u);$('tabU').classList.toggle('on',!!u);$('tabB').classList.toggle('on',!!a&&!u);loadList();}
+$('tabA').onclick=function(){setTab(0,0);};
+$('tabU').onclick=function(){setTab(0,1);};
+$('tabB').onclick=function(){setTab(1,0);};
 var qt;$('hcQ').addEventListener('input',function(){clearTimeout(qt);var v=this.value;qt=setTimeout(function(){srch=v.trim();loadList();},250);});
 /* ---------- live updates ---------- */
 loadList();if(OPEN)openThread(OPEN);
