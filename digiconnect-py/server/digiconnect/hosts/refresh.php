@@ -42,7 +42,7 @@ foreach ($SOURCES as $file => $urls) {
     if ($rc && $rcTok === '') { $errs[] = 'RefCheck: no token entered (panel > Servers)'; continue; }   // without a token the .txt lists come from the older mirrors
     if ($rc) dc_kv_set("refcheck_try_$file", time());
     $why = ''; $body = fetch_url($u, 25, $why, $rc ? ['Authorization: Token ' . $rcTok] : []);
-    if ($body !== null && !hosts_valid($body, $why)) $body = null;
+    if ($body !== null && !(substr($file, -5) === '.json' ? hosts_shape_ok($file, $body, $why) : hosts_valid($body, $why))) $body = null;
     if ($body !== null && $rc && !hosts_shape_ok($file, $body, $why)) $body = null;
     if ($body !== null && $rc && $mine) {                                  // a download that lost more than half of the entries is a broken one, not a real change
       $new = 0; foreach (preg_split('/\r?\n/', $body) as $ln) { $ln = trim($ln); if ($ln !== '' && $ln[0] !== '#') $new++; }

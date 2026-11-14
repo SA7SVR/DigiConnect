@@ -53,23 +53,33 @@ class Workspace(W.QWidget):
             mv.addWidget(self.asl_rem); self.asl_note = label("When ticked, the password is kept in this program's settings file on this computer (not encrypted). Untick it to keep it only in memory.", muted=True); self.asl_note.setWordWrap(True); mv.addWidget(self.asl_note)
             self.asl_user.textChanged.connect(self._asl_login); self.asl_pw.textChanged.connect(self._asl_login); self.asl_rem.toggled.connect(self._asl_login)
         self.srvcard = panel("tx"); sv = vbox(self.srvcard, m=(12, 8, 12, 10), s=4)
-        sv.addWidget(label("Server used for this station", muted=True))
+        self.srv_edit = W.QWidget(); ev = vbox(self.srv_edit, s=4); ev.addWidget(label("Server used for this station", muted=True))
         self.srv_host = W.QLineEdit(); self.srv_port = W.QLineEdit(); self.srv_port.setMaximumWidth(110)
         self.srv_host.setPlaceholderText("host name or IP address"); self.srv_port.setPlaceholderText("port")
-        hr = hbox(s=6); hr.addWidget(field("Server (host / IP)", self.srv_host), 1); hr.addWidget(field("Port", self.srv_port)); sv.addLayout(hr)
-        self.srv_src = label("", muted=True); self.srv_src.setWordWrap(True); sv.addWidget(self.srv_src)
+        hr = hbox(s=6); hr.addWidget(field("Server (host / IP)", self.srv_host), 1); hr.addWidget(field("Port", self.srv_port)); ev.addLayout(hr)
+        self.srv_src = label("", muted=True); self.srv_src.setWordWrap(True); ev.addWidget(self.srv_src)
         br = FlowLayout(hspace=6, vspace=6); self.srv_save = button("Use this address"); self.srv_reset = button("Back to the list value"); br.addWidget(self.srv_save); br.addWidget(self.srv_reset)
-        self.choose = button("Choose DMR server"); self.choose.setVisible(net == "DMR"); br.addWidget(self.choose); sv.addLayout(br)
+        ev.addLayout(br); sv.addWidget(self.srv_edit)
+        # DMR page: the transmit server is picked from the downloaded lists (name + address shown, nothing typed here); the other pages keep their address fields
+        self.tx_title = label("Transmit server (TX)", muted=True); self.tx_name = label(""); self.tx_name.setStyleSheet("font-weight:700;font-size:15px;"); self.tx_addr = label("", muted=True)
+        self.choose = button("Choose DMR server")
+        for w_ in (self.tx_title, self.tx_name, self.tx_addr): sv.addWidget(w_)
+        sv.addWidget(self.choose, 0, Qt.AlignmentFlag.AlignLeft)
+        for w_ in (self.tx_title, self.tx_name, self.tx_addr, self.choose): w_.setVisible(net == "DMR")
+        self.srv_edit.setVisible(net != "DMR")
         if net == "DMR":
+            self.dm_box = W.QWidget(); dv = vbox(self.dm_box, s=4)
             self.dm_pw = W.QLineEdit(); self.dm_pw.setEchoMode(W.QLineEdit.EchoMode.Password); self.dm_pw.setText(ctx.dmr_password)
-            sv.addWidget(field("Password (your BrandMeister hotspot password)", self.dm_pw))
-            self.dm_rem = checkbox("Remember on this computer (enter it only once)"); self.dm_rem.setChecked(bool(ctx.store.settings.get("remember_pw", True))); sv.addWidget(self.dm_rem)
-            self.dm_note = label("Needed to connect to a DMR master. When ticked, it is kept in this program's settings file on this computer (not encrypted).", muted=True); self.dm_note.setWordWrap(True); sv.addWidget(self.dm_note)
-            self.dm_state = label("", muted=True); self.dm_state.setWordWrap(True); sv.addWidget(self.dm_state)
+            dv.addWidget(field("Password (your BrandMeister hotspot password)", self.dm_pw))
+            self.dm_rem = checkbox("Remember on this computer (enter it only once)"); self.dm_rem.setChecked(bool(ctx.store.settings.get("remember_pw", True))); dv.addWidget(self.dm_rem)
+            self.dm_note = label("Needed to connect to a DMR master. When ticked, it is kept in this program's settings file on this computer (not encrypted).", muted=True); self.dm_note.setWordWrap(True); dv.addWidget(self.dm_note)
+            self.dm_state = label("", muted=True); self.dm_state.setWordWrap(True); dv.addWidget(self.dm_state)
             def pw_changed(*_):
                 ctx.set_dmr_password(self.dm_pw.text(), self.dm_rem.isChecked())
                 self.dm_state.setText(tr("No password entered yet") if not self.dm_pw.text() else tr("✓ Password saved on this computer") if self.dm_rem.isChecked() else tr('Password kept only until you close the program ("Remember" is off)'))
             self.dm_pw.textChanged.connect(pw_changed); self.dm_rem.toggled.connect(pw_changed); pw_changed()
+            sv.addWidget(self.dm_box); self.dm_box.setVisible(False)                 # the password and DMR ID are entered once, in Settings > Radio networks
+            self.tx_hint = label("", muted=True); self.tx_hint.setWordWrap(True); sv.addWidget(self.tx_hint)
         self.txname = label(""); self.txname.setVisible(False)
         mv.addWidget(self.srvcard)
         self.addfav = button("☆  Add favorite"); mv.addWidget(self.addfav, 0, Qt.AlignmentFlag.AlignLeft)
@@ -113,9 +123,9 @@ class Workspace(W.QWidget):
         self.list.currentRowChanged.connect(self._picked); self.addfav.clicked.connect(self._togglefav)
         self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: ((ctx.refresh_asl(True) if net == "AllStar" else ctx.refresh_hosts(True)), self.fill()))
         self.rxvol.valueChanged.connect(lambda v: ctx.rules.net_volume.__setitem__(net, v / 100))
-        self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded)
+        self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded); ctx.dmr_server_changed.connect(self._tx_show)
         self.srv_save.clicked.connect(self._srv_save); self.srv_reset.clicked.connect(self._srv_reset); self._srv_key = None
-        ctx.changed.connect(self.refresh); self._hosts_loaded()
+        ctx.changed.connect(self.refresh); self._hosts_loaded(); self._tx_show()
 
     def _dtmf(self):
         t = self.ctx.dtmf_target()
@@ -154,35 +164,16 @@ class Workspace(W.QWidget):
             self.asl_list.addItem(line1 + ("\n" + line2 if line2.strip() else ""))
 
     def _choose_master(self):
-        masters = self.ctx.hosts.dmr_masters()
-        if not masters:
-            self.ctx.toast.emit("The DMR master list is not downloaded yet — press Refresh (needs internet)."); self.ctx.refresh_hosts(True); return
-        dlg = W.QDialog(self); dlg.setWindowTitle(tr("Choose DMR master server")); dlg.resize(560, 520); v = W.QVBoxLayout(dlg)
-        H = type(self.ctx.hosts); netbox = W.QComboBox(); netbox.addItem(tr("All networks"), "")
-        for nm, k in self.ctx.hosts.dmr_networks(): netbox.addItem(f"{nm}  ({k})", nm)
-        cur_host = str(self.ctx.store.settings.get("dmr_server") or "").lower()
-        for m in masters:                                           # open on the network of the master used now
-            if cur_host and m["host"].lower() == cur_host:
-                i = netbox.findData(H.dmr_network(m))
-                if i >= 0: netbox.setCurrentIndex(i)
-                break
-        v.addWidget(label("DMR network (BrandMeister, DMR+, FreeDMR …)", muted=True)); v.addWidget(netbox)
-        q = W.QLineEdit(); q.setPlaceholderText(tr("Search master name, country or host…")); lst = W.QListWidget(); v.addWidget(q); v.addWidget(lst, 1)
-        cnt = W.QLabel(); v.addWidget(cnt)
-        def fillm():
-            t = q.text().strip().lower(); lst.clear(); n = 0; want = netbox.currentData() or ""
-            for m in masters:
-                if want and H.dmr_network(m) != want: continue
-                if t and t not in (m["name"] + " " + m["host"] + " " + m.get("country", "")).lower(): continue
-                it = W.QListWidgetItem(f"{m['name']}\n   {m['host']}:{m['port']}"); it.setData(Qt.ItemDataRole.UserRole, m); lst.addItem(it); n += 1
-            cnt.setText(f"{n} of {len(masters)} masters")
-        q.textChanged.connect(fillm); netbox.currentIndexChanged.connect(lambda *_: fillm()); fillm()
-        bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Ok | W.QDialogButtonBox.StandardButton.Cancel); v.addWidget(bb)
-        bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject); lst.itemDoubleClicked.connect(lambda *_: dlg.accept())
-        if dlg.exec() and lst.currentItem():
-            m = lst.currentItem().data(Qt.ItemDataRole.UserRole); st = self.ctx.store
-            st.settings["dmr_server"], st.settings["dmr_port"] = m["host"], int(m["port"]); st.save_settings(); self._srv_show(None, True)
-            self.ctx.toast.emit(f"DMR master set to {m['name']} ({m['host']}:{m['port']})"); self.ctx.changed.emit()
+        from .dmr_picker import choose_dmr_server
+        choose_dmr_server(self, self.ctx)
+
+    def _tx_show(self):
+        """DMR page: the chosen transmit server (name and address, as the list gives them). Settings > Radio networks carries the same server and port."""
+        if self.net != "DMR": return
+        from .dmr_picker import chosen_name
+        s = self.ctx.store.settings; host, port = str(s.get("dmr_server") or ""), s.get("dmr_port") or ""
+        self.tx_name.setText(chosen_name(self.ctx) if host else tr("No server chosen")); self.tx_addr.setText(f"{host} : {port}" if host else "")
+        self.tx_hint.setText("" if self.ctx.dmr_password and s.get("dmr_id") else tr("Enter your DMR ID and your password in Settings › Radio networks to connect."))
 
     # ---- server address of the selected station (shown from the list, editable, and really used by the engine) ----------
     def _srv_target(self):
@@ -314,7 +305,7 @@ class Workspace(W.QWidget):
         self.sub.setText(f"{t.net} · {t.id}" if mine else "Select an entry in the list on the left.")
         self.addfav.setEnabled(mine)
         self.addfav.setText("★  Remove favorite" if mine and self.ctx.store.is_fav(t.net, t.id) else "☆  Add favorite")
-        self._srv_show(t if mine else None)
+        self._srv_show(t if mine else None); self._tx_show()
         heard = list(self.ctx.last_heard)                    # every network, newest first (a station heard on C4FM also shows on the DMR page)
         self.lh_empty.setVisible(not heard)
         if heard:

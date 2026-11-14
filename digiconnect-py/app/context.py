@@ -22,6 +22,7 @@ class Ctx(QtCore.QObject):
     hosts_changed = Signal()            # the worldwide server lists were (re)loaded
     _hosts_done = Signal(int, object)
     _asl_done = Signal(int, str)
+    dmr_server_changed = Signal()       # a DMR server was picked: the DMR page and Settings > Radio networks show the same server and port
     policy_changed = Signal()           # the owner's server opened/closed a mode or switched transmitting
     asl_links_changed = Signal()        # the list of stations connected to an AllStar node was updated
     _asl_links_done = Signal(str, object)
@@ -269,6 +270,14 @@ class Ctx(QtCore.QObject):
         if changed: self.store.save_settings()
         self.asl_password = pw
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = pw
+
+    def set_dmr_server(self, m: dict):
+        """A server picked from the downloaded list (or typed in the picker's Manual entry): Server and Port of the DMR settings are set to it."""
+        s = self.store.settings; host, port = str(m["host"]), int(m["port"])
+        name = "Manual entry" if m.get("src") == "manual" else (m.get("name") or host).replace("_", " ")
+        s["dmr_server"], s["dmr_port"] = host, port; s["dmr_server_pick"] = {"host": host, "port": port, "name": name}
+        self.store.save_settings(); self.toast.emit(f"DMR server: {name} ({host}:{port})")
+        self.dmr_server_changed.emit(); self.changed.emit()
 
     def set_dmr_password(self, pw: str, remember=None):
         s = self.store.settings

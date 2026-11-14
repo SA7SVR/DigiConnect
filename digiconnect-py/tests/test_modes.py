@@ -156,3 +156,40 @@ def test_echolink_closed_by_the_owner_looks_closed(srv, win):
     assert w.ws["EchoLink"].closed_note.isVisibleTo(w.ws["EchoLink"])
     ctx.apply_policy(dict(off=[]))
     assert w.tabs["EchoLink"].text() == "EchoLink · soon" and w.tabs["EchoLink"].property("closed") is False
+
+
+def test_licence_window_says_when_the_servers_answer_was_not_accepted_and_which_modes_are_closed(srv):
+    """If the owner's settings do not arrive (wrong/missing signature key) the person and the owner must be able to SEE it, not guess."""
+    from app.ui.license_dialog import LicenceDialog, Watcher
+    from test_license import lic as mk
+    a = Admin(srv.base); a.post("modes", "mode_set", mode="DMR", state="off")
+    good = mk(srv); good.evaluate(); d = LicenceDialog(Watcher(good)); t = d.status.text()
+    assert "Server answer: ✓" in t and "Closed modes: DMR" in t and good.last_error == ""
+    bad = L.License(good.store, good.params, base=srv.base, hw=good.hw, pubkeys=["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="])
+    bad.evaluate(); assert bad.last_error == "bad signature"
+    t = LicenceDialog(Watcher(bad)).status.text(); assert "Server answer: ✗ bad signature" in t and "not applied" in t
+
+
+def test_block_reaches_a_running_program_within_one_poll_even_with_show_online_off(srv, tmp_path, win):
+    """The owner closes a mode in the panel: the program's own 5-second stamp poll sees it, fetches the signed answer and the mode is stopped at once - no restart, no ping needed."""
+    from app.presence import LiveStamp
+    w, ctx, app = win
+    l = lic(srv); l.register(PERSON); l.evaluate()
+    ctx.store.settings["share_presence"] = False                                                           # the ping is off: the block must still arrive
+    class U:
+        def params(self): return dict(id="inst-1", v="2.3.1", os="linux", arch="x64", shell="2.2.0")
+    live = LiveStamp(U(), srv.base + "rev.php"); got = []
+    live.rev_changed.connect(lambda: got.append(1)); live.rev_changed.connect(lambda: ctx.apply_policy((l.evaluate().info or {}).get("pol")))
+    live._send(); assert live.last_ok and got == [1]                                                       # first stamp: one check at start
+    live._send(); assert got == [1]                                                                         # nothing changed: nothing asked
+    assert ctx.policy.allows("NXDN")
+    Admin(srv.base).post("modes", "mode_set", mode="NXDN", state="off")
+    live._send(); assert got == [1, 1]                                                                      # the very next poll sees it
+    assert not ctx.policy.allows("NXDN") and ctx.policy.allows("DMR")                                        # applied live
+    Admin(srv.base).post("modes", "mode_set", mode="NXDN", state="on")
+    live._send(); assert ctx.policy.allows("NXDN")                                                          # and the unblock the same way
+
+
+def test_rev_php_only_reads_it_creates_no_installation_and_shows_nobody_online(srv):
+    r = json.loads(urllib.request.urlopen(srv.base + "rev.php?id=ghost-1").read()); assert r["ok"] is True and r["rev"] == ""
+    assert srv.sql("SELECT id FROM dc_installs WHERE id='ghost-1'") == []

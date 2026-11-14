@@ -3,11 +3,16 @@ DigiConnect 2.3.2 — Release notes / Σημειώσεις έκδοσης / Vers
 
 ΕΛΛΗΝΙΚΑ
 --------
-ΝΕΑ ΣΤΗΝ 2.3.2 — ΕΠΙΣΗΜΕΣ ΛΙΣΤΕΣ SERVERS
+ΝΕΑ ΣΤΗΝ 2.3.2 — ΕΠΙΣΗΜΕΣ ΛΙΣΤΕΣ SERVERS ΚΑΙ ΕΠΙΛΟΓΗ DMR SERVER
 • Οι λίστες C4FM/YSF, P25, NXDN και M17 κατεβαίνουν από το επίσημο RefCheck.Radio (δεδομένα DVRef) στον server HELLAS Zone και τα προγράμματα τις παίρνουν από εκεί: τα ίδια ονόματα, διευθύνσεις IP και πόρτες για όλους, αυτούσια, χωρίς χειροκίνητες αλλαγές. Οι παλιές δημόσιες πηγές μένουν μόνο ως εφεδρικές όταν ο server δεν απαντά.
 • Ο server κάνει το πολύ μία λήψη την ώρα ανά λίστα (όριο του RefCheck). Αν η λήψη αποτύχει ή η λίστα έρθει ελλιπή, μένει το τελευταίο καλό αντίγραφο. Το attribution header του RefCheck δεν αλλάζει.
 • Panel › Servers: πεδίο για το token του RefCheck (μένει μόνο στον server) και λίστες .txt και .json για manual download.
-• Αμετάβλητα: Modes/Πολιτικές, άδειες, DMR λίστες (δεν άλλαξαν σε αυτή την έκδοση).
+• DMR: οι server λίστες είναι οι επίσημες — BrandMeister API (api.brandmeister.network) και η λίστα Pi-Star — κατεβαίνουν αυτούσιες στον server και τα προγράμματα τις παίρνουν από εκεί. Ίδιες για όλους.
+• Νέο παράθυρο «Choose DMR server»: αναζήτηση, φίλτρο δικτύου, σελίδες των 100, κουμπί Choose σε κάθε γραμμή, Manual entry, Refresh. Μετά την επιλογή το κουτί Transmit server δείχνει όνομα και IP:port και το Settings › Radio networks παίρνει αυτόματα Server/Port. Κάθε χρήστης βάζει το δικό του DMR ID, ESSID και password (με «Remember password»).
+• Παράθυρο άδειας: δείχνει πότε ο server απάντησε και έγινε δεκτός ο έλεγχος υπογραφής, ή γιατί όχι («οι ρυθμίσεις του server δεν εφαρμόζονται»), και ποια modes είναι κλειστά.
+• Panel › Servers: λίστες .txt και .json (YSF, P25, NXDN, M17, BrandMeister) για manual download.
+• Άμεσος αποκλεισμός: το πρόγραμμα ρωτά τον server κάθε 5 δευτερόλεπτα (rev.php, μόνο ανάγνωση, ανεξάρτητα από το «Show me online»). Όταν κλείσεις/ανοίξεις mode ή αλλάξεις άδεια στο panel, η αλλαγή εφαρμόζεται στο πρόγραμμα μέσα σε δευτερόλεπτα, χωρίς επανεκκίνηση, και το mode που έκλεισε σταματά επί τόπου.
+• Αμετάβλητα: Modes/Πολιτικές και άδειες (η λογική δεν άλλαξε).
 
 ENGLISH
 -------
@@ -15,7 +20,12 @@ NEW IN 2.3.2 — OFFICIAL SERVER LISTS
 • The C4FM/YSF, P25, NXDN and M17 lists are downloaded from the official RefCheck.Radio (DVRef data) by the HELLAS Zone server and the programs take them from there: the same names, IP addresses and ports for everybody, as published, with no manual changes. The older public sources remain only as a fallback when the server does not answer.
 • The server makes at most one download per list per hour (RefCheck's rule). If a download fails or arrives incomplete, the last good copy stays. RefCheck's attribution header is not changed.
 • Panel › Servers: a field for the RefCheck token (it stays on the server only) and the .txt and .json lists for manual download.
-• Unchanged: Modes/Policies, licences, DMR lists (not changed in this version).
+• DMR: the server lists are the official ones — the BrandMeister API (api.brandmeister.network) and the Pi-Star list — downloaded as published to the server, and the programs take them from there. The same for everybody.
+• New "Choose DMR server" window: search, network filter, pages of 100, a Choose button on every row, Manual entry, Refresh. After choosing, the Transmit server box shows name and IP:port and Settings › Radio networks gets Server/Port automatically. Every user enters their own DMR ID, ESSID and password (with "Remember password").
+• Licence window: shows when the server answered and its signature was accepted, or why not ("the server's settings are not applied"), and which modes are closed.
+• Panel › Servers: .txt and .json lists (YSF, P25, NXDN, M17, BrandMeister) for manual download.
+• Immediate blocking: the program asks the server every 5 seconds (rev.php, read-only, independent of "Show me online"). When you close/open a mode or change a licence in the panel, the change is applied in the program within seconds, with no restart, and a mode that was closed stops on the spot.
+• Unchanged: Modes/Policies and licences (logic not changed).
 
 SVENSKA
 -------
@@ -23,4 +33,9 @@ NYTT I 2.3.2 — OFFICIELLA SERVERLISTOR
 • Listorna för C4FM/YSF, P25, NXDN och M17 hämtas från den officiella RefCheck.Radio (DVRef-data) av HELLAS Zone-servern, och programmen får dem därifrån: samma namn, IP-adresser och portar för alla, precis som publicerade, utan manuella ändringar. De äldre publika källorna finns kvar bara som reserv när servern inte svarar.
 • Servern gör högst en hämtning per lista och timme (RefChecks regel). Om en hämtning misslyckas eller kommer ofullständig behålls den senaste fungerande kopian. RefChecks attributionsrubrik ändras inte.
 • Panel › Servers: fält för RefCheck-token (finns bara på servern) samt .txt- och .json-listorna för manuell nedladdning.
-• Oförändrat: lägen/regler, licenser, DMR-listor (inte ändrade i denna version).
+• DMR: serverlistorna är de officiella — BrandMeister API (api.brandmeister.network) och Pi-Star-listan — hämtas som publicerade till servern och programmen får dem därifrån. Samma för alla.
+• Nytt fönster "Choose DMR server": sök, nätverksfilter, sidor om 100, en Choose-knapp på varje rad, Manual entry, Refresh. Efter valet visar rutan Transmit server namn och IP:port och Settings › Radio networks får Server/Port automatiskt. Varje användare anger sitt eget DMR-ID, ESSID och lösenord (med "Remember password").
+• Licensfönstret: visar när servern svarade och signaturen godkändes, eller varför inte ("serverns inställningar tillämpas inte"), och vilka lägen som är stängda.
+• Panel › Servers: .txt- och .json-listor (YSF, P25, NXDN, M17, BrandMeister) för manuell nedladdning.
+• Omedelbar spärr: programmet frågar servern var 5:e sekund (rev.php, skrivskyddad, oberoende av "Show me online"). När du stänger/öppnar ett läge eller ändrar en licens i panelen tillämpas ändringen i programmet inom sekunder, utan omstart, och ett stängt läge stoppas direkt.
+• Oförändrat: lägen/regler och licenser (logiken är inte ändrad).

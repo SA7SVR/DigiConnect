@@ -49,6 +49,7 @@ class License:
         self.store, self.params, self.base = store, params, base if base.endswith("/") else base + "/"
         self.hw = hw or hwid.get(); self.pubkeys = list(PUBKEYS if pubkeys is None else pubkeys)
         self.last: Verdict | None = None; self.msgs: list = []
+        self.last_error = ""; self.last_ok_ts = 0.0           # what the last check with the server ended in (shown in the Licence window)
 
     def _p(self) -> dict:
         p = dict(self.params()); p["hw"] = self.hw; return p
@@ -162,7 +163,9 @@ class License:
 
     def evaluate(self) -> Verdict:
         """Blocking: ask the server and decide."""
-        try: return self.verdict(self.check())
+        try:
+            v = self.verdict(self.check()); self.last_error = ""; self.last_ok_ts = time.time(); return v
         except LicenseError as ex:
-            diag.log(f"licence: server not reachable: {ex}")
+            self.last_error = str(ex)
+            diag.log(f"licence: server answer not used: {ex}")
             return self.verdict(None, str(ex))

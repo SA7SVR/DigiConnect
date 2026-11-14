@@ -131,7 +131,7 @@ class MainWindow(W.QMainWindow):
         # wiring
         self.mixer.hide_requested.connect(lambda: self.mixer.setVisible(False)); self.h_nq.clicked.connect(self.open_qso); self.h_set.clicked.connect(lambda: self.open_settings())
         self.set_top.clicked.connect(lambda: self.open_settings()); self.theme_btn.clicked.connect(self.toggle_theme); self.settings.closed.connect(self._close_drawers); self.qdrawer.closed.connect(self._close_drawers)
-        self.qdrawer.saved.connect(self.log.reload); self.settings.applied.connect(self.apply_settings)
+        self.qdrawer.saved.connect(self.log.reload); self.settings.applied.connect(self.apply_settings); self.ctx.dmr_server_changed.connect(self.settings.sync_server)
         self.ctx.changed.connect(self._sync_chrome)
         t = QtCore.QTimer(self); t.timeout.connect(self._clock); t.start(1000)
         QtGui.QShortcut(QtGui.QKeySequence("F4"), self, activated=self._mute_all)

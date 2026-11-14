@@ -137,25 +137,68 @@ def test_mute_reaches_a_transmit_only_link(win):
     n = len(sent); ctx._sync_audio(); assert len(sent) == n                    # nothing is resent while unchanged
 
 
-def test_master_dialog_has_a_network_filter(win, monkeypatch):
-    """Choose DMR server: pick BrandMeister / DMR+ / FreeDMR (networks named by the host list) and see only their masters."""
+def _masters(H):
+    api = H.parse_bm_api('[{"id":2022,"country":"GR","address":"185.4.134.95"},{"id":2041,"country":"NL","address":"44.137.42.20"}]')
+    lst = H.parse_dmr("BM_2022_Greece\t0000\t185.4.134.95\tpassw0rd\t62031\n"                       # the same master as the API's 2022: shown once
+                      "BM_2001_Europe_HAMNET\t0000\t44.148.230.201\tpassw0rd\t62031\n"
+                      "DMR+_IPSC2-ANDALUCIA\t124734\t141.94.206.232\tPASSWORD\t55555\n"
+                      "FreeDMR_Spain\t0000\tfreedmr.example.org\tpassw0rd\t62031\n"
+                      "DMRGateway\t0000\t127.0.0.1\tnone\t62031\n")
+    return api, lst
+
+
+def test_choose_dmr_server_window_lists_filters_pages_and_chooses(win, monkeypatch):
+    """Choose DMR server: search, network filter, API + Pi-Star counts, a Choose button on every row, pages of 100, Manual entry / Refresh / Close."""
+    from app import hostlists as H
+    from app.ui.dmr_picker import DmrServerPicker, parse_manual, PAGE
+    from app.qt import QtWidgets as W
+    w, ctx, app = win
+    api, lst = _masters(H)
+    assert [(e["name"], e["host"], e["port"], e["country"], e["src"]) for e in api] == [("BrandMeister 2022", "185.4.134.95", 62031, "Greece", "api"), ("BrandMeister 2041", "44.137.42.20", 62031, "Netherlands", "api")]
+    many = api + lst + [dict(lst[1], name=f"BM_3{i:03d}_Test", host=f"10.1.{i // 250}.{i % 250}", port=62031) for i in range(250)]
+    d = DmrServerPicker(None, lambda: many); app.processEvents()
+    assert [d.net.itemText(i) for i in range(d.net.count())][0] == "All networks" and "BrandMeister" in [d.net.itemText(i) for i in range(d.net.count())]
+    assert "BrandMeister API : 2" in d.count.text() and "Pi-Star" in d.count.text()
+    assert d.pos.text() == f"1–{PAGE} / {len(many)}" and d.next.isEnabled() and not d.prev.isEnabled()
+    d.next.click(); assert d.pos.text().startswith(f"{PAGE + 1}–") and d.prev.isEnabled()
+    d.net.setCurrentIndex(d.net.findData("DMR+")); assert d.pos.text() == "1–1 / 1"
+    d.net.setCurrentIndex(0); d.q.setText("185.4.134"); assert d.pos.text() == "1–2 / 2"                  # search by address
+    d.q.setText("greece"); assert d.shown[0]["name"] in ("BrandMeister 2022", "BM_2022_Greece")
+    d.q.setText("2041"); rows = [b for b in d.findChildren(W.QPushButton) if b.text() == "Choose"]; assert len(rows) == 1
+    rows[0].click(); assert d.chosen["host"] == "44.137.42.20" and d.chosen["port"] == 62031
+    assert parse_manual("185.4.134.95") == ("185.4.134.95", 62031) and parse_manual("my.host.org:62032") == ("my.host.org", 62032) and parse_manual("bad host") is None and parse_manual("1.2.3.4:99999") is None
+
+
+def test_merged_list_shows_a_master_once_and_local_gateway_lines_never(win):
+    from app import hostlists as H
+    w, ctx, app = win
+    api, lst = _masters(H)
+    assert all(not e["host"].startswith("127.") for e in lst)
+    import time
+    ends = {(e["host"].lower(), e["port"]) for e in api}
+    merged = api + [e for e in lst if (e["host"].lower(), e["port"]) not in ends]
+    assert sorted(e["name"] for e in merged) == ["BM_2001_Europe_HAMNET", "BrandMeister 2022", "BrandMeister 2041", "DMR+_IPSC2-ANDALUCIA", "FreeDMR_Spain"]
+    assert H.HostLists.dmr_network(api[0]) == "BrandMeister"
+
+
+def test_choosing_a_server_fills_the_tx_box_and_settings_radio_networks(win, monkeypatch):
+    """The picked server shows (name + address) in the Transmit server box and the same Server and Port appear in Settings > Radio networks."""
     import time
     from app import hostlists as H
     from app.qt import QtWidgets as W
     w, ctx, app = win; ws = pick(w, "DMR", 4)
-    ctx.hosts._set(H.parse_dmr("BM_2022_Greece\t\t\t2022\t2022.master.brandmeister.network\t\tpassw0rd\t62031\n"
-                               "DMR+_IPSC2-ANDALUCIA\t\t124734\t141.94.206.232\t\t\t\tPASSWORD\t55555\n"
-                               "FreeDMR_Spain\t\t\t1\tfreedmr.example.org\t\tpassw0rd\t62031\n"), {"DMR": "ok 3"}, time.time())
-    seen = {}
+    api, lst = _masters(H)
+    ctx.hosts._set(api + lst, {"DMR": "ok"}, time.time())
+    assert ws.tx_name.text() == "No server chosen" and not ws.srv_edit.isVisibleTo(ws) and ws.choose.isVisibleTo(ws)
     def fake_exec(self):
-        box = self.findChildren(W.QComboBox)[0]; lst = self.findChildren(W.QListWidget)[0]
-        seen["networks"] = [box.itemText(i) for i in range(box.count())]
-        i = box.findData("DMR+"); box.setCurrentIndex(i); seen["dmrplus"] = [lst.item(k).text() for k in range(lst.count())]
-        return 0
+        b = [x for x in self.findChildren(W.QPushButton) if x.text() == "Choose"]; self.q.setText("2041"); b = [x for x in self.findChildren(W.QPushButton) if x.text() == "Choose"]; b[0].click(); return 1
     monkeypatch.setattr(W.QDialog, "exec", fake_exec)
-    ws._choose_master()
-    assert seen["networks"][0] == "All networks" and any(n.startswith("BrandMeister") for n in seen["networks"]) and any(n.startswith("FreeDMR") for n in seen["networks"])
-    assert len(seen["dmrplus"]) == 1 and "ANDALUCIA" in seen["dmrplus"][0]
+    ws._choose_master(); app.processEvents()
+    assert ws.tx_name.text() == "BrandMeister 2041" and ws.tx_addr.text() == "44.137.42.20 : 62031"
+    assert (ctx.store.settings["dmr_server"], ctx.store.settings["dmr_port"]) == ("44.137.42.20", 62031)
+    assert (w.settings.f["dmr_server"].text(), w.settings.f["dmr_port"].text()) == ("44.137.42.20", "62031")          # same Server and Port in the settings
+    assert ctx.servers.info(Target("DMR", "0", ""))[0]["host"] == "44.137.42.20"                                           # and it is what the engine connects to
+    assert "Settings" in ws.tx_hint.text()                                                                                  # no DMR ID / password yet
 
 
 def test_allstar_page_lists_stations_connected_to_the_node(win):

@@ -65,6 +65,7 @@ def web(tmp_path):
     root = tmp_path / "www"; root.mkdir()
     for n, t in {"YSFHosts.txt": YSF, "dplus.txt": DPLUS, "dextra.txt": DEXTRA, "dcs.txt": DCS, "XLXHosts.txt": XLX, "DMRHosts.txt": DMR, "TalkGroups.json": TGJSON, "NXDNHosts.txt": NXDN, "P25Hosts.txt": P25, "M17Hosts-full.csv": M17CSV, "xlx.xml": XLXAPI}.items():
         (root / n).write_text(t, encoding="utf-8")
+    (root / "BMMasters.json").write_text('[{"id":2022,"country":"GR","address":"185.4.134.95"}]', encoding="utf-8")        # BrandMeister API list (our server keeps it under this name)
     (root / "FCSRooms.txt").write_text("FCS00134;Greece;FCS001 - Greece;;;\n", encoding="utf-8")
     h = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(root))
     class Quiet(http.server.SimpleHTTPRequestHandler):
@@ -88,7 +89,7 @@ def test_download_cache_and_resolve(tmp_path, web):
     assert hl.find("NXDN", "65000")["host"] == "nxdn.example.org" and hl.find("P25", "10100")["port"] == 41000 and hl.find("M17", "M17-DEU")["host"] == "m17-deu.example.org"
     assert hl.find("XLX", "XLX999")["host"] == "xlx999.example.org"                          # added from the API
     assert [e["country"] for e in hl.entries if e["id"] == "XLX001 A"] == ["Germany"]
-    assert len(hl.dmr_masters()) == 3 and [e["id"] for e in hl.for_net("DMR")] == ["91", "202", "20208"] and len(hl.for_net("C4FM")) == 4 and len(hl.for_net("D-Star")) >= 6
+    assert len(hl.dmr_masters()) == 4 and sum(1 for e in hl.dmr_masters() if e.get("src") == "api") == 1 and [e["id"] for e in hl.for_net("DMR")] == ["91", "202", "20208"] and len(hl.for_net("C4FM")) == 4 and len(hl.for_net("D-Star")) >= 6
     assert not hl.stale()
     # persisted: a new object (a later start of the program, maybe offline) sees the same data
     again = H.HostLists(store.root); assert len(again.entries) == len(hl.entries) and again.find("XRF", "XRF001")["host"] == "xrf001.example.net"
@@ -190,5 +191,6 @@ def test_our_server_is_asked_first_for_the_lists_it_keeps_and_the_public_sites_a
     for k, f in (("YSF", "YSFHosts.txt"), ("P25", "P25Hosts.txt"), ("NXDN", "NXDNHosts.txt"), ("M17", "M17Hosts-full.csv")):
         c = H.HostLists.candidates(k)
         assert c[0] == "https://hellaszone.com/digiconnect/hosts/get.php?f=" + f and len(c) > 1
-    assert not H.HostLists.candidates("DMR")[0].startswith(H.OWN)             # the other lists are unchanged
+    for k in ("DMR", "BMAPI"): assert H.HostLists.candidates(k)[0].startswith(H.OWN)             # DMR (Pi-Star list) and the BrandMeister API list also come from our server first
+    assert not H.HostLists.candidates("XLX")[0].startswith(H.OWN)             # the other lists are unchanged
     assert H.HostLists.candidates("YSF", ["http://m/"]) == ["http://m/YSFHosts.txt"]

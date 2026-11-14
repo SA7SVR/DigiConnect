@@ -6,7 +6,8 @@ require_once __DIR__ . '/functions.php';
 $RC = refcheck_base();                                    // RefCheck.Radio first (needs the token, see panel › Servers); the older mirrors stay as the fallback
 return [
   // file served to the app   => [ upstream URLs tried in order ]
-  'DMRHosts.txt'  => ['http://www.dudetronics.com/ar-dns/DMRHosts.txt', 'https://hostfiles.w0chp.net/DMR_Hosts.txt', 'https://www.pistar.uk/downloads/DMR_Hosts.txt'],
+  'DMRHosts.txt'  => ['https://www.pistar.uk/downloads/DMR_Hosts.txt', 'https://hostfiles.w0chp.net/DMR_Hosts.txt', 'http://www.dudetronics.com/ar-dns/DMRHosts.txt'],   // the Pi-Star list first (what the dashboards and the other programs show)
+  'BMMasters.json' => ['https://api.brandmeister.network/v2/master'],                          // BrandMeister's own live master list, stored as sent
   'YSFHosts.txt'  => [$RC . 'ysf/', 'http://www.dudetronics.com/ar-dns/YSFHosts.txt', 'https://register.ysfreflector.de/export.php', 'https://hostfiles.w0chp.net/YSFHosts.txt', 'https://www.pistar.uk/downloads/YSFHosts.txt'],
   'FCSHosts.txt'  => ['http://www.dudetronics.com/ar-dns/FCSHosts.txt'],
   'P25Hosts.txt'  => [$RC . 'p25/', 'http://www.dudetronics.com/ar-dns/P25Hosts.txt', 'https://hostfiles.w0chp.net/P25Hosts.txt', 'https://www.pistar.uk/downloads/P25Hosts.txt'],

@@ -59,9 +59,12 @@ class SettingsDrawer(W.QFrame):
         self.slot = W.QComboBox(); self.slot.addItems(["1", "2"]); self.slot.setCurrentText(str(s["slot"]))
         self.dpw = W.QLineEdit(); self.dpw.setEchoMode(W.QLineEdit.EchoMode.Password); self.dpw.setText(ctx.dmr_password); self._dpw_shown = ctx.dmr_password
         self.dpw_state = label("", muted=True); self.dpw_state.setWordWrap(True); self.dpw.textChanged.connect(self._dpw_update); self._dpw_update()
-        group("DMR", "DMR", row(self.dmrid_field, self.essid_field), field("DMR master server (host)", le("dmr_server", "hostname")),
-              row(field("DMR master port", le("dmr_port")), field("Time slot", self.slot)), field("Color code", le("cc")), field("Password (your BrandMeister hotspot password)", self.dpw), self.dpw_state,
-              note="The server and the password are also on the DMR page. Every other station shows its own server and port on its page.")
+        self.drem = checkbox("Remember password"); self.drem.setChecked(bool(s.get("remember_pw", True)))
+        self.drem.toggled.connect(lambda on: (ctx.set_dmr_password(self.dpw.text() or ctx.dmr_password, on), self._dpw_update()))
+        self.dpick = button("Choose DMR server"); self.dpick.clicked.connect(self._pick_server)
+        group("DMR", "DMR", row(self.dmrid_field, self.essid_field), field("Server", le("dmr_server", "hostname")),
+              row(field("Port", le("dmr_port")), field("Time slot", self.slot)), field("Color code", le("cc")), field("Password (your BrandMeister hotspot password)", self.dpw), self.dpw_state, self.drem, self.dpick,
+              note="The server is chosen from the downloaded list (Choose DMR server): it fills Server and Port here. Every other station shows its own server and port on its page.")
         p25id = W.QLineEdit(str(s.get("dmr_id", ""))); main_id = self.f["dmr_id"]              # the same setting as the DMR ID, shown again in the P25 group
         p25id.textChanged.connect(main_id.setText); main_id.textChanged.connect(p25id.setText)
         group("P25", "P25", field("Radio ID (your DMR ID)", p25id), note="P25 uses your DMR ID. The talkgroup server is on the P25 page.")
@@ -112,6 +115,15 @@ class SettingsDrawer(W.QFrame):
         """What was really downloaded for every mode (or why not): the user can see at a glance which lists are missing."""
         rows = self.ctx.hosts.status_lines()
         self.lists.setText("<br>".join(f"{'✓' if ok else '✗'} <b>{tr(lab)}</b> — {txt}" for lab, ok, txt in rows))
+
+    def _pick_server(self):
+        from .dmr_picker import choose_dmr_server
+        choose_dmr_server(self, self.ctx)
+
+    def sync_server(self):
+        """A server was chosen on the DMR page: the same Server and Port appear here (the person only adds the ID and the password)."""
+        s = self.ctx.store.settings
+        self.f["dmr_server"].setText(str(s.get("dmr_server", ""))); self.f["dmr_port"].setText(str(s.get("dmr_port", "")))
 
     def _choose(self):
         d = W.QFileDialog.getExistingDirectory(self, tr("Recordings folder"))

@@ -42,6 +42,7 @@ function refcheck_token(): string {
 }
 /* What a list from RefCheck must look like (otherwise it is not used and the older mirrors are tried): most data lines start the way the program reads them. */
 function hosts_shape_ok(string $file, string $body, string &$why): bool {
+  if ($file === 'BMMasters.json') { $j = json_decode($body, true); if (!is_array($j) || count($j) < 5 || empty($j[0]['id']) || empty($j[0]['address'])) { $why = 'not the expected BrandMeister list'; return false; } return true; }
   if (substr($file, -5) === '.json') { $j = json_decode($body, true); if (!is_array($j) || !isset($j['_refcheck_metadata']) || empty($j['reflectors'])) { $why = 'not the expected JSON'; return false; } return true; }
   $re = ['YSFHosts.txt' => '/^\d{5};/', 'P25Hosts.txt' => '/^\d+[;\s,]/', 'NXDNHosts.txt' => '/^\d+[;\s,]/', 'M17Hosts-full.csv' => '/^M17-[A-Z0-9]{3}[;,\s]/i'];
   if (!isset($re[$file])) return true;

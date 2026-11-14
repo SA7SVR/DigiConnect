@@ -287,6 +287,15 @@ EL: dict[str, str] = {
     "AllStarLink sign-in gave an unreadable answer.": "Η σύνδεση στο AllStarLink έδωσε μη αναγνώσιμη απάντηση.",
     "AllStarLink did not accept this callsign / password (the portal account must be active and its callsign validated).": "Το AllStarLink δεν δέχτηκε αυτό το διακριτικό / κωδικό (ο λογαριασμός στην πύλη πρέπει να είναι ενεργός και το διακριτικό επικυρωμένο).",
     "AllStarLink node list: {}": "Λίστα κόμβων AllStarLink: {}",
+    "Server answer": "Απάντηση server", "the settings from the server are not applied": "οι ρυθμίσεις του server ΔΕΝ εφαρμόζονται", "Closed modes": "Κλειστά modes", "listen only": "μόνο ακρόαση",
+    # ---- Choose DMR server window / transmit server box
+    "Search server, country, ID or address…": "Αναζήτηση server, χώρας, ID ή διεύθυνσης…", "BrandMeister API": "BrandMeister API", "Pi-Star": "Pi-Star",
+    "The DMR server list is not downloaded yet — press Refresh.": "Η λίστα DMR servers δεν έχει κατέβει ακόμη — πάτα Refresh.", "Downloading the lists…": "Κατεβαίνουν οι λίστες…",
+    "Not specified": "Δεν ορίζεται", "Access and TGs depend on the network. Check your ID and password in Settings → Radio networks.": "Η πρόσβαση και τα TG εξαρτώνται από το δίκτυο. Έλεγξε το ID και τον κωδικό σου στις Ρυθμίσεις → Δίκτυα.",
+    "Server address, e.g. 185.4.134.95:62031 (the port is optional, 62031 is the default)": "Διεύθυνση server, π.χ. 185.4.134.95:62031 (η πόρτα είναι προαιρετική, προεπιλογή 62031)",
+    "That is not a usable server address.": "Αυτή δεν είναι έγκυρη διεύθυνση server.", "No server chosen": "Δεν έχει επιλεγεί server",
+    "Enter your DMR ID and your password in Settings › Radio networks to connect.": "Βάλε το DMR ID και τον κωδικό σου στις Ρυθμίσεις › Δίκτυα για να συνδεθείς.",
+    "The server is chosen from the downloaded list (Choose DMR server): it fills Server and Port here. Every other station shows its own server and port on its page.": "Ο server επιλέγεται από τη λίστα που κατέβηκε (Choose DMR server) και γεμίζει εδώ τα Server και Port. Κάθε άλλος σταθμός δείχνει τον δικό του server και port στη σελίδα του.",
 }
 
 TABLES = {"el": EL}

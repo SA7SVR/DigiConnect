@@ -11,9 +11,10 @@ from pathlib import Path
 
 UPSTREAM = "http://www.dudetronics.com/ar-dns/"                          # the public host-file site the open-source DV clients use
 OWN = "https://hellaszone.com/digiconnect/hosts/get.php?f="            # our own server: the official RefCheck.Radio lists, downloaded there once an hour, the same for everybody
-OWN_KEYS = ("YSF", "P25", "NXDN", "M17")                                     # the lists our server keeps (the other modes still come from the public sites)
+OWN_KEYS = ("YSF", "P25", "NXDN", "M17", "DMR", "BMAPI")                                     # the lists our server keeps (the other modes still come from the public sites)
 PISTAR = ["https://hostfiles.w0chp.net/", "https://www.pistar.uk/downloads/"]   # the Pi-Star / WPSD host files: FIRST choice (same lists and descriptions the hotspot dashboards show)
 XLX_API = "https://xlxapi.rlx.lu/api.php?do=GetReflectorList"
+BM_API = "https://api.brandmeister.network/v2/master"                       # the live BrandMeister masters (id, country, address): what BrandMeister itself publishes
 MAX_AGE = 3600                 # the source lists are refreshed about hourly (Pi-Star: YSF hourly): ask again after an hour
 MAX_BYTES = 8 * 1024 * 1024
 TIMEOUT = 15
@@ -27,6 +28,7 @@ SOURCES = {
     "DCS": ("dcs.txt", "dstar:DCS", "D-Star DCS", ["DCS_Hosts.txt", "DStar_Hosts.json"]),
     "XLX": ("XLXHosts.txt", "dstar:XLX", "XLX reflectors", ["XLX_Hosts.txt", "XLXHosts.txt"]),
     "DMR": ("DMRHosts.txt", "dmr", "DMR masters", ["DMR_Hosts.txt"]),
+    "BMAPI": ("BMMasters.json", "bmapi", "BrandMeister API", []),
     "NXDN": ("NXDNHosts.txt", "num:NXDN", "NXDN talkgroups", ["NXDN_Hosts.txt"]),
     "P25": ("P25Hosts.txt", "num:P25", "P25 talkgroups", ["P25_Hosts.txt"]),
     "M17": ("M17Hosts-full.csv", "m17", "M17 reflectors", ["M17_Hosts.txt"]),
@@ -167,6 +169,24 @@ def parse_dmr(text: str) -> list[dict]:
     return out
 
 
+def parse_bm_api(text: str) -> list[dict]:
+    """BrandMeister's own master list: [{"id":2022,"country":"GR","address":"185.4.134.95"}, ...]. The API gives no name and no port:
+    the name is 'BrandMeister <id>' and the port is the one every BrandMeister master listens on (62031), exactly as the Pi-Star list has it."""
+    from . import countries
+    out = []
+    for m in json.loads(text):
+        if not isinstance(m, dict): continue
+        mid, host = str(m.get("id") or "").strip(), str(m.get("address") or "").strip()
+        if not mid.isdigit() or not _HOST.match(host): continue
+        try: country = countries.name_of(str(m.get("country") or "").upper())
+        except Exception: country = ""
+        name = f"BrandMeister {mid}"
+        e = _entry("DMR", name, name, host, host, DEFAULT_PORT["DMR"], country)
+        e["src"] = "api"; e["ident"] = mid; e["password"] = ""
+        out.append(e)
+    return out
+
+
 def parse_xlx_api(text: str) -> list[dict]:
     """XLX API (XML): enriches XLX reflectors with country and description."""
     out = []
@@ -217,6 +237,7 @@ def parse(kind: str, text: str) -> list[dict]:
     if kind == "ysf": return parse_ysf(text)
     if kind == "fcs": return parse_fcs(text)
     if kind == "dmr": return parse_dmr(text)
+    if kind == "bmapi": return parse_bm_api(text)
     if kind == "m17": return parse_m17(text)
     if kind.startswith("num:"): return parse_numeric(text, kind.split(":")[1])
     return parse_dstar(text, kind.split(":")[1])
@@ -281,6 +302,7 @@ class HostLists:
     @staticmethod
     def dmr_network(e: dict) -> str:
         """The network a DMR master belongs to, as the host list itself names it: the part of the name before the first '_' (BM_2402_Sweden -> BrandMeister, DMR+_IPSC2-X -> DMR+, FreeDMR_... -> FreeDMR)."""
+        if e.get("src") == "api": return "BrandMeister"
         p = (e.get("name") or "").split("_", 1)[0].strip()
         return "BrandMeister" if p.upper() == "BM" else (p or "Other")
 
@@ -360,6 +382,8 @@ class HostLists:
                 if base: new["XLX"] = list(base.values()); status["XLX"] = f"ok {len(base)}"
             except Exception as ex:
                 status["XLX-API"] = f"failed: {ex}"
+        api_ends = {(e["host"].lower(), e["port"]) for e in new.get("BMAPI", [])}                # a master that BrandMeister's API lists is shown once (by its API entry)
+        if api_ends: new["DMR"] = [e for e in new.get("DMR", []) if (e["host"].lower(), e["port"]) not in api_ends]
         entries = [e for k in SOURCES for e in new.get(k, [])]
         if entries:
             self._set(entries, status, time.time())

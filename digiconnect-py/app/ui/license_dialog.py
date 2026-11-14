@@ -1,5 +1,5 @@
 """First-run registration window, the 'cannot continue' window (locked / demo ended / no connection) and the licence watcher."""
-import threading
+import threading, time
 from ..qt import QtWidgets as W, QtCore, QtGui, Qt, Signal
 from ..i18n import tr, code as lang_code
 from .. import license as lic_mod
@@ -191,7 +191,7 @@ class LicenceDialog(W.QDialog):
         self.close_b = button(tr("Close")); r2 = hbox(); r2.addStretch(); r2.addWidget(self.close_b); v.addLayout(r2)
         self.close_b.clicked.connect(self.accept); self.code.clicked.connect(self._code); self.write.clicked.connect(self._write); self.diag_b.clicked.connect(self._diag)
         self.donate.clicked.connect(lambda: open_donate((self.lic.last.donate if self.lic.last else "")))
-        self._got.connect(self._fill); self.render(); self.refresh()
+        self._got.connect(self._fill); watcher.changed.connect(lambda *_: self.render()); self.render(); self.refresh()
 
     def render(self):
         v = self.lic.last; i = (v.info if v else {}) or {}
@@ -200,6 +200,11 @@ class LicenceDialog(W.QDialog):
         if i.get("no"): lines.append(f"{tr('Installation')}: {i['no']}" + (f" · {i['call']}" if i.get("call") else ""))
         if i.get("own"): lines.append(f"{tr('Licensed to')}: {i['own']}")
         lines.append(f"{tr('This computer')}: {self.lic.hw[:8]}")
+        ok_at = getattr(self.lic, "last_ok_ts", 0.0); err = getattr(self.lic, "last_error", "")
+        if ok_at and not err: lines.append(f"{tr('Server answer')}: ✓ {time.strftime('%H:%M:%S', time.localtime(ok_at))}")
+        if err: lines.append(f"{tr('Server answer')}: ✗ {err} — " + tr("the settings from the server are not applied"))
+        pol = i.get("pol") or {}
+        if pol: lines.append(f"{tr('Closed modes')}: {', '.join(pol.get('off') or []) or '—'}" + ("" if pol.get("tx", 1) else " · " + tr("listen only")))
         self.status.setText("\n".join(lines)); self.donate.setVisible(i.get("offer", "donate") != "none")
 
     def refresh(self):

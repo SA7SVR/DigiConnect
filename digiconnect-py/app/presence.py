@@ -64,3 +64,37 @@ class Presence(QtCore.QObject):
         finally:
             self._busy = False
             if not self.last_ok and self.sent == 0: diag.log(f"presence: {self.last_error}")
+
+
+REV_URL = "https://hellaszone.com/digiconnect/rev.php"
+REV_EVERY_S = 5          # how fast a block / unblock made in the server panel reaches a running program (no restart)
+
+
+class LiveStamp(QtCore.QObject):
+    """Asks the server every few seconds for the change stamp of this installation (rev.php: read only, independent of the 'show me online'
+    setting). The moment the stamp differs from the last one, rev_changed fires and the program fetches the full signed licence answer
+    and applies it (closed modes are stopped on the spot). The first stamp also fires once (the answer the program started with may be a few seconds old); a failed request changes nothing."""
+    rev_changed = Signal()
+    def __init__(self, updater, url: str = REV_URL, every: int = REV_EVERY_S):
+        super().__init__(); self.updater, self.url = updater, url
+        self.rev = None; self.last_ok = False; self.last_error = ""; self._busy = False
+        self._timer = QtCore.QTimer(self); self._timer.setInterval(every * 1000); self._timer.timeout.connect(self.poll)
+
+    def start(self): self.poll(); self._timer.start()
+    def stop(self): self._timer.stop()
+
+    def poll(self):
+        if self._busy: return
+        self._busy = True; threading.Thread(target=self._send, daemon=True).start()
+
+    def _send(self):
+        try:
+            r = json.loads(net.get(self.url + "?" + urlencode(dict(id=self.updater.params()["id"])), 8, 16 * 1024).decode("utf-8"))
+            self.last_ok = bool(r.get("ok")); self.last_error = "" if self.last_ok else str(r.get("err", "refused"))
+            rev = str(r.get("rev") or "")
+            if self.last_ok and rev:
+                changed = rev != self.rev; self.rev = rev
+                if changed: self.rev_changed.emit()
+        except Exception as e:
+            self.last_ok = False; self.last_error = f"{type(e).__name__}: {e}"
+        finally: self._busy = False
