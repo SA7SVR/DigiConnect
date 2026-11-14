@@ -166,7 +166,7 @@ class EngineClient(QtCore.QObject, Engine):
             host = str(ep["host"]).lower(); pw = (self.dmr_password or "").strip()          # a pasted password often carries a trailing space/newline: the master would refuse it
             if not pw:
                 if "brandmeister" in host:               # BrandMeister: personal hotspot password (SelfCare > Hotspot Security); the list only has a placeholder
-                    return None, "BrandMeister needs your personal hotspot password: enter it in the Password field of the DMR server card (BrandMeister SelfCare › Hotspot Security), then connect again."
+                    return None, "BrandMeister needs your personal hotspot password: enter it in Settings › Radio networks, field Password (BrandMeister SelfCare › Hotspot Security), then connect again."
                 hosts = getattr(self.servers, "hosts", None)
                 pw = hosts.dmr_default_password(host) if hosts is not None else ""       # other masters: the password the host list gives, like Pi-Star
             p.update(dmrid=int(s["dmr_id"]), essid=essid_for_engine(s.get("essid")),
