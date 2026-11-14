@@ -192,3 +192,38 @@ def test_dmr_password_rules(tmp_path):
     p, err = eng._params(t); assert p and p["password"] == "passw0rd"
     st.settings.update(dmr_server="141.94.206.232", dmr_port=55555)
     p, err = eng._params(t); assert p and p["password"] == "PASSWORD" and p["port"] == 55555
+
+
+def test_grid_center_and_station_sets():
+    from app.engine_client import grid_center, dmr_station_config
+    assert grid_center("JO87") == (57.5, 17.0) and grid_center("jo87ab") == pytest.approx((57.0625, 16.041667), abs=1e-5)
+    assert grid_center("") is None and grid_center("XX") is None and grid_center("ZZ99") is None and grid_center("JO87ZZ") is None and grid_center("JO8") is None
+    s = {"locator": "JO87AB"}
+    a, b, c = dmr_station_config(s, 0), dmr_station_config(s, 1), dmr_station_config(s, 2)
+    assert a["lat"] != "0" and a["location"] == "JO87AB" and a["freq"] == "438800000" and b["freq"] == "434000000" and b["lat"] == a["lat"]
+    assert (c["lat"], c["lon"], c["location"]) == ("0", "0", "")                                                  # the plain old set
+    assert dmr_station_config({}, 0)["lat"] == "0"                                                                  # no locator entered: nothing invented
+
+
+def test_dmr_master_refusing_the_station_values_is_retried_with_the_next_set_and_the_accepted_one_is_kept(tmp_path, monkeypatch):
+    monkeypatch.setattr(engine_client, "Link", FakeLink)
+    st = Store(tmp_path); st.settings.update(callsign="SA7SVR", dmr_id="2407219", locator="JO87AB", dmr_server="bm.example", dmr_port=62031)
+    exe = tmp_path / "dcengine"; exe.write_text("x"); eng = EngineClient(str(exe), st); eng.dmr_password = "pw"
+    states = []; eng.status.connect(lambda ln, s, m: states.append((s, m)))
+    t = Target("DMR", "202", "x"); assert eng.start_rx(1, t) == ""
+    first = eng.links["DMR:202"]
+    first.event.emit(first, {"ev": "status", "state": "error", "msg": "DMR_NAK_CONFIG"})                         # the master refused the values (set 0)
+    second = eng.links["DMR:202"]; assert second is not first and first.closed and second.rx == {1}               # same listening choice, new login
+    assert pump(lambda: any(c == "connect" for c, _ in second.sent))
+    kw = [x for x in second.sent if x[0] == "connect"][0][1]; assert kw["freq"] == "434000000" and kw["lat"] != "0" and "_variant" not in kw
+    assert ("error", "DMR_NAK_CONFIG") not in states                                                             # the user is not told about the first refusal
+    first.event.emit(first, {"ev": "status", "state": "disconnected"}); assert eng.links["DMR:202"] is second     # late words of the replaced link are ignored
+    second.event.emit(second, {"ev": "status", "state": "connected"})                                           # accepted: remembered
+    assert st.settings["dmr_cfg_variant"] == 1
+    eng.stop_rx(1); eng.start_rx(2, t); third = eng.links["DMR:202"]
+    assert pump(lambda: any(c == "connect" for c, _ in third.sent)) and [x for x in third.sent if x[0] == "connect"][0][1]["freq"] == "434000000"   # next time it starts with the set that worked
+    # every set refused: after the last one the refusal is reported, once
+    st.settings["dmr_cfg_variant"] = 0; eng.stop_rx(2); states.clear(); eng.start_rx(3, t)
+    for want in (1, 2):
+        ln = eng.links["DMR:202"]; ln.event.emit(ln, {"ev": "status", "state": "error", "msg": "DMR_NAK_CONFIG"}); assert states == []
+    ln = eng.links["DMR:202"]; ln.event.emit(ln, {"ev": "status", "state": "error", "msg": "DMR_NAK_CONFIG"}); assert ("error", "DMR_NAK_CONFIG") in states

@@ -112,6 +112,35 @@ class Link(QtCore.QObject):
         QtCore.QTimer.singleShot(2500, reap)
 
 
+def grid_center(loc) -> tuple[float, float] | None:
+    """Centre of a Maidenhead locator (4, 6 or 8 characters) as (lat, lon); None when it is not a locator."""
+    t = str(loc or "").strip().upper()
+    if len(t) not in (4, 6, 8) or not (t[0:2].isalpha() and t[0] in "ABCDEFGHIJKLMNOPQR" and t[1] in "ABCDEFGHIJKLMNOPQR" and t[2:4].isdigit()): return None
+    lon = (ord(t[0]) - 65) * 20 - 180 + int(t[2]) * 2; lat = (ord(t[1]) - 65) * 10 - 90 + int(t[3]); w, h = 2.0, 1.0
+    if len(t) >= 6:
+        if not (t[4:6].isalpha() and "A" <= t[4] <= "X" and "A" <= t[5] <= "X"): return None
+        w, h = 2 / 24, 1 / 24; lon += (ord(t[4]) - 65) * w; lat += (ord(t[5]) - 65) * h
+    if len(t) == 8:
+        if not t[6:8].isdigit(): return None
+        w, h = w / 10, h / 10; lon += int(t[6]) * w; lat += int(t[7]) * h
+    return round(lat + h / 2, 6), round(lon + w / 2, 6)
+
+
+# What the station tells a DMR master when it logs in (the Homebrew "RPTC" packet): position, frequency, text. Some masters (BrandMeister) refuse
+# the login at this last step when they dislike these values, so a refusal (DMR_NAK_CONFIG) is retried at once with the next set; the set that
+# was accepted is remembered. 0 = what a real hotspot sends (the position from the locator in Settings), 1 = another frequency, 2 = the plain old set.
+DMR_CFG_LAST = 2
+
+
+def dmr_station_config(settings: dict, variant: int, version: str = "") -> dict:
+    pos = grid_center(settings.get("locator"))
+    loc = (settings.get("locator") or "").strip().upper()
+    if variant >= 2 or pos is None: lat, lon, where = "0", "0", ""
+    else: lat, lon, where = f"{pos[0]:.6f}", f"{pos[1]:.6f}", loc
+    return dict(lat=lat, lon=lon, location=where, description="DigiConnect", url="https://hellaszone.com/digiconnect",
+                freq="434000000" if variant == 1 else "438800000", swid="DigiConnect", pkgid="DigiConnect " + version if version else "DigiConnect")
+
+
 def essid_for_engine(text) -> int:
     """The ESSID as people know it (Pi-Star / MMDVM / BrandMeister SelfCare): empty = none (the hotspot id is the DMR ID itself), otherwise the two
     digits are appended: DMR ID 2407219 + ESSID 22 = hotspot id 240721922, ESSID 00 = 240721900. The engine counts like DroidStar (0 = none, n = suffix n-1),
@@ -148,7 +177,25 @@ class EngineClient(QtCore.QObject, Engine):
         self.dns_fn = None
 
     # ---- helpers ----------------------------------------------------------
-    def _params(self, t: Target) -> tuple[dict | None, str]:
+    def cfg_variant(self) -> int:
+        """The set of station values to log in with: the one that was accepted last time, else 0."""
+        try: return max(0, min(int(self.store.settings.get("dmr_cfg_variant") or 0), DMR_CFG_LAST))
+        except (TypeError, ValueError): return 0
+
+    def _retry_dmr_config(self, ln: "Link") -> bool:
+        """The master accepted the id and the password but refused the station values: log in again, at once, with the next set. The listening/transmit
+        choices of the refused link move to the new one, so the user only sees that the connection took a moment longer."""
+        v = ln.cfg_variant + 1
+        if ln.target.net != "DMR" or v > DMR_CFG_LAST or self.links.get(ln.key) is not ln: return False
+        rx, tx, key, target = set(ln.rx), ln.tx, ln.key, ln.target
+        from . import diag; diag.log(f"engine {key}: the master refused the station values (set {ln.cfg_variant}); trying set {v}")
+        self.links.pop(key, None); ln.rx.clear(); ln.tx = False; ln.superseded = True; ln.close()
+        nl, err = self._link(target, v)
+        if nl is None: return False
+        nl.rx |= rx; nl.tx = tx
+        return True
+
+    def _params(self, t: Target, variant: int | None = None) -> tuple[dict | None, str]:
         s = self.store.settings
         proto = protocol_for(t)
         if not proto: return None, "EchoLink is under construction — coming soon."
@@ -171,6 +218,7 @@ class EngineClient(QtCore.QObject, Engine):
                 pw = hosts.dmr_default_password(host) if hosts is not None else ""       # other masters: the password the host list gives, like Pi-Star
             p.update(dmrid=int(s["dmr_id"]), essid=essid_for_engine(s.get("essid")),
                      password=pw, tg=int(t.id) if t.id.isdigit() else 0, cc=int(s.get("cc") or 1), slot=int(s.get("slot") or 2))
+            v = self.cfg_variant() if variant is None else variant; p.update(dmr_station_config(s, v, "")); p["_variant"] = v
         elif proto in ("REF", "XRF", "DCS", "M17"):
             ref, mod = split_dstar(t); p.update(name=ref, module=mod)
         elif proto == "IAX":
@@ -186,13 +234,13 @@ class EngineClient(QtCore.QObject, Engine):
             p.update(dmrid=int(s["dmr_id"]), name=t.id.strip())
         return p, ""
 
-    def _link(self, t: Target) -> tuple[Link | None, str]:
+    def _link(self, t: Target, variant: int | None = None) -> tuple[Link | None, str]:
         key = f"{t.net}:{t.id}"
         if key in self.links: return self.links[key], ""
-        params, err = self._params(t)
+        params, err = self._params(t, variant)
         if params is None: return None, err
         if not os.path.isfile(self.path): return None, "Protocol engine not found."
-        ln = Link(key, t, self.path, self)
+        ln = Link(key, t, self.path, self); ln.cfg_variant = params.pop("_variant", 0)
         ln.event.connect(self._on_event); ln.finished.connect(self._on_finished)
         self.links[key] = ln
         from . import diag; diag.log("connect " + key + " " + str({k: v for k, v in params.items() if k not in ("password", "iax_name")}))
@@ -290,6 +338,7 @@ class EngineClient(QtCore.QObject, Engine):
 
     # ---- events ---------------------------------------------------------------
     def _on_event(self, ln: Link, e: dict):
+        if getattr(ln, "superseded", False): return                     # the link that was replaced by a retry: its last words are not news
         ev = e.get("ev")
         if ev == "warn":
             self.notice.emit(e.get("msg", "")); return
@@ -297,8 +346,11 @@ class EngineClient(QtCore.QObject, Engine):
             from . import diag; diag.log(f"engine {ln.key}: {e.get('text', '')}"); return          # e.g. the steps of a DMR login (never the password)
         if ev in ("status", "error"):
             from . import diag; diag.log(f"engine {ln.key}: {ev} {e.get('state', '')} {e.get('msg', '')}")
+        if ev == "status" and e.get("state") == "error" and e.get("msg") == "DMR_NAK_CONFIG" and self._retry_dmr_config(ln): return
         if ev == "status":
             ln.state = e.get("state", ln.state)
+            if ln.state == "connected" and ln.target.net == "DMR" and self.cfg_variant() != ln.cfg_variant:
+                self.store.settings["dmr_cfg_variant"] = ln.cfg_variant; self.store.save_settings()          # this set was accepted: start with it next time
             if ln.state == "connected": self.__dict__.pop("_resend", None); ln.send("volume", **{"in": self.mic_gain()}); self.volume_refresh.emit()
             self.status.emit(ln, ln.state, e.get("msg", ""))
             if ln.state in ("error", "timeout", "disconnected"):
