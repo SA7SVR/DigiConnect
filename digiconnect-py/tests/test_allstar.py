@@ -6,6 +6,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import pytest
 from app.qt import QtWidgets as W, QtCore
 from app import allstar, engine_client
+from app import hostlists as H
 from app.store import Store
 from app.rules import Target, NETS
 from app.engine_client import EngineClient
@@ -227,3 +228,37 @@ def test_dmr_master_refusing_the_station_values_is_retried_with_the_next_set_and
     for want in (1, 2):
         ln = eng.links["DMR:202"]; ln.event.emit(ln, {"ev": "status", "state": "error", "msg": "DMR_NAK_CONFIG"}); assert states == []
     ln = eng.links["DMR:202"]; ln.event.emit(ln, {"ev": "status", "state": "error", "msg": "DMR_NAK_CONFIG"}); assert ("error", "DMR_NAK_CONFIG") in states
+
+
+def test_brandmeister_uses_rewind_other_masters_keep_homebrew_and_the_dmr_id_is_sent_plain(tmp_path, monkeypatch):
+    monkeypatch.setattr(engine_client, "Link", FakeLink)
+    st = Store(tmp_path); st.settings.update(callsign="SA7SVR", dmr_id="2407219", essid="22", locator="JO87AB", dmr_server="185.4.134.95", dmr_port=62031)
+    exe = tmp_path / "dcengine"; exe.write_text("x"); eng = EngineClient(str(exe), st); eng.dmr_password = "pw"
+    class Hosts:                                              # what the downloaded lists say
+        entries = [dict(proto="DMR", host="185.4.134.95", port=62031, name="BrandMeister 2022", src="api"), dict(proto="DMR", host="dmrplus.example", port=55555, name="DMR+_X")]
+        def is_brandmeister(self, h): return H.HostLists.is_brandmeister(self, h)
+        def dmr_default_password(self, h): return "passw0rd"
+    eng.servers.hosts = Hosts()
+    t = Target("DMR", "202", "x"); assert eng.start_rx(1, t) == ""; ln = eng.links["DMR:202"]
+    assert pump(lambda: any(c == "connect" for c, _ in ln.sent)); kw = [x for x in ln.sent if x[0] == "connect"][0][1]
+    assert kw["rewind"] is True and kw["rewind_port"] == 54006 and kw["dmrid"] == 2407219 and ln.rewind                  # the engine drops the ESSID itself: BrandMeister wants the plain ID
+    eng.stop_rx(1)
+    st.settings.update(dmr_server="dmrplus.example", dmr_port=55555)
+    assert eng.start_rx(2, t) == ""; ln = eng.links["DMR:202"]
+    assert pump(lambda: any(c == "connect" for c, _ in ln.sent)); kw = [x for x in ln.sent if x[0] == "connect"][0][1]
+    assert "rewind" not in kw and not ln.rewind                                                                              # DMR+ and the rest stay on Homebrew
+    assert engine_client.uses_rewind({"dmr_protocol": "rewind"}, "x.example") and not engine_client.uses_rewind({"dmr_protocol": "homebrew"}, "2022.master.brandmeister.network")
+    assert engine_client.uses_rewind({}, "2022.master.brandmeister.network") and not engine_client.uses_rewind({}, "46.59.68.211")
+
+
+def test_every_brandmeister_master_is_listed_once_with_its_ip_and_a_saved_pistar_host_becomes_that_entry(tmp_path):
+    hl = H.HostLists(tmp_path)
+    hl.entries = (H.parse_dmr("BM_2022_Greece\t\t\t2022\t2022.master.brandmeister.network\t\tpassw0rd\t62031\n"
+                              "BM_2402_Sweden\t\t\t2402\t2402.master.brandmeister.network\t\tpassw0rd\t62031\n")
+                  + H.parse_bm_api('[{"id":2022,"country":"GR","address":"185.4.134.95"}]'))
+    hl._reindex() if hasattr(hl, "_reindex") else None
+    names = [e["name"] for e in hl.dmr_masters()]
+    assert names == ["BM_2402_Sweden", "BrandMeister 2022"]                    # Greece once (the API entry, with the IP); Sweden is not in the API list, so Pi-Star's stays
+    e = hl.bm_api_twin("2022.master.brandmeister.network"); assert e and e["host"] == "185.4.134.95" and e["port"] == 62031 and e["name"] == "BrandMeister 2022"
+    assert hl.bm_api_twin("185.4.134.95") is None and hl.bm_api_twin("2402.master.brandmeister.network") is None
+    assert hl.is_brandmeister("185.4.134.95") and hl.is_brandmeister("2402.master.brandmeister.network") and not hl.is_brandmeister("46.59.68.211")

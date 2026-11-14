@@ -13,6 +13,7 @@ DMR_REFUSALS = {
     "DMR_NAK_PASSWORD": "The DMR master refused the password. On BrandMeister use your hotspot password (SelfCare › Hotspot Security), not your login password.",
     "DMR_NO_HOST": "The DMR master's address could not be found (DNS). Check the internet connection and the master server in the DMR server card.",
     "DMR_NAK_CONFIG": "The DMR master refused the connection settings after the password was accepted.",
+    "DMR_NO_REWIND": "BrandMeister did not answer on its terminal ports (UDP 54006 and 54005). Check the internet connection, that the network or firewall lets UDP out, and your DMR ID.",
 }
 
 
@@ -110,6 +111,7 @@ class Ctx(QtCore.QObject):
             self.toast.emit(("Server lists: " + "; ".join(problems[:2]) + (" …" if len(problems) > 2 else "")) + (" — using the saved copy." if n else ""))
         elif n:
             self.toast.emit(f"Server lists updated: {self.hosts.summary()}")
+        self._bm_server_to_api()
         self.hosts_changed.emit()
         if retry and getattr(self, "_auto_dl", False):
             if n: retry()
@@ -271,6 +273,14 @@ class Ctx(QtCore.QObject):
         self.asl_password = pw
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = pw
 
+    def _bm_server_to_api(self):
+        """A BrandMeister master chosen earlier from Pi-Star's list ('2022.master.brandmeister.network') becomes the same master from BrandMeister's own list
+        (name 'BrandMeister 2022', its IP), so Settings and the DMR card show it the way every BrandMeister master is shown. Same server, same port."""
+        try:
+            e = self.hosts.bm_api_twin(str(self.store.settings.get("dmr_server") or ""))
+            if e and int(self.store.settings.get("dmr_port") or 0) == int(e["port"]): self.set_dmr_server(e)
+        except Exception: pass
+
     def set_dmr_server(self, m: dict):
         """A server picked from the downloaded list (or typed in the picker's Manual entry): Server and Port of the DMR settings are set to it."""
         s = self.store.settings; host, port = str(m["host"]), int(m["port"])
@@ -344,10 +354,11 @@ class Ctx(QtCore.QObject):
             if ln.tx: self.rules.disconnect_tx()
             from .i18n import tr
             text = tr(DMR_REFUSALS.get(msg, msg or state))
-            if t.net == "DMR" and msg in DMR_REFUSALS and msg != "DMR_NO_HOST":
+            if t.net == "DMR" and msg in DMR_REFUSALS and msg not in ("DMR_NO_HOST", "DMR_NO_REWIND"):
                 try:
                     from .engine_client import hotspot_id
-                    text += " " + tr("Hotspot ID sent:") + f" {hotspot_id(self.store.settings.get('dmr_id'), self.store.settings.get('essid'))}"     # compare with My devices in SelfCare
+                    if getattr(ln, "rewind", False): text += " " + tr("DMR ID sent:") + f" {int(self.store.settings.get('dmr_id'))}"          # BrandMeister terminal login: the plain ID, no ESSID
+                    else: text += " " + tr("Hotspot ID sent:") + f" {hotspot_id(self.store.settings.get('dmr_id'), self.store.settings.get('essid'))}"     # compare with My devices in SelfCare
                 except Exception: pass
             if t.net == "DMR" and "no answer" in (msg or "").lower():
                 text += tr(" — DMR: check the master address, your DMR ID and your personal hotspot password (BrandMeister SelfCare › Hotspot Security).")

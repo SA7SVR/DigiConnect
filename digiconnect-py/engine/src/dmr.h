@@ -28,6 +28,7 @@ class DMR : public Mode
 public:
 	DMR();
 	~DMR();
+	void set_dmr_rewind(bool on, quint16 port) override;
 	void set_dmr_params(uint8_t essid, QString password, QString lat, QString lon, QString location, QString desc, QString freq, QString url, QString swid, QString pkid, QString options);
 	uint8_t * get_eot();
 private slots:
@@ -39,7 +40,8 @@ private slots:
 	void send_disconnect();
 	void transmit();
 	void hostname_lookup(QHostInfo i);
-	void dmr_tgid_changed(int id) { m_txdstid = id; }
+	void dmr_tgid_changed(int id);
+	void rewind_tick();
     void dmrpc_state_changed(int p){m_flco = p ? FLCO_USER_USER : FLCO_GROUP; m_txflco = m_flco; }
     void cc_changed(int cc) {m_txcc = cc;}
 	void slot_changed(int s) {m_txslot = s + 1; }
@@ -91,6 +93,30 @@ private:
 	void addDMRDataSync(uint8_t* data, bool duplex);
 	void addDMRAudioSync(uint8_t* data, bool duplex);
 	void setup_connection();
+	void handle_dmrd(const QByteArray &buf);
+	void send_net(const QByteArray &dmrd);
+
+	// ---- BrandMeister "Rewind" (Open DMR Terminal Protocol): BrandMeister refuses Homebrew from software-only clients -------------------
+	bool m_rewind = false;
+	quint16 m_rw_port = 54006;
+	QList<quint16> m_rw_ports;
+	int m_rw_try = 0, m_rw_tick = 0;
+	uint32_t m_rw_seq = 0, m_rw_rtseq = 0, m_rw_subtg = 0;
+	qint64 m_rw_auth_ms = 0, m_rw_last_ms = 0;
+	QTimer *m_rw_timer = nullptr;
+	bool m_rw_rxactive = false;
+	uint32_t m_rw_rxstream = 0, m_rw_rxsrc = 0, m_rw_rxdst = 0, m_rw_rxcnt = 0;
+	bool m_rw_rxprivate = false;
+	void rewind_send_raw(uint16_t type, uint16_t flags, uint32_t number, const QByteArray &data);
+	void rewind_send(uint16_t type, const QByteArray &data = QByteArray());
+	void rewind_keepalive();
+	void rewind_subscribe(uint32_t tg, bool cancel);
+	void rewind_attempt();
+	void rewind_fail(const QString &code, const QString &why);
+	void process_rewind(const QByteArray &buf);
+	void rewind_send_dmrd(const QByteArray &dmrd);
+	void rewind_lc(uint8_t *lc12, bool terminator);
+	void rewind_rx_dmrd(bool data, uint8_t dt, const uint8_t *ambe27);
 };
 
 #endif // DMR_H

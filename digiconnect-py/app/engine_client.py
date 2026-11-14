@@ -48,6 +48,7 @@ class Link(QtCore.QObject):
         self.key, self.target = key, target
         self.rx: set[int] = set()
         self.tx = False
+        self.rewind = False                     # BrandMeister Rewind login (the DMR ID is sent without ESSID)
         self.state = "connecting"
         self._buf = b""
         self._queue: list[bytes] = []           # commands sent before the process finished starting
@@ -141,6 +142,21 @@ def dmr_station_config(settings: dict, variant: int, version: str = "") -> dict:
                 freq="434000000" if variant == 1 else "438800000", swid="DigiConnect", pkgid="DigiConnect " + version if version else "DigiConnect")
 
 
+# BrandMeister does not accept the Homebrew protocol from a program that has no radio: it answers the login and then refuses the station settings.
+# Software clients (VoxDMR, ubDMR ...) use BrandMeister's own "Rewind" protocol (Open DMR Terminal Protocol) on UDP 54006, with the plain DMR ID
+# (no ESSID) and the hotspot password. The engine falls back to the older port 54005 when 54006 does not answer. Setting dmr_protocol: auto | homebrew | rewind.
+REWIND_PORT = 54006
+
+
+def uses_rewind(settings: dict, host: str, hosts=None) -> bool:
+    mode = str(settings.get("dmr_protocol") or "auto").lower()
+    if mode in ("homebrew", "rewind"): return mode == "rewind"
+    h = (host or "").strip().lower()
+    if h.endswith(".brandmeister.network"): return True
+    try: return bool(hosts is not None and hosts.is_brandmeister(h))
+    except Exception: return False
+
+
 def essid_for_engine(text) -> int:
     """The ESSID as people know it (Pi-Star / MMDVM / BrandMeister SelfCare): empty = none (the hotspot id is the DMR ID itself), otherwise the two
     digits are appended: DMR ID 2407219 + ESSID 22 = hotspot id 240721922, ESSID 00 = 240721900. The engine counts like DroidStar (0 = none, n = suffix n-1),
@@ -219,6 +235,7 @@ class EngineClient(QtCore.QObject, Engine):
             p.update(dmrid=int(s["dmr_id"]), essid=essid_for_engine(s.get("essid")),
                      password=pw, tg=int(t.id) if t.id.isdigit() else 0, cc=int(s.get("cc") or 1), slot=int(s.get("slot") or 2))
             v = self.cfg_variant() if variant is None else variant; p.update(dmr_station_config(s, v, "")); p["_variant"] = v
+            if uses_rewind(s, host, getattr(self.servers, "hosts", None)): p.update(rewind=True, rewind_port=REWIND_PORT)
         elif proto in ("REF", "XRF", "DCS", "M17"):
             ref, mod = split_dstar(t); p.update(name=ref, module=mod)
         elif proto == "IAX":
@@ -240,7 +257,7 @@ class EngineClient(QtCore.QObject, Engine):
         params, err = self._params(t, variant)
         if params is None: return None, err
         if not os.path.isfile(self.path): return None, "Protocol engine not found."
-        ln = Link(key, t, self.path, self); ln.cfg_variant = params.pop("_variant", 0)
+        ln = Link(key, t, self.path, self); ln.cfg_variant = params.pop("_variant", 0); ln.rewind = bool(params.get("rewind"))
         ln.event.connect(self._on_event); ln.finished.connect(self._on_finished)
         self.links[key] = ln
         from . import diag; diag.log("connect " + key + " " + str({k: v for k, v in params.items() if k not in ("password", "iax_name")}))

@@ -16,6 +16,7 @@
 */
 
 #include <cstring>
+#include <cmath>
 #include "dmr.h"
 #include "cgolay2087.h"
 #include "crs129.h"
@@ -89,6 +90,11 @@ void DMR::process_udp()
 
 	buf.resize(m_udp->pendingDatagramSize());
 	m_udp->readDatagram(buf.data(), buf.size(), &sender, &senderPort);
+
+	if(m_rewind){
+		process_rewind(buf);
+		return;
+	}
 
     if(m_debug){
         QDebug debug = qDebug();
@@ -227,114 +233,7 @@ void DMR::process_udp()
 	if((buf.size() != 55) && ( (m_modeinfo.stream_state == STREAM_LOST) || (m_modeinfo.stream_state == STREAM_END) )){
 		m_modeinfo.stream_state = STREAM_IDLE;
 	}
-	if((buf.size() == 55) &&
-		(::memcmp(buf.data(), "DMRD", 4U) == 0) &&
-		((uint8_t)buf.data()[15] & 0x20) &&
-		(m_modeinfo.status == CONNECTED_RW))
-	{
-		m_rxwatchdog = 0;
-
-		if((uint8_t)buf.data()[15] & 0x02){
-			qDebug() << "DMR RX EOT";
-			m_modeinfo.stream_state = STREAM_END;
-			m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
-			m_modeinfo.streamid = 0;
-		}
-		else if((uint8_t)buf.data()[15] & 0x01){
-			if (m_audio) {
-				m_audio->start_playback();
-			}
-			if(!m_rxtimer->isActive()){
-				m_rxtimer->start(m_rxtimerint);
-			}
-			m_modeinfo.stream_state = STREAM_NEW;
-			emit update_mode(MODE_DMR);
-			m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
-			m_modeinfo.srcid = (uint32_t)((buf.data()[5] << 16) | ((buf.data()[6] << 8) & 0xff00) | (buf.data()[7] & 0xff));
-			m_modeinfo.dstid = (uint32_t)((buf.data()[8] << 16) | ((buf.data()[9] << 8) & 0xff00) | (buf.data()[10] & 0xff));
-			m_modeinfo.gwid = (uint32_t)((buf.data()[11] << 24) | ((buf.data()[12] << 16) & 0xff0000) | ((buf.data()[13] << 8) & 0xff00) | (buf.data()[14] & 0xff));
-			m_modeinfo.streamid = (uint32_t)((buf.data()[16] << 24) | ((buf.data()[17] << 16) & 0xff0000) | ((buf.data()[18] << 8) & 0xff00) | (buf.data()[19] & 0xff));
-			m_modeinfo.frame_number = (uint8_t)buf.data()[4];
-			m_modeinfo.slot = (buf.data()[15] & 0x80) ? 2 : 1;
-
-			qDebug() << "New DMR stream from " << m_modeinfo.srcid << " to " << m_modeinfo.dstid;
-		}
-		if(m_modem){
-			m_rxmodemq.append(MMDVM_FRAME_START);
-			m_rxmodemq.append(0x25);
-			m_rxmodemq.append(MMDVM_DMR_DATA2);
-			m_rxmodemq.append(0);
-
-			addDMRDataSync((uint8_t*)&buf.data()[20], 0);
-
-			for(int i = 0; i < 33; ++i){
-				m_rxmodemq.append(buf.data()[20+i]);
-			};
-		}
-	}
-	if((buf.size() == 55) &&
-		(::memcmp(buf.data(), "DMRD", 4U) == 0) &&
-		!((uint8_t)buf.data()[15] & 0x20) &&
-		(m_modeinfo.status == CONNECTED_RW))
-	{
-		if(!m_tx && ( (m_modeinfo.stream_state == STREAM_LOST) || (m_modeinfo.stream_state == STREAM_END) || (m_modeinfo.stream_state == STREAM_IDLE) )){
-			if (m_audio) {
-				m_audio->start_playback();
-			}
-			if(!m_rxtimer->isActive()){
-				m_rxtimer->start(m_rxtimerint);
-			}
-			m_modeinfo.stream_state = STREAM_NEW;
-		}
-		else{
-			m_modeinfo.stream_state = STREAMING;
-		}
-		m_rxwatchdog = 0;
-
-		uint8_t dmrframe[33];
-		uint8_t dmr3ambe[27];
-		uint8_t dmrsync[7];
-		// get the 33 bytes ambe
-		memcpy(dmrframe, &(buf.data()[20]), 33);
-		// extract the 3 ambe frames
-		memcpy(dmr3ambe, dmrframe, 14);
-		dmr3ambe[13] &= 0xF0;
-		dmr3ambe[13] |= (dmrframe[19] & 0x0F);
-		memcpy(&dmr3ambe[14], &dmrframe[20], 13);
-		// extract sync
-		dmrsync[0] = dmrframe[13] & 0x0F;
-		::memcpy(&dmrsync[1], &dmrframe[14], 5);
-		dmrsync[6] = dmrframe[19] & 0xF0;
-		m_modeinfo.srcid =		(uint32_t)((buf.data()[5] << 16) | ((buf.data()[6] << 8) & 0xff00) | (buf.data()[7] & 0xff));
-		m_modeinfo.dstid =		(uint32_t)((buf.data()[8] << 16) | ((buf.data()[9] << 8) & 0xff00) | (buf.data()[10] & 0xff));
-		m_modeinfo.gwid =		(uint32_t)((buf.data()[11] << 24) | ((buf.data()[12] << 16) & 0xff0000) | ((buf.data()[13] << 8) & 0xff00) | (buf.data()[14] & 0xff));
-		m_modeinfo.streamid =	(uint32_t)((buf.data()[16] << 24) | ((buf.data()[17] << 16) & 0xff0000) | ((buf.data()[18] << 8) & 0xff00) | (buf.data()[19] & 0xff));
-		m_modeinfo.frame_number = (uint8_t)buf.data()[4];
-
-		if(m_modem){
-			uint8_t t = ((uint8_t)buf.data()[15] & 0x0f);
-
-			m_rxmodemq.append(MMDVM_FRAME_START);
-			m_rxmodemq.append(0x25);
-			m_rxmodemq.append(MMDVM_DMR_DATA2);
-			m_rxmodemq.append(0);
-
-			if(!t) {
-				addDMRAudioSync((uint8_t*)&buf.data()[20], 0);
-			}
-
-			for(int i = 0; i < 33; ++i){
-				m_rxmodemq.append(buf.data()[20+i]);
-			}
-		}
-
-		for(int i = 0; i < 3; ++i){
-			for(int j = 0; j < 9; ++j){
-				m_rxcodecq.append(dmr3ambe[j + (9*i)]);
-			}
-		}
-		//uint32_t id = (uint32_t)((buf.data()[5] << 16) | ((buf.data()[6] << 8) & 0xff00) | (buf.data()[7] & 0xff));
-	}
+	handle_dmrd(buf);
 	emit update(m_modeinfo);
 
     if(m_debug && out.size() > 0){
@@ -395,6 +294,19 @@ void DMR::hostname_lookup(QHostInfo i)
 		// handler will progress the handshake state machine.
 		m_modeinfo.status = CONNECTING;
 		qDebug() << "DMR: starting connection, status set to CONNECTING";
+		if(m_rewind){
+			m_address = i.addresses().first();
+			m_udp = new QUdpSocket(this);
+			connect(m_udp, SIGNAL(readyRead()), this, SLOT(process_udp()));
+			m_rw_try = 0; m_rw_tick = 0; m_rw_last_ms = 0;
+			if(m_rw_ports.size()){ m_rw_port = m_rw_ports.first(); }
+			m_rw_timer = new QTimer(this);
+			connect(m_rw_timer, SIGNAL(timeout()), this, SLOT(rewind_tick()));
+			m_rw_timer->start(1500);
+			emit update_log("Rewind login (BrandMeister): sending keep-alive with DMR ID " + QString::number(m_dmrid) + " to " + m_address.toString() + ":" + QString::number(m_rw_port));
+			rewind_keepalive();
+			return;
+		}
 		QByteArray out;
 		out.append('R');
 		out.append('P');
@@ -431,6 +343,16 @@ void DMR::hostname_lookup(QHostInfo i)
 
 void DMR::send_ping()
 {
+	if(m_rewind){
+		rewind_keepalive();
+		if(m_rw_last_ms && (QDateTime::currentMSecsSinceEpoch() - m_rw_last_ms) > 15000){
+			emit update_log("Rewind: the BrandMeister master stopped answering (15 s without a packet)");
+			if(m_ping_timer) m_ping_timer->stop();
+			m_modeinfo.status = TIMEOUT;
+			emit update(m_modeinfo);
+		}
+		return;
+	}
 	QByteArray out;
 	char tag[] = { 'R','P','T','P','I','N','G' };
 	out.append(tag, 7);
@@ -456,6 +378,11 @@ void DMR::send_disconnect()
     if(m_mdirect){
                 return;
         }
+
+	if(m_rewind){
+		if(m_udp) rewind_send(0x0001);
+		return;
+	}
 
 	QByteArray out;
 	out.append('R');
@@ -526,7 +453,7 @@ void DMR::process_modem_data(QByteArray d)
 		::memcpy(m_dmrFrame + 20U, p_frame + 4, 33U);
 		txdata.append((char *)m_dmrFrame, 55);
 		if (!m_mdirect) {
-			m_udp->writeDatagram(txdata, m_address, m_modeinfo.port);
+			send_net(txdata);
 		}
 		++m_dmrcnt;
 	}
@@ -553,7 +480,7 @@ void DMR::process_modem_data(QByteArray d)
 			}
 		}
 		if (!m_mdirect) {
-			m_udp->writeDatagram(txdata, m_address, m_modeinfo.port);
+			send_net(txdata);
 		}
 		++m_dmrcnt;
 	}
@@ -590,6 +517,11 @@ void DMR::transmit()
 #endif
 	if(m_ttsid == 0){
 		if(m_audio && m_audio->read(pcm, 160)){
+		}
+		else if(qEnvironmentVariableIsSet("DC_TEST_TONE")){          // tests only: no sound card on a build server, so a 1 kHz tone stands in for the microphone
+			for(int i = 0; i < 160; ++i){
+				pcm[i] = (int16_t)(8000.0 * sin(2.0 * 3.14159265358979 * 1000.0 * (m_ttscnt++) / 8000.0));
+			}
 		}
 		else{
 			return;
@@ -659,7 +591,7 @@ void DMR::send_frame()
 		build_frame();
 		txdata.append((char *)m_dmrFrame, 55);
 		if (!m_mdirect) {
-			m_udp->writeDatagram(txdata, m_address, m_modeinfo.port);
+			send_net(txdata);
 		}
 		if(m_modem){
 			m_rxwatchdog = 0;
@@ -680,7 +612,7 @@ void DMR::send_frame()
 			for (int i = 0U; i < 3; i++) {
 				m_dmrFrame[4U] = m_dmrcnt;
 				txdata.append((char *)m_dmrFrame, 55);
-				m_udp->writeDatagram(txdata, m_address, m_modeinfo.port);
+				send_net(txdata);
 				m_dmrcnt++;
 			}
 
@@ -688,7 +620,7 @@ void DMR::send_frame()
 		else{
 			++m_dmrcnt;
 			txdata.append((char *)m_dmrFrame, 55);
-			m_udp->writeDatagram(txdata, m_address, m_modeinfo.port);
+			send_net(txdata);
 		}
 */
 	}
@@ -698,7 +630,7 @@ void DMR::send_frame()
 		m_ttscnt = 0;
 		txdata.append((char *)m_dmrFrame, 55);
 		if (!m_mdirect) {
-			m_udp->writeDatagram(txdata, m_address, m_modeinfo.port);
+			send_net(txdata);
 		}
 		if(m_modem){
 			m_rxwatchdog = 0;
@@ -1181,5 +1113,397 @@ void DMR::process_rx_data()
 		m_dmrcnt = 0;
 		qDebug() << "DMR RF playback or tx stopped";
 		emit update_mode(MODE_IDLE);
+	}
+}
+
+
+// ======================================================================================================================================
+// BrandMeister "Rewind" (Open DMR Terminal Protocol). Packet layout, all little-endian:
+//   "REWIND01"(8) type(2) flags(2) number(4) length(2) data...      - one counter for routine messages, one for real-time data
+// BrandMeister answers a keep-alive from a new terminal with a challenge; the reply is SHA-256(salt + hotspot password); the terminal logs in with
+// the plain DMR ID (no ESSID). Voice is a header (3x), 27-byte audio frames (three 72-bit AMBE frames, air-interface order) and a terminator.
+// The rest of this class speaks Homebrew DMRD packets, so Rewind voice is converted to and from a DMRD packet at the network edge.
+// ======================================================================================================================================
+static const uint16_t RW_KEEP_ALIVE = 0x0000, RW_CLOSE = 0x0001, RW_CHALLENGE = 0x0002, RW_AUTH = 0x0003, RW_REPORT = 0x0100, RW_BUSY = 0x0200,
+	RW_SUBSCRIPTION = 0x0901, RW_CANCELLING = 0x0902, RW_VOICE_HEADER = 0x0911, RW_VOICE_TERMINATOR = 0x0912, RW_AUDIO = 0x0920, RW_AUDIO_LAST = 0x0926, RW_FAILURE = 0x0929;
+static const uint8_t RW_SERVICE_OPEN_TERMINAL = 0x21;
+static const uint16_t RW_FLAG_REAL_TIME_1 = 1;
+
+void DMR::set_dmr_rewind(bool on, quint16 port)
+{
+	m_rewind = on;
+	m_rw_port = port ? port : 54006;
+	m_rw_ports.clear();
+	m_rw_ports.append(m_rw_port);
+	if(m_rw_port == 54006){ m_rw_ports.append(54005); }          // the BrandMeister masters listen on 54006; 54005 is the older documented port
+	else if(m_rw_port == 54005){ m_rw_ports.append(54006); }
+}
+
+void DMR::dmr_tgid_changed(int id)
+{
+	m_txdstid = id;
+	if(m_rewind && (m_modeinfo.status == CONNECTED_RW) && id > 0 && (uint32_t)id != m_rw_subtg){
+		if(m_rw_subtg){ rewind_subscribe(m_rw_subtg, true); }
+		rewind_subscribe((uint32_t)id, false);
+	}
+}
+
+void DMR::rewind_send_raw(uint16_t type, uint16_t flags, uint32_t number, const QByteArray &data)
+{
+	if(!m_udp){ return; }
+	QByteArray p;
+	p.reserve(18 + data.size());
+	p.append("REWIND01", 8);
+	p.append((char)(type & 0xff)); p.append((char)(type >> 8));
+	p.append((char)(flags & 0xff)); p.append((char)(flags >> 8));
+	p.append((char)(number & 0xff)); p.append((char)((number >> 8) & 0xff)); p.append((char)((number >> 16) & 0xff)); p.append((char)((number >> 24) & 0xff));
+	p.append((char)(data.size() & 0xff)); p.append((char)((data.size() >> 8) & 0xff));
+	p.append(data);
+	m_udp->writeDatagram(p, m_address, m_rw_port);
+}
+
+void DMR::rewind_send(uint16_t type, const QByteArray &data)
+{
+	rewind_send_raw(type, 0, m_rw_seq++, data);
+}
+
+void DMR::rewind_keepalive()
+{
+	QByteArray d;
+	d.append((char)(m_dmrid & 0xff)); d.append((char)((m_dmrid >> 8) & 0xff)); d.append((char)((m_dmrid >> 16) & 0xff)); d.append((char)((m_dmrid >> 24) & 0xff));
+	d.append((char)RW_SERVICE_OPEN_TERMINAL);
+	d.append("DigiConnect", 11);
+	rewind_send(RW_KEEP_ALIVE, d);
+}
+
+void DMR::rewind_subscribe(uint32_t tg, bool cancel)
+{
+	QByteArray d;
+	const uint32_t type = 7;                                          // group voice call
+	for(int i = 0; i < 4; ++i){ d.append((char)((type >> (8 * i)) & 0xff)); }
+	for(int i = 0; i < 4; ++i){ d.append((char)((tg >> (8 * i)) & 0xff)); }
+	rewind_send(cancel ? RW_CANCELLING : RW_SUBSCRIPTION, d);
+	if(cancel){
+		if(m_rw_subtg == tg){ m_rw_subtg = 0; }
+		emit update_log("Rewind: left talkgroup " + QString::number(tg));
+	}
+	else{
+		m_rw_subtg = tg;
+		emit update_log("Rewind: joining talkgroup " + QString::number(tg));
+	}
+}
+
+void DMR::rewind_fail(const QString &code, const QString &why)
+{
+	emit update_log("Rewind login: " + why);
+	if(m_rw_timer){ m_rw_timer->stop(); }
+	m_modeinfo.netmsg = code;
+	m_modeinfo.status = DISCONNECTED;
+	if(m_udp){ m_udp->deleteLater(); m_udp = nullptr; }
+	emit update(m_modeinfo);
+}
+
+void DMR::rewind_tick()
+{
+	if(m_modeinfo.status == CONNECTING){
+		++m_rw_tick;
+		if(m_rw_tick % 2){                                             // 1.5 s without a challenge: ask once more
+			rewind_keepalive();
+			return;
+		}
+		++m_rw_try;                                                    // 3 s without a challenge: next port
+		if(m_rw_try < m_rw_ports.size()){
+			m_rw_port = m_rw_ports.at(m_rw_try);
+			emit update_log("Rewind login: no answer, trying port " + QString::number(m_rw_port));
+			rewind_keepalive();
+		}
+		else{
+			rewind_fail("DMR_NO_REWIND", "no answer from " + m_address.toString() + " on the Rewind ports (check that the network allows UDP out, and the DMR ID)");
+		}
+	}
+	else if(m_modeinfo.status == DMR_AUTH){
+		if((QDateTime::currentMSecsSinceEpoch() - m_rw_auth_ms) > 8000){
+			rewind_fail("DMR_NAK_PASSWORD", "the master did not accept the password hash (BrandMeister gives no reply to a wrong password)");
+		}
+	}
+	else if(m_rw_timer){
+		m_rw_timer->stop();
+	}
+}
+
+void DMR::rewind_lc(uint8_t *lc12, bool terminator)
+{
+	uint8_t parity[4U];
+	::memset(lc12, 0, 12U);
+	lc_get_data(lc12);
+	CRS129::encode(lc12, 9U, parity);
+	const uint8_t *mask = terminator ? TERMINATOR_WITH_LC_CRC_MASK : VOICE_LC_HEADER_CRC_MASK;
+	lc12[9U]  = parity[2U] ^ mask[0U];
+	lc12[10U] = parity[1U] ^ mask[1U];
+	lc12[11U] = parity[0U] ^ mask[2U];
+}
+
+// Homebrew DMRD packet (as built by build_frame) -> Rewind
+void DMR::rewind_send_dmrd(const QByteArray &d)
+{
+	if(d.size() < 53 || !m_udp || m_modeinfo.status != CONNECTED_RW){ return; }
+	const uint8_t *b = (const uint8_t *)d.constData();
+	if(b[15] & 0x20){
+		const uint8_t dt = b[15] & 0x0F;
+		if(dt == DT_VOICE_LC_HEADER){
+			uint8_t lc[12];
+			rewind_lc(lc, false);
+			const uint32_t n = m_rw_rtseq++;
+			for(int k = 0; k < 3; ++k){ rewind_send_raw(RW_VOICE_HEADER, RW_FLAG_REAL_TIME_1, n, QByteArray((const char *)lc, 12)); }
+		}
+		else if(dt == DT_TERMINATOR_WITH_LC){
+			const uint32_t n = m_rw_rtseq++;
+			for(int k = 0; k < 2; ++k){ rewind_send_raw(RW_VOICE_TERMINATOR, RW_FLAG_REAL_TIME_1, n, QByteArray()); }
+		}
+		return;
+	}
+	uint8_t ambe[27];                                                // the 3 AMBE frames of the 33-byte burst (sync / embedded signalling left out)
+	::memcpy(ambe, b + 20, 14);
+	ambe[13] &= 0xF0;
+	ambe[13] |= (b[20 + 19] & 0x0F);
+	::memcpy(&ambe[14], b + 20 + 20, 13);
+	rewind_send_raw(RW_AUDIO, RW_FLAG_REAL_TIME_1, m_rw_rtseq++, QByteArray((const char *)ambe, 27));
+}
+
+// Rewind voice -> a Homebrew DMRD packet that the existing receive code understands
+void DMR::rewind_rx_dmrd(bool data, uint8_t dt, const uint8_t *ambe27)
+{
+	QByteArray d(55, 0);
+	d[0] = 'D'; d[1] = 'M'; d[2] = 'R'; d[3] = 'D';
+	d[4] = (char)(m_rw_rxcnt & 0xff);
+	d[5] = (char)(m_rw_rxsrc >> 16); d[6] = (char)(m_rw_rxsrc >> 8); d[7] = (char)(m_rw_rxsrc);
+	d[8] = (char)(m_rw_rxdst >> 16); d[9] = (char)(m_rw_rxdst >> 8); d[10] = (char)(m_rw_rxdst);
+	uint8_t flags = 0x80 | (m_rw_rxprivate ? 0x40 : 0x00);
+	if(data){
+		flags |= (0x20 | (dt & 0x0F));
+	}
+	else{
+		const uint32_t pos = m_rw_rxcnt ? (m_rw_rxcnt - 1) % 6U : 0;
+		flags |= (pos == 0) ? 0x10 : (uint8_t)pos;
+		uint8_t *f = (uint8_t *)d.data() + 20;
+		::memcpy(f, ambe27, 13);
+		f[13] = ambe27[13] & 0xF0;
+		f[19] = ambe27[13] & 0x0F;
+		::memcpy(f + 20, ambe27 + 14, 13);
+	}
+	d[15] = (char)flags;
+	d[16] = (char)(m_rw_rxstream >> 24); d[17] = (char)(m_rw_rxstream >> 16); d[18] = (char)(m_rw_rxstream >> 8); d[19] = (char)(m_rw_rxstream);
+	++m_rw_rxcnt;
+	handle_dmrd(d);
+	emit update(m_modeinfo);
+}
+
+void DMR::process_rewind(const QByteArray &buf)
+{
+	m_rw_last_ms = QDateTime::currentMSecsSinceEpoch();
+	if(buf.size() < 18 || ::memcmp(buf.constData(), "REWIND01", 8) != 0){ return; }
+	const uint8_t *b = (const uint8_t *)buf.constData();
+	const uint16_t type = b[8] | (b[9] << 8);
+	const uint16_t len = b[16] | (b[17] << 8);
+	const QByteArray data = buf.mid(18, qMin<int>(len, buf.size() - 18));
+	const bool voice = (type == RW_VOICE_HEADER) || (type == RW_VOICE_TERMINATOR) || (type >= RW_AUDIO && type <= RW_AUDIO_LAST);
+	if(!voice && ((m_modeinfo.stream_state == STREAM_LOST) || (m_modeinfo.stream_state == STREAM_END))){
+		m_modeinfo.stream_state = STREAM_IDLE;
+	}
+
+	switch(type){
+	case RW_CHALLENGE:
+		if(m_modeinfo.status == CONNECTING || m_modeinfo.status == DMR_AUTH){
+			CSHA256 sha256;
+			QByteArray in = data;
+			in.append(m_password.toUtf8());
+			QByteArray hash(32, 0);
+			sha256.buffer((uint8_t *)in.data(), (uint32_t)in.size(), (uint8_t *)hash.data());
+			m_modeinfo.status = DMR_AUTH;
+			m_rw_auth_ms = QDateTime::currentMSecsSinceEpoch();
+			emit update_log("Rewind login: challenge received on port " + QString::number(m_rw_port) + ", sending the password hash");
+			rewind_send(RW_AUTH, hash);
+		}
+		break;
+	case RW_KEEP_ALIVE:
+		if(m_modeinfo.status == DMR_AUTH){
+			emit update_log("Rewind login: password accepted - connected");
+			setup_connection();
+			if(m_rw_timer){ m_rw_timer->stop(); }
+			if(m_txdstid > 0){ rewind_subscribe(m_txdstid, false); }
+		}
+		else if(m_modeinfo.status == CONNECTED_RW){
+			m_modeinfo.count++;
+		}
+		break;
+	case RW_SUBSCRIPTION:
+		emit update_log("Rewind: talkgroup subscription confirmed");
+		break;
+	case RW_REPORT:
+		emit update_log("BrandMeister: " + QString::fromUtf8(data).trimmed());
+		break;
+	case RW_FAILURE:
+		emit update_log("BrandMeister reported a failure code (" + QString::number(data.size()) + " bytes)");
+		break;
+	case RW_BUSY:
+		break;
+	case RW_CLOSE:
+		emit update_log("Rewind: the BrandMeister master closed the connection");
+		if(m_ping_timer && m_ping_timer->isActive()){ m_ping_timer->stop(); }
+		if(m_rw_timer){ m_rw_timer->stop(); }
+		m_modeinfo.status = DISCONNECTED;
+		emit update(m_modeinfo);
+		break;
+	case RW_VOICE_HEADER:
+		if(m_modeinfo.status == CONNECTED_RW && data.size() >= 9){
+			const uint8_t *lc = (const uint8_t *)data.constData();
+			const uint32_t dst = (lc[3] << 16) | (lc[4] << 8) | lc[5];
+			const uint32_t src = (lc[6] << 16) | (lc[7] << 8) | lc[8];
+			if(m_rw_rxactive && src == m_rw_rxsrc && dst == m_rw_rxdst){ break; }        // the header is sent 2-3 times
+			m_rw_rxactive = true; m_rw_rxcnt = 0;
+			m_rw_rxsrc = src; m_rw_rxdst = dst; m_rw_rxprivate = ((lc[0] & 0x3F) != FLCO_GROUP);
+			m_rw_rxstream = (uint32_t)::rand();
+			rewind_rx_dmrd(true, DT_VOICE_LC_HEADER, nullptr);
+		}
+		break;
+	case RW_VOICE_TERMINATOR:
+		if(m_modeinfo.status == CONNECTED_RW && m_rw_rxactive){
+			rewind_rx_dmrd(true, DT_TERMINATOR_WITH_LC, nullptr);
+			m_rw_rxactive = false;
+		}
+		break;
+	default:
+		if(type >= RW_AUDIO && type <= RW_AUDIO_LAST && data.size() == 27 && m_modeinfo.status == CONNECTED_RW){
+			if(!m_rw_rxactive){                                       // the header was lost: join the call in progress
+				m_rw_rxactive = true; m_rw_rxcnt = 0; m_rw_rxsrc = 0; m_rw_rxdst = m_rw_subtg; m_rw_rxprivate = false;
+				m_rw_rxstream = (uint32_t)::rand();
+			}
+			rewind_rx_dmrd(false, 0, (const uint8_t *)data.constData());
+		}
+		break;
+	}
+	emit update(m_modeinfo);
+}
+
+// Homebrew goes out as it is; with Rewind the same DMRD packet is converted
+void DMR::send_net(const QByteArray &dmrd)
+{
+	if(m_rewind){
+		rewind_send_dmrd(dmrd);
+	}
+	else if(m_udp){
+		m_udp->writeDatagram(dmrd, m_address, m_modeinfo.port);
+	}
+}
+
+void DMR::handle_dmrd(const QByteArray &buf)
+{
+	if((buf.size() == 55) &&
+		(::memcmp(buf.data(), "DMRD", 4U) == 0) &&
+		((uint8_t)buf.data()[15] & 0x20) &&
+		(m_modeinfo.status == CONNECTED_RW))
+	{
+		m_rxwatchdog = 0;
+
+		if((uint8_t)buf.data()[15] & 0x02){
+			qDebug() << "DMR RX EOT";
+			m_modeinfo.stream_state = STREAM_END;
+			m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
+			m_modeinfo.streamid = 0;
+		}
+		else if((uint8_t)buf.data()[15] & 0x01){
+			if (m_audio) {
+				m_audio->start_playback();
+			}
+			if(!m_rxtimer->isActive()){
+				m_rxtimer->start(m_rxtimerint);
+			}
+			m_modeinfo.stream_state = STREAM_NEW;
+			emit update_mode(MODE_DMR);
+			m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
+			m_modeinfo.srcid = (uint32_t)((buf.data()[5] << 16) | ((buf.data()[6] << 8) & 0xff00) | (buf.data()[7] & 0xff));
+			m_modeinfo.dstid = (uint32_t)((buf.data()[8] << 16) | ((buf.data()[9] << 8) & 0xff00) | (buf.data()[10] & 0xff));
+			m_modeinfo.gwid = (uint32_t)((buf.data()[11] << 24) | ((buf.data()[12] << 16) & 0xff0000) | ((buf.data()[13] << 8) & 0xff00) | (buf.data()[14] & 0xff));
+			m_modeinfo.streamid = (uint32_t)((buf.data()[16] << 24) | ((buf.data()[17] << 16) & 0xff0000) | ((buf.data()[18] << 8) & 0xff00) | (buf.data()[19] & 0xff));
+			m_modeinfo.frame_number = (uint8_t)buf.data()[4];
+			m_modeinfo.slot = (buf.data()[15] & 0x80) ? 2 : 1;
+
+			qDebug() << "New DMR stream from " << m_modeinfo.srcid << " to " << m_modeinfo.dstid;
+		}
+		if(m_modem){
+			m_rxmodemq.append(MMDVM_FRAME_START);
+			m_rxmodemq.append(0x25);
+			m_rxmodemq.append(MMDVM_DMR_DATA2);
+			m_rxmodemq.append(0);
+
+			addDMRDataSync((uint8_t*)&buf.data()[20], 0);
+
+			for(int i = 0; i < 33; ++i){
+				m_rxmodemq.append(buf.data()[20+i]);
+			};
+		}
+	}
+	if((buf.size() == 55) &&
+		(::memcmp(buf.data(), "DMRD", 4U) == 0) &&
+		!((uint8_t)buf.data()[15] & 0x20) &&
+		(m_modeinfo.status == CONNECTED_RW))
+	{
+		if(!m_tx && ( (m_modeinfo.stream_state == STREAM_LOST) || (m_modeinfo.stream_state == STREAM_END) || (m_modeinfo.stream_state == STREAM_IDLE) )){
+			if (m_audio) {
+				m_audio->start_playback();
+			}
+			if(!m_rxtimer->isActive()){
+				m_rxtimer->start(m_rxtimerint);
+			}
+			m_modeinfo.stream_state = STREAM_NEW;
+		}
+		else{
+			m_modeinfo.stream_state = STREAMING;
+		}
+		m_rxwatchdog = 0;
+
+		uint8_t dmrframe[33];
+		uint8_t dmr3ambe[27];
+		uint8_t dmrsync[7];
+		// get the 33 bytes ambe
+		memcpy(dmrframe, &(buf.data()[20]), 33);
+		// extract the 3 ambe frames
+		memcpy(dmr3ambe, dmrframe, 14);
+		dmr3ambe[13] &= 0xF0;
+		dmr3ambe[13] |= (dmrframe[19] & 0x0F);
+		memcpy(&dmr3ambe[14], &dmrframe[20], 13);
+		// extract sync
+		dmrsync[0] = dmrframe[13] & 0x0F;
+		::memcpy(&dmrsync[1], &dmrframe[14], 5);
+		dmrsync[6] = dmrframe[19] & 0xF0;
+		m_modeinfo.srcid =		(uint32_t)((buf.data()[5] << 16) | ((buf.data()[6] << 8) & 0xff00) | (buf.data()[7] & 0xff));
+		m_modeinfo.dstid =		(uint32_t)((buf.data()[8] << 16) | ((buf.data()[9] << 8) & 0xff00) | (buf.data()[10] & 0xff));
+		m_modeinfo.gwid =		(uint32_t)((buf.data()[11] << 24) | ((buf.data()[12] << 16) & 0xff0000) | ((buf.data()[13] << 8) & 0xff00) | (buf.data()[14] & 0xff));
+		m_modeinfo.streamid =	(uint32_t)((buf.data()[16] << 24) | ((buf.data()[17] << 16) & 0xff0000) | ((buf.data()[18] << 8) & 0xff00) | (buf.data()[19] & 0xff));
+		m_modeinfo.frame_number = (uint8_t)buf.data()[4];
+
+		if(m_modem){
+			uint8_t t = ((uint8_t)buf.data()[15] & 0x0f);
+
+			m_rxmodemq.append(MMDVM_FRAME_START);
+			m_rxmodemq.append(0x25);
+			m_rxmodemq.append(MMDVM_DMR_DATA2);
+			m_rxmodemq.append(0);
+
+			if(!t) {
+				addDMRAudioSync((uint8_t*)&buf.data()[20], 0);
+			}
+
+			for(int i = 0; i < 33; ++i){
+				m_rxmodemq.append(buf.data()[20+i]);
+			}
+		}
+
+		for(int i = 0; i < 3; ++i){
+			for(int j = 0; j < 9; ++j){
+				m_rxcodecq.append(dmr3ambe[j + (9*i)]);
+			}
+		}
+		//uint32_t id = (uint32_t)((buf.data()[5] << 16) | ((buf.data()[6] << 8) & 0xff00) | (buf.data()[7] & 0xff));
 	}
 }

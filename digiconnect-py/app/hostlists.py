@@ -312,7 +312,29 @@ class HostLists:
             if e["proto"] == "DMR": n = self.dmr_network(e); c[n] = c.get(n, 0) + 1
         return sorted(c.items(), key=lambda kv: (-kv[1], kv[0].lower()))
 
-    def dmr_masters(self) -> list[dict]: return sorted((e for e in self.entries if e["proto"] == "DMR"), key=lambda e: e["name"].lower())
+    def dmr_masters(self) -> list[dict]:
+        """Every DMR master once. BrandMeister is in two lists (its own API with the IP, and Pi-Star's BM_2022_Greece with a host name): the API entry is kept,
+        so BrandMeister masters look the same everywhere - 'BrandMeister 2022', 185.4.134.95 : 62031."""
+        api = {e.get("ident") for e in self.entries if e["proto"] == "DMR" and e.get("src") == "api"}
+        def twin(e):
+            m = re.match(r"^BM_(\d+)_", e.get("name") or "")
+            return e.get("src") != "api" and bool(m) and m.group(1) in api
+        return sorted((e for e in self.entries if e["proto"] == "DMR" and not twin(e)), key=lambda e: e["name"].lower())
+
+    def is_brandmeister(self, host: str) -> bool:
+        """True for a BrandMeister master: by its name (*.brandmeister.network) or because the address is one of BrandMeister's masters in a downloaded list."""
+        h = (host or "").strip().lower()
+        if not h: return False
+        if h.endswith(".brandmeister.network") or h == "brandmeister.network": return True
+        for e in self.entries:
+            if e["proto"] == "DMR" and e["host"].lower() == h and (e.get("src") == "api" or (e.get("name") or "").upper().startswith("BM_")): return True
+        return False
+
+    def bm_api_twin(self, host: str) -> dict | None:
+        """The BrandMeister API entry of a master that was chosen from Pi-Star's list ('2022.master.brandmeister.network' -> BrandMeister 2022, 185.4.134.95)."""
+        m = re.match(r"^(\d{3,5})\.master\.brandmeister\.network$", (host or "").strip().lower())
+        if not m: return None
+        return next((e for e in self.entries if e["proto"] == "DMR" and e.get("src") == "api" and e.get("ident") == m.group(1)), None)
 
     def find(self, proto: str, ref: str) -> dict | None:
         """proto YSF/REF/XRF/DCS/XLX, ref = '00006' or 'REF001' (module already stripped). Returns {'host','port'} or None."""

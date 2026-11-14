@@ -184,6 +184,7 @@ void Engine::connect_to(const QJsonObject &c) {
                                c.value("location").toString(), c.value("description").toString("DigiConnect"), c.value("freq").toString("438800000"),
                                c.value("url").toString(), c.value("swid").toString("DigiConnect"), c.value("pkgid").toString("DigiConnect"), c.value("options").toString());
         m_mode->set_dmr_cc(c.value("cc").toInt(1));
+        m_mode->set_dmr_rewind(c.value("rewind").toBool(false), (quint16)c.value("rewind_port").toInt(54006));
         connect(this, SIGNAL(dmr_tg(int)), m_mode, SLOT(dmr_tgid_changed(int)));
         emit dmr_tg(c.value("tg").toInt());
     }
