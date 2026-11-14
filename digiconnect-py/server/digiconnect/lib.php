@@ -2,7 +2,7 @@
 // DigiConnect server — shared library. Self-contained (own SQLite DB), so it never touches HAM Digi data.
 // (c) 2026 SA7SVR (Panagiotis Tsekouras).
 declare(strict_types=1);
-const DC_SERVER_VERSION = '2.3.1';   // server package number (panel footer); same number as the program in the package
+const DC_SERVER_VERSION = '2.3.2';   // server package number (panel footer); same number as the program in the package
 if (session_status() === PHP_SESSION_NONE) @session_start();
 
 function dc_cfg(): array {
@@ -20,7 +20,9 @@ function dc_cfg(): array {
       'check_every'=> 3600,             // app update-check interval (seconds); min 60
       'gate'      => true,              // true = enforce demo/licence; false = everyone allowed
       'offline'   => 'require',         // require | grace | allow  (what the program does when it cannot reach this server)
-      'offline_days' => 7               // days the program keeps working offline when offline = grace
+      'offline_days' => 7,              // days the program keeps working offline when offline = grace
+      'refcheck_token' => '',           // RefCheck.Radio access token for the host lists (can also be entered in the panel, page Servers)
+      'refcheck_base'  => 'https://refcheck.radio/api/hostfile-gate/fetch/'
     ];
   }
   return $c;

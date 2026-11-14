@@ -1,0 +1,26 @@
+DigiConnect 2.3.2 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+===========================================================================
+
+ΕΛΛΗΝΙΚΑ
+--------
+ΝΕΑ ΣΤΗΝ 2.3.2 — ΕΠΙΣΗΜΕΣ ΛΙΣΤΕΣ SERVERS
+• Οι λίστες C4FM/YSF, P25, NXDN και M17 κατεβαίνουν από το επίσημο RefCheck.Radio (δεδομένα DVRef) στον server HELLAS Zone και τα προγράμματα τις παίρνουν από εκεί: τα ίδια ονόματα, διευθύνσεις IP και πόρτες για όλους, αυτούσια, χωρίς χειροκίνητες αλλαγές. Οι παλιές δημόσιες πηγές μένουν μόνο ως εφεδρικές όταν ο server δεν απαντά.
+• Ο server κάνει το πολύ μία λήψη την ώρα ανά λίστα (όριο του RefCheck). Αν η λήψη αποτύχει ή η λίστα έρθει ελλιπή, μένει το τελευταίο καλό αντίγραφο. Το attribution header του RefCheck δεν αλλάζει.
+• Panel › Servers: πεδίο για το token του RefCheck (μένει μόνο στον server) και λίστες .txt και .json για manual download.
+• Αμετάβλητα: Modes/Πολιτικές, άδειες, DMR λίστες (δεν άλλαξαν σε αυτή την έκδοση).
+
+ENGLISH
+-------
+NEW IN 2.3.2 — OFFICIAL SERVER LISTS
+• The C4FM/YSF, P25, NXDN and M17 lists are downloaded from the official RefCheck.Radio (DVRef data) by the HELLAS Zone server and the programs take them from there: the same names, IP addresses and ports for everybody, as published, with no manual changes. The older public sources remain only as a fallback when the server does not answer.
+• The server makes at most one download per list per hour (RefCheck's rule). If a download fails or arrives incomplete, the last good copy stays. RefCheck's attribution header is not changed.
+• Panel › Servers: a field for the RefCheck token (it stays on the server only) and the .txt and .json lists for manual download.
+• Unchanged: Modes/Policies, licences, DMR lists (not changed in this version).
+
+SVENSKA
+-------
+NYTT I 2.3.2 — OFFICIELLA SERVERLISTOR
+• Listorna för C4FM/YSF, P25, NXDN och M17 hämtas från den officiella RefCheck.Radio (DVRef-data) av HELLAS Zone-servern, och programmen får dem därifrån: samma namn, IP-adresser och portar för alla, precis som publicerade, utan manuella ändringar. De äldre publika källorna finns kvar bara som reserv när servern inte svarar.
+• Servern gör högst en hämtning per lista och timme (RefChecks regel). Om en hämtning misslyckas eller kommer ofullständig behålls den senaste fungerande kopian. RefChecks attributionsrubrik ändras inte.
+• Panel › Servers: fält för RefCheck-token (finns bara på servern) samt .txt- och .json-listorna för manuell nedladdning.
+• Oförändrat: lägen/regler, licenser, DMR-listor (inte ändrade i denna version).

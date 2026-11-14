@@ -3,18 +3,18 @@
 require_once __DIR__ . '/../lib.php';
 
 if (!function_exists('fetch_url')) {
-function fetch_url(string $url, int $timeout = 25, ?string &$why = null): ?string {
+function fetch_url(string $url, int $timeout = 25, ?string &$why = null, array $headers = []): ?string {
   $why = '';
   if (function_exists('curl_init')) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_FOLLOWLOCATION=>true, CURLOPT_MAXREDIRS=>5, CURLOPT_TIMEOUT=>$timeout,
-      CURLOPT_CONNECTTIMEOUT=>12, CURLOPT_USERAGENT=>'DigiConnect-HostSync/1.1 (SA7SVR)', CURLOPT_SSL_VERIFYPEER=>true]);
+      CURLOPT_CONNECTTIMEOUT=>12, CURLOPT_USERAGENT=>'DigiConnect-HostSync/1.1 (SA7SVR)', CURLOPT_SSL_VERIFYPEER=>true, CURLOPT_HTTPHEADER=>$headers]);
     $body = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
     if ($body === false) { $why = 'curl: ' . $err; return null; }
     if ($code < 200 || $code >= 300) { $why = "HTTP $code"; return null; }
     return (string)$body;
   }
-  $ctx = stream_context_create(['http'=>['timeout'=>$timeout,'user_agent'=>'DigiConnect-HostSync/1.1'], 'ssl'=>['verify_peer'=>true]]);
+  $ctx = stream_context_create(['http'=>['timeout'=>$timeout,'user_agent'=>'DigiConnect-HostSync/1.1','header'=>implode("\r\n", $headers)], 'ssl'=>['verify_peer'=>true]]);
   $body = @file_get_contents($url, false, $ctx);
   if ($body === false) { $why = 'download failed'; return null; }
   return $body;
@@ -28,6 +28,26 @@ function hosts_valid(string $body, string &$why): bool {
   $n = 0;
   foreach (preg_split('/\r?\n/', $body) as $ln) { $ln = trim($ln); if ($ln !== '' && $ln[0] !== '#') $n++; }
   if ($n < 3) { $why = "only $n entries"; return false; }
+  return true;
+}
+
+/* RefCheck.Radio (DVRef data): one request per list per hour at most, only from this server (the token never goes to a program or a public repository).
+   The programs download the list from this server, as they always did. */
+const RC_GAP = 3660;                                   // seconds between two requests for the same list (their rule: no more than once per hour)
+function refcheck_base(): string { return (string)(dc_cfg()['refcheck_base'] ?? 'https://refcheck.radio/api/hostfile-gate/fetch/'); }
+function is_refcheck(string $url): bool { return strpos($url, refcheck_base()) === 0; }
+function refcheck_token(): string {
+  $t = trim((string)dc_kv('refcheck_token', '')); if ($t === '') $t = trim((string)(dc_cfg()['refcheck_token'] ?? ''));
+  return preg_match('/^[A-Za-z0-9]{16,64}$/', $t) ? $t : '';
+}
+/* What a list from RefCheck must look like (otherwise it is not used and the older mirrors are tried): most data lines start the way the program reads them. */
+function hosts_shape_ok(string $file, string $body, string &$why): bool {
+  if (substr($file, -5) === '.json') { $j = json_decode($body, true); if (!is_array($j) || !isset($j['_refcheck_metadata']) || empty($j['reflectors'])) { $why = 'not the expected JSON'; return false; } return true; }
+  $re = ['YSFHosts.txt' => '/^\d{5};/', 'P25Hosts.txt' => '/^\d+[;\s,]/', 'NXDNHosts.txt' => '/^\d+[;\s,]/', 'M17Hosts-full.csv' => '/^M17-[A-Z0-9]{3}[;,\s]/i'];
+  if (!isset($re[$file])) return true;
+  $n = 0; $ok = 0;
+  foreach (preg_split('/\r?\n/', $body) as $ln) { $ln = trim($ln); if ($ln === '' || $ln[0] === '#') continue; $n++; if (preg_match($re[$file], $ln)) $ok++; }
+  if ($n < 3 || $ok < $n * 0.9) { $why = "unexpected format ($ok of $n lines)"; return false; }
   return true;
 }
 

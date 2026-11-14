@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 UPSTREAM = "http://www.dudetronics.com/ar-dns/"                          # the public host-file site the open-source DV clients use
+OWN = "https://hellaszone.com/digiconnect/hosts/get.php?f="            # our own server: the official RefCheck.Radio lists, downloaded there once an hour, the same for everybody
+OWN_KEYS = ("YSF", "P25", "NXDN", "M17")                                     # the lists our server keeps (the other modes still come from the public sites)
 PISTAR = ["https://hostfiles.w0chp.net/", "https://www.pistar.uk/downloads/"]   # the Pi-Star / WPSD host files: FIRST choice (same lists and descriptions the hotspot dashboards show)
 XLX_API = "https://xlxapi.rlx.lu/api.php?do=GetReflectorList"
 MAX_AGE = 3600                 # the source lists are refreshed about hourly (Pi-Star: YSF hourly): ask again after an hour
@@ -315,7 +317,7 @@ class HostLists:
         fname, _, _, alt = SOURCES[key]
         if mirrors: return [m + fname for m in mirrors]            # tests / custom mirrors
         if key in FULL_URL: return list(FULL_URL[key])
-        c = []
+        c = [OWN + fname] if key in OWN_KEYS else []                 # our server first; the public sites below are only the fallback when it does not answer
         for a in alt: c += [m + a for m in PISTAR]
         return c + [UPSTREAM + fname]
 

@@ -7,5 +7,5 @@ $f = (string)($_GET['f'] ?? '');
 if (!isset($SOURCES[$f])) { http_response_code(404); header('Content-Type: text/plain'); exit("unknown list\n"); }
 $p = hosts_find($f);
 if (!$p) { http_response_code(404); header('Content-Type: text/plain'); exit("list not downloaded yet\n"); }
-header('Content-Type: text/plain; charset=utf-8'); header('Cache-Control: public, max-age=300'); header('Content-Length: ' . filesize($p));
+$json = substr($f, -5) === '.json'; header('Content-Type: ' . ($json ? 'application/json' : 'text/plain') . '; charset=utf-8'); header('Content-Disposition: inline; filename="' . $f . '"'); header('Cache-Control: public, max-age=300'); header('Content-Length: ' . filesize($p));
 readfile($p);

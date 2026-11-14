@@ -161,7 +161,7 @@ def test_real_pistar_formats():
     assert d[0]["country"] == "Sweden" and d[0]["port"] == 62031 and d[1]["port"] == 55555 and d[2]["port"] == 62030
     x = H.parse_dstar("000;71.41.121.226;4004\n", "XLX"); assert x[0]["id"] == "XLX000 A" and x[0]["port"] == 30051
     t = H.parse_tg("1;0;LOCAL;TG1\n240;0;SWEDEN;TG240\n"); assert t[1]["name"] == "TG 240 · SWEDEN"
-    assert H.HostLists.candidates("YSF")[0].startswith("https://hostfiles.w0chp.net/") and H.HostLists.candidates("TG")[0].startswith("https://api.brandmeister")
+    assert H.HostLists.candidates("YSF")[1].startswith("https://hostfiles.w0chp.net/") and H.HostLists.candidates("TG")[0].startswith("https://api.brandmeister")
 
 
 def test_fcs_rooms():
@@ -184,3 +184,11 @@ def test_dmr_networks_come_from_the_list_names():
     hl = H.HostLists.__new__(H.HostLists); hl.entries = d
     assert [H.HostLists.dmr_network(e) for e in d] == ["BrandMeister", "BrandMeister", "DMR+", "FreeDMR"]
     assert hl.dmr_networks()[0] == ("BrandMeister", 2) and {n for n, _ in hl.dmr_networks()} == {"BrandMeister", "DMR+", "FreeDMR"}
+
+
+def test_our_server_is_asked_first_for_the_lists_it_keeps_and_the_public_sites_are_the_fallback():
+    for k, f in (("YSF", "YSFHosts.txt"), ("P25", "P25Hosts.txt"), ("NXDN", "NXDNHosts.txt"), ("M17", "M17Hosts-full.csv")):
+        c = H.HostLists.candidates(k)
+        assert c[0] == "https://hellaszone.com/digiconnect/hosts/get.php?f=" + f and len(c) > 1
+    assert not H.HostLists.candidates("DMR")[0].startswith(H.OWN)             # the other lists are unchanged
+    assert H.HostLists.candidates("YSF", ["http://m/"]) == ["http://m/YSFHosts.txt"]

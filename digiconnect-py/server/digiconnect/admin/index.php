@@ -184,6 +184,13 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     $why = $bad ? ' — ' . key($bad) . ': ' . mb_substr((string)(reset($bad)['err'] ?? ''), 0, 160) : '';
     flash($ok > 0 && !$bad ? 'ok' : 'bad', L("Ανανεώθηκαν οι λίστες: $ok/$tot OK$why", "Host lists refreshed: $ok/$tot OK$why"));
   }
+  // RefCheck.Radio access token for the host lists (stays on this server; empty = remove)
+  if ($a === 'set_refcheck') {
+    $t = trim((string)($_POST['refcheck_token'] ?? ''));
+    if ($t === '') { dc_kv_set('refcheck_token', ''); flash('ok', L('Το token του RefCheck αφαιρέθηκε· οι λίστες έρχονται από τα παλιά mirrors.', 'RefCheck token removed; the lists come from the older mirrors.')); }
+    elseif (!preg_match('/^[A-Za-z0-9]{16,64}$/', $t)) flash('bad', L('Το token δεν είναι σωστό (μόνο γράμματα/αριθμοί, 16–64 χαρακτήρες).', 'The token is not valid (letters/digits only, 16-64 characters).'));
+    else { dc_kv_set('refcheck_token', $t); foreach (['YSFHosts.txt','P25Hosts.txt','NXDNHosts.txt','M17Hosts-full.csv','YSFHosts.json','P25Hosts.json','NXDNHosts.json','M17Hosts.json'] as $f) dc_kv_set("refcheck_try_$f", 0); flash('ok', L('Το token αποθηκεύτηκε. Πάτα «Ανανέωση τώρα» (μία λήψη ανά λίστα την ώρα).', 'Token saved. Press "Refresh now" (one download per list per hour).')); }
+  }
   // settings
   if ($a === 'set_check') { $m = max(1, (int)$_POST['mins']); dc_kv_set('check_every', $m * 60); flash('ok', L("Έλεγχος κάθε $m λεπτά", "Check every $m min")); }
   if ($a === 'set_gate')  { dc_kv_set('gate', ($_POST['gate'] ?? '') === '1' ? '1' : '0'); flash('ok', L('Έλεγχος άδειας ενημερώθηκε', 'Licence gate updated')); }
@@ -863,8 +870,11 @@ elseif ($p === 'servers') {
     . ' · allow_url_fopen ' . (ini_get('allow_url_fopen') ? '<span class="pill ok">OK</span>' : '<span class="pill o">off</span>') . '</p>'
     . '<form method="post" style="margin:10px 0">' . csrf() . '<input type="hidden" name="p" value="servers"><button class="btn pri" name="a" value="hosts_refresh">↻ ' . L('Ανανέωση τώρα','Refresh now') . '</button></form>'
     . '<p class="help">' . L('Για συνεχή αυτόματη ανανέωση, βάλε στο cron: ','For continuous auto-update, add to cron: ') . '<span class="mono">*/30 * * * * php ' . h(realpath(__DIR__ . '/../hosts/refresh.php') ?: '.../hosts/refresh.php') . '</span></p></section>';
+  $rt = refcheck_token();
+  echo '<section class="card"><h2>RefCheck.Radio</h2><p class="muted">' . L('Οι λίστες YSF, P25, NXDN και M17 κατεβαίνουν από το RefCheck.Radio (DVRef) με το δικό σου token, το πολύ μία φορά την ώρα ανά λίστα· τα προγράμματα τις παίρνουν από αυτόν τον server. Το token δεν φεύγει ποτέ από εδώ. Αν δεν υπάρχει token, χρησιμοποιούνται τα παλιά mirrors.', 'The YSF, P25, NXDN and M17 lists are downloaded from RefCheck.Radio (DVRef) with your token, at most once an hour per list; the programs get them from this server. The token never leaves this server. Without a token the older mirrors are used.') . '</p>'
+    . '<form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="servers"><input type="hidden" name="a" value="set_refcheck"><label>Token ' . ($rt !== '' ? '<span class="pill ok">' . L('αποθηκευμένο','saved') . ' …' . h(substr($rt, -4)) . '</span>' : '<span class="pill o">' . L('δεν έχει μπει','not set') . '</span>') . '<input name="refcheck_token" autocomplete="off" placeholder="' . L('νέο token (κενό = αφαίρεση)','new token (empty = remove)') . '"></label><button class="btn pri">' . L('Αποθήκευση','Save') . '</button></form></section>';
   echo '<section class="card"><h2>' . L('Λίστες ανά mode','Lists per mode') . '</h2><div class="tw"><table class="tbl"><tr><th>' . L('Αρχείο','File') . '</th><th>' . L('Mode','Mode') . '</th><th>' . L('Γραμμές','Lines') . '</th><th>' . L('Κατάσταση','Status') . '</th><th>URL</th></tr>';
-  $modeName = ['DMRHosts.txt'=>'DMR','YSFHosts.txt'=>'YSF/C4FM','FCSHosts.txt'=>'FCS','P25Hosts.txt'=>'P25','NXDNHosts.txt'=>'NXDN','M17Hosts.txt'=>'M17','ASLHosts.txt'=>'AllStar','dplus.txt'=>'D-Star REF','dextra.txt'=>'D-Star XRF','dcs.txt'=>'D-Star DCS','DMRIDs.dat'=>'DMR IDs'];
+  $modeName = ['DMRHosts.txt'=>'DMR','YSFHosts.txt'=>'YSF/C4FM','FCSHosts.txt'=>'FCS','P25Hosts.txt'=>'P25','NXDNHosts.txt'=>'NXDN','M17Hosts.txt'=>'M17','M17Hosts-full.csv'=>'M17','YSFHosts.json'=>'YSF (JSON)','P25Hosts.json'=>'P25 (JSON)','NXDNHosts.json'=>'NXDN (JSON)','M17Hosts.json'=>'M17 (JSON)','ASLHosts.txt'=>'AllStar','dplus.txt'=>'D-Star REF','dextra.txt'=>'D-Star XRF','dcs.txt'=>'D-Star DCS','DMRIDs.dat'=>'DMR IDs'];
   foreach ($SOURCES as $file => $urls) {
     $pp = hosts_find($file); $lines = $pp ? hosts_count_lines($pp) : 0;
     $okInfo = dc_kv("hostsync_ok_$file", ''); $errInfo = dc_kv("hostsync_err_$file", '');
