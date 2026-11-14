@@ -193,3 +193,11 @@ def test_block_reaches_a_running_program_within_one_poll_even_with_show_online_o
 def test_rev_php_only_reads_it_creates_no_installation_and_shows_nobody_online(srv):
     r = json.loads(urllib.request.urlopen(srv.base + "rev.php?id=ghost-1").read()); assert r["ok"] is True and r["rev"] == ""
     assert srv.sql("SELECT id FROM dc_installs WHERE id='ghost-1'") == []
+
+
+def test_essid_is_the_two_digit_suffix_like_pistar_and_selfcare():
+    from app.engine_client import essid_for_engine, hotspot_id
+    assert hotspot_id(2407219, "") == 2407219 and hotspot_id(2407219, None) == 2407219 and hotspot_id(2407219, "  ") == 2407219     # none: the DMR ID itself
+    assert hotspot_id(2407219, "22") == 240721922 and hotspot_id(2407219, "00") == 240721900 and hotspot_id(2407219, "0") == 240721900
+    assert hotspot_id(2407219, "01") == 240721901 and hotspot_id(2407219, "99") == 240721999 and hotspot_id(2407219, "x") == 2407219
+    assert essid_for_engine("") == 0 and essid_for_engine("22") == 23                                       # the engine counts like DroidStar: suffix + 1

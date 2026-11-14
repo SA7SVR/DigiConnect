@@ -344,6 +344,11 @@ class Ctx(QtCore.QObject):
             if ln.tx: self.rules.disconnect_tx()
             from .i18n import tr
             text = tr(DMR_REFUSALS.get(msg, msg or state))
+            if t.net == "DMR" and msg in DMR_REFUSALS and msg != "DMR_NO_HOST":
+                try:
+                    from .engine_client import hotspot_id
+                    text += " " + tr("Hotspot ID sent:") + f" {hotspot_id(self.store.settings.get('dmr_id'), self.store.settings.get('essid'))}"     # compare with My devices in SelfCare
+                except Exception: pass
             if t.net == "DMR" and "no answer" in (msg or "").lower():
                 text += tr(" — DMR: check the master address, your DMR ID and your personal hotspot password (BrandMeister SelfCare › Hotspot Security).")
             self.note_problem(f"{t.name or t.id}: {text}"); self.toast.emit(f"{t.name or t.id}: {text}")

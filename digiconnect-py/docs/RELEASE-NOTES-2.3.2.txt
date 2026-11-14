@@ -12,6 +12,7 @@ DigiConnect 2.3.2 — Release notes / Σημειώσεις έκδοσης / Vers
 • Παράθυρο άδειας: δείχνει πότε ο server απάντησε και έγινε δεκτός ο έλεγχος υπογραφής, ή γιατί όχι («οι ρυθμίσεις του server δεν εφαρμόζονται»), και ποια modes είναι κλειστά.
 • Panel › Servers: λίστες .txt και .json (YSF, P25, NXDN, M17, BrandMeister) για manual download.
 • Άμεσος αποκλεισμός: το πρόγραμμα ρωτά τον server κάθε 5 δευτερόλεπτα (rev.php, μόνο ανάγνωση, ανεξάρτητα από το «Show me online»). Όταν κλείσεις/ανοίξεις mode ή αλλάξεις άδεια στο panel, η αλλαγή εφαρμόζεται στο πρόγραμμα μέσα σε δευτερόλεπτα, χωρίς επανεκκίνηση, και το mode που έκλεισε σταματά επί τόπου.
+• Διόρθωση σύνδεσης DMR: το ESSID είναι πλέον τα δύο ψηφία όπως στο Pi-Star και στο SelfCare (DMR ID 2407219 + ESSID 22 = 240721922· κενό = 2407219). Πριν στελνόταν ένα λιγότερο (240721921), ID χωρίς hotspot password, και το BrandMeister το απέρριπτε. Στο μήνυμα άρνησης φαίνεται το Hotspot ID που στάλθηκε.
 • Αμετάβλητα: Modes/Πολιτικές και άδειες (η λογική δεν άλλαξε).
 
 ENGLISH
@@ -25,6 +26,7 @@ NEW IN 2.3.2 — OFFICIAL SERVER LISTS
 • Licence window: shows when the server answered and its signature was accepted, or why not ("the server's settings are not applied"), and which modes are closed.
 • Panel › Servers: .txt and .json lists (YSF, P25, NXDN, M17, BrandMeister) for manual download.
 • Immediate blocking: the program asks the server every 5 seconds (rev.php, read-only, independent of "Show me online"). When you close/open a mode or change a licence in the panel, the change is applied in the program within seconds, with no restart, and a mode that was closed stops on the spot.
+• DMR login fix: the ESSID is now the two digits as in Pi-Star and SelfCare (DMR ID 2407219 + ESSID 22 = 240721922; empty = 2407219). Before, one less was sent (240721921), an ID without the hotspot password, and BrandMeister refused it. The refusal message shows the hotspot ID that was sent.
 • Unchanged: Modes/Policies and licences (logic not changed).
 
 SVENSKA
@@ -38,4 +40,5 @@ NYTT I 2.3.2 — OFFICIELLA SERVERLISTOR
 • Licensfönstret: visar när servern svarade och signaturen godkändes, eller varför inte ("serverns inställningar tillämpas inte"), och vilka lägen som är stängda.
 • Panel › Servers: .txt- och .json-listor (YSF, P25, NXDN, M17, BrandMeister) för manuell nedladdning.
 • Omedelbar spärr: programmet frågar servern var 5:e sekund (rev.php, skrivskyddad, oberoende av "Show me online"). När du stänger/öppnar ett läge eller ändrar en licens i panelen tillämpas ändringen i programmet inom sekunder, utan omstart, och ett stängt läge stoppas direkt.
+• DMR-inloggning rättad: ESSID är nu de två siffrorna som i Pi-Star och SelfCare (DMR-ID 2407219 + ESSID 22 = 240721922; tomt = 2407219). Tidigare skickades ett mindre (240721921), ett ID utan hotspot-lösenord, och BrandMeister nekade. Nekandemeddelandet visar vilket hotspot-ID som skickades.
 • Oförändrat: lägen/regler och licenser (logiken är inte ändrad).

@@ -112,6 +112,19 @@ class Link(QtCore.QObject):
         QtCore.QTimer.singleShot(2500, reap)
 
 
+def essid_for_engine(text) -> int:
+    """The ESSID as people know it (Pi-Star / MMDVM / BrandMeister SelfCare): empty = none (the hotspot id is the DMR ID itself), otherwise the two
+    digits are appended: DMR ID 2407219 + ESSID 22 = hotspot id 240721922, ESSID 00 = 240721900. The engine counts like DroidStar (0 = none, n = suffix n-1),
+    so the suffix goes in as suffix+1. A wrong suffix means a hotspot id without the password the user set in SelfCare, and BrandMeister refuses it."""
+    t = str(text if text is not None else "").strip()
+    return min(int(t), 99) + 1 if t.isdigit() else 0
+
+
+def hotspot_id(dmr_id, essid_text) -> int:
+    """The id the master sees (shown to the user in the login log)."""
+    e = essid_for_engine(essid_text); return int(dmr_id) * 100 + (e - 1) if e else int(dmr_id)
+
+
 class EngineClient(QtCore.QObject, Engine):
     name = "dcengine"
     status = Signal(object, str, str)     # (link, state, message)
@@ -156,7 +169,7 @@ class EngineClient(QtCore.QObject, Engine):
                     return None, "BrandMeister needs your personal hotspot password: enter it in the Password field of the DMR server card (BrandMeister SelfCare › Hotspot Security), then connect again."
                 hosts = getattr(self.servers, "hosts", None)
                 pw = hosts.dmr_default_password(host) if hosts is not None else ""       # other masters: the password the host list gives, like Pi-Star
-            p.update(dmrid=int(s["dmr_id"]), essid=int(s.get("essid") or 0) if str(s.get("essid") or "0").isdigit() else 0,
+            p.update(dmrid=int(s["dmr_id"]), essid=essid_for_engine(s.get("essid")),
                      password=pw, tg=int(t.id) if t.id.isdigit() else 0, cc=int(s.get("cc") or 1), slot=int(s.get("slot") or 2))
         elif proto in ("REF", "XRF", "DCS", "M17"):
             ref, mod = split_dstar(t); p.update(name=ref, module=mod)
