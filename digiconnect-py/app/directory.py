@@ -1,5 +1,5 @@
 """Station directories. HELLAS Zone entries and the public DMR talkgroups come first, then everything from the
-worldwide server lists (hostlists.py: YSF, REF/XRF/DCS/XLX). EchoLink loads after sign-in."""
+worldwide server lists (hostlists.py: YSF, REF/XRF/DCS/XLX). EchoLink loads after sign-in (echolink.py)."""
 
 def asl_entries(nodes) -> list[dict]:
     """AllStarLink nodes -> directory rows: title = description (or callsign), second line = node · callsign · place."""
@@ -11,8 +11,9 @@ def asl_entries(nodes) -> list[dict]:
     return out
 
 
-def entries(net: str, hosts=None, asl=None) -> list[dict]:
+def entries(net: str, hosts=None, asl=None, el=None) -> list[dict]:
     if net == "AllStar": return asl_entries(asl.nodes) if asl is not None else []
+    if net == "EchoLink": return list(el or [])          # the station list of the EchoLink directory, loaded after sign-in
     seed = _seed(net)
     if hosts is None: return seed
     have = {e["id"].split()[0] for e in seed}

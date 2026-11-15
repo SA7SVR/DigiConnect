@@ -65,3 +65,42 @@ def of_talkgroup(tg: str) -> str:
     tg = str(tg)
     if len(tg) >= 3 and tg[:3] in MCC and (len(tg) == 3 or len(tg) >= 4): return _table().get(MCC[tg[:3]], "")
     return ""
+
+
+# ---- country of an amateur call sign (ITU prefix blocks; only the common ones - an unknown prefix gives '' and the station is listed under 'All countries') ----
+def _blocks() -> dict[str, str]:
+    def rng(a: str, b: str, code: str, out: dict):
+        for x in range(ord(a[-1]), ord(b[-1]) + 1): out[a[:-1] + chr(x)] = code
+    o: dict[str, str] = {}
+    for a, b, c in (("SA", "SM", "SE"), ("SN", "SR", "PL"), ("SV", "SZ", "GR"), ("3Z", "3Z", "PL"), ("HF", "HF", "PL"), ("OH", "OH", "FI"), ("OF", "OJ", "FI"), ("LA", "LN", "NO"),
+                    ("OZ", "OZ", "DK"), ("OU", "OW", "DK"), ("5P", "5Q", "DK"), ("PA", "PI", "NL"), ("ON", "OT", "BE"), ("DA", "DR", "DE"), ("EA", "EH", "ES"), ("IA", "IZ", "IT"),
+                    ("HB", "HB", "CH"), ("HE", "HE", "CH"), ("HA", "HA", "HU"), ("HG", "HG", "HU"), ("OK", "OL", "CZ"), ("OM", "OM", "SK"), ("YO", "YR", "RO"), ("LZ", "LZ", "BG"),
+                    ("YT", "YU", "RS"), ("YZ", "YZ", "RS"), ("UA", "UI", "RU"), ("RA", "RZ", "RU"), ("UR", "UZ", "UA"), ("EM", "EO", "UA"), ("OE", "OE", "AT"), ("CT", "CT", "PT"),
+                    ("CQ", "CU", "PT"), ("EI", "EJ", "IE"), ("TA", "TC", "TR"), ("YM", "YM", "TR"), ("VA", "VG", "CA"), ("VO", "VO", "CA"), ("VY", "VY", "CA"), ("XJ", "XO", "CA"),
+                    ("VK", "VK", "AU"), ("ZL", "ZM", "NZ"), ("JA", "JS", "JP"), ("7J", "7N", "JP"), ("8J", "8N", "JP"), ("PP", "PY", "BR"), ("LO", "LW", "AR"), ("CE", "CE", "CL"),
+                    ("ZS", "ZU", "ZA"), ("9A", "9A", "HR"), ("S5", "S5", "SI"), ("E7", "E7", "BA"), ("LY", "LY", "LT"), ("YL", "YL", "LV"), ("ES", "ES", "EE"), ("TF", "TF", "IS"),
+                    ("5B", "5B", "CY"), ("C4", "C4", "CY"), ("P3", "P3", "CY"), ("9H", "9H", "MT"), ("Z3", "Z3", "MK"), ("ER", "ER", "MD"), ("EW", "EW", "BY"), ("LX", "LX", "LU"),
+                    ("4X", "4Z", "IL"), ("VU", "VW", "IN"), ("HL", "HL", "KR"), ("DS", "DT", "KR"), ("BV", "BX", "TW"), ("XE", "XI", "MX"), ("CX", "CX", "UY"), ("ZP", "ZP", "PY")):
+        rng(a, b, c, o)
+    for p in ("F",): o[p] = "FR"
+    for p in ("G", "M", "2E", "2D", "2M", "2I", "2W"): o[p] = "GB"
+    for p in ("W", "K", "N", "AA", "AB", "AC", "AD", "AE", "AF", "AG", "AH", "AI", "AJ", "AK", "AL"): o[p] = "US"
+    for p in ("D",): o.setdefault(p, "DE")
+    for p in ("I",): o.setdefault(p, "IT")
+    for p in ("R", "U"): o.setdefault(p, "RU")
+    return o
+
+
+@lru_cache(maxsize=1)
+def _call_blocks() -> dict[str, str]: return _blocks()
+
+
+def of_callsign(call: str) -> str:
+    """Country name from the prefix of a call sign ('SV1ABC-R' -> Greece); '' when the prefix is not known or the name is not a call sign (*CONF*, *ECHOTEST*)."""
+    c = (call or "").strip().upper()
+    if not c or c.startswith("*") or c.startswith("?"): return ""
+    c = re.sub(r"-[A-Z]$", "", c); c = c.split("/")[0] if "/" in c and len(c.split("/")[0]) >= 3 else c
+    if not re.match(r"^[A-Z0-9]{3,10}$", c) or not re.search(r"\d", c): return ""
+    t, b = _table(), _call_blocks()
+    code = b.get(c[:2]) or b.get(c[:1]) or ""
+    return t.get(code, "") if code else ""

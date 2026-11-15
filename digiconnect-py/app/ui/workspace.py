@@ -4,7 +4,7 @@ from ..rules import Target, valid_dmr_tg
 from .. import i18n
 from ..i18n import tr
 from ..theme import NET_COLOR, C
-from .. import directory
+from .. import directory, countries
 from .widgets import *
 from .controls import TxControls
 from .audioblock import AudioBlock
@@ -28,7 +28,7 @@ def norm_dstar(text: str) -> str | None:
 class Workspace(W.QWidget):
     def __init__(self, ctx, net, on_new_qso):
         super().__init__(); self.ctx, self.net = ctx, net; self.page = 0; self.show_favs = False
-        self.entries = directory.entries(net, ctx.hosts, ctx.asl_nodes)
+        self.entries = directory.entries(net, ctx.hosts, ctx.asl_nodes, ctx.el_stations)
         root = hbox(self, s=14)
         # --- left: directory
         left = panel(); lv = vbox(left, m=(14, 14, 14, 10), s=10)
@@ -93,25 +93,28 @@ class Workspace(W.QWidget):
         self.txname = label(""); self.txname.setVisible(False)
         mv.addWidget(self.srvcard)
         self.addfav = button("☆  Add favorite"); mv.addWidget(self.addfav, 0, Qt.AlignmentFlag.AlignLeft)
-        self.dtmf = button("DTMF", "", "grid"); self.dtmf.setVisible(net == "AllStar"); self.dtmf.setToolTip("Send DTMF digits to the connected AllStarLink node (control codes of the node)")
+        self.dtmf = button("DTMF", "", "grid"); self.dtmf.setVisible(net in ("AllStar", "EchoLink")); self.dtmf.setToolTip("Send DTMF digits to the connected AllStarLink node or EchoLink station (control codes)")
         mv.addWidget(self.dtmf, 0, Qt.AlignmentFlag.AlignLeft); self.dtmf.clicked.connect(self._dtmf)
         self.tx = TxControls(ctx, on_new_qso); mv.addWidget(self.tx)
         self.tx.setVisible(False)            # the same controls are in the fixed bar at the bottom of every page (the widget stays, its signals still work)
         mv.addWidget(label("AUDIO", section=True))
         if net == "EchoLink":
-            note = panel("note"); nv = vbox(note, m=(12, 10, 12, 10)); nv.addWidget(label("EchoLink is not available in this build. This page does not connect yet."))
-            mv.addWidget(note)
             g = W.QGridLayout(); self.el_call = W.QLineEdit(ctx.store.settings.get("echolink_call") or ctx.store.settings.get("callsign", ""))
-            self.el_pw = W.QLineEdit(); self.el_pw.setEchoMode(W.QLineEdit.EchoMode.Password)
-            g.addWidget(field("Callsign", self.el_call), 0, 0); g.addWidget(field("Password", self.el_pw), 0, 1); mv.addLayout(g)
-            self.el_rem = checkbox("Remember password"); self.el_rem.setChecked(True); mv.addWidget(self.el_rem)
-            self.el_sign = button("Sign in to account", "primary"); mv.addWidget(self.el_sign, 0, Qt.AlignmentFlag.AlignLeft)
-            self.el_sign.clicked.connect(lambda: ctx.toast.emit("EchoLink is not available in this build."))
+            self.el_pw = W.QLineEdit(); self.el_pw.setEchoMode(W.QLineEdit.EchoMode.Password); self.el_pw.setText(ctx.el_password)
+            g.addWidget(field("EchoLink callsign", self.el_call), 0, 0); g.addWidget(field("EchoLink password", self.el_pw), 0, 1); mv.addLayout(g)
+            self.el_rem = checkbox("Remember on this computer (enter it only once)"); self.el_rem.setChecked(bool(ctx.store.settings.get("el_remember", True))); mv.addWidget(self.el_rem)
+            note = label("The callsign and password of your own validated EchoLink account. When ticked, the password is kept in this program's settings file on this computer (not encrypted).", muted=True); note.setWordWrap(True); mv.addWidget(note)
+            br_ = FlowLayout(hspace=6, vspace=6); self.el_sign = button("Sign in to EchoLink", "primary"); self.el_test = button("Test connection"); br_.addWidget(self.el_sign); br_.addWidget(self.el_test); mv.addLayout(br_)
+            self.el_state = label("", muted=True); self.el_state.setWordWrap(True); mv.addWidget(self.el_state)
+            self.el_call.textChanged.connect(self._el_login); self.el_pw.textChanged.connect(self._el_login); self.el_rem.toggled.connect(self._el_login)
+            self.el_sign.clicked.connect(self._el_sign_in); self.el_test.clicked.connect(self._el_test_run)
+            ctx.el_changed.connect(self._el_show); self._el_testing = False
+            if ctx.el_password and not ctx.el_signed_in and not ctx.el_busy and ctx.store.settings.get("echolink_call", ctx.store.settings.get("callsign")): ctx.el_sign_in(silent=True)     # sign in once when the page opens (account already entered)
         self.audio = AudioBlock(ctx); mv.addWidget(self.audio)
         self.rxvol = W.QSlider(Qt.Orientation.Horizontal); self.rxvol.setRange(0, 100); self.rxvol.setValue(int(ctx.rules.net_volume[net] * 100))
         vr = hbox(); vr.addWidget(label("RX volume", muted=True)); vr.addWidget(self.rxvol, 1); mv.addLayout(vr)
         self.hint = label({"DMR": "Connects to the DMR master set in Settings › Radio networks (DMR ID required). Listen and Connect (TX) are separate.",
-                           "EchoLink": "Listening requires a validated EchoLink account. Enable TX only to participate.",
+                           "EchoLink": "Connects to the chosen EchoLink station with your validated account. Listen and Connect (TX) are separate; EchoLink carries one conversation at a time.",
                            "AllStar": "Connects to the chosen AllStarLink node with your portal account. Listen and Connect (TX) are separate; the node must allow app connections."}.get(net, "Listen links for reception only. Connect (TX) is separate and must be enabled to transmit."), muted=True)
         self.hint.setWordWrap(True); mv.addWidget(self.hint); mv.addStretch()
         # --- right: last heard
@@ -135,6 +138,12 @@ class Workspace(W.QWidget):
             self.asl_head = label("Connect to a node to see who is connected to it.", muted=True); self.asl_head.setWordWrap(True); rv.addWidget(self.asl_head)
             self.asl_list = W.QListWidget(); self.asl_list.setMinimumHeight(140); rv.addWidget(self.asl_list, 1)
             ctx.asl_links_changed.connect(self._asl_links_show); ctx.changed.connect(self._asl_links_show)
+        if net == "EchoLink":
+            rv.addSpacing(8); rv.addWidget(label("CONNECTED TO THIS NODE", section=True))
+            self.el_head = label("Connect to a station to see who is connected to it.", muted=True); self.el_head.setWordWrap(True); rv.addWidget(self.el_head)
+            self.el_list = W.QListWidget(); self.el_list.setMinimumHeight(140); rv.addWidget(self.el_list, 1)
+            self.el_msgs = label("", muted=True); self.el_msgs.setWordWrap(True); rv.addWidget(self.el_msgs)
+            ctx.el_changed.connect(self._el_nodes_show); ctx.changed.connect(self._el_nodes_show)
         rv.addStretch()
         left.setMinimumWidth(300); mid.setMinimumWidth(350); right.setMinimumWidth(240); self._right = right
         root.addWidget(left, 5); root.addWidget(mid, 5); root.addWidget(right, 4)
@@ -143,27 +152,69 @@ class Workspace(W.QWidget):
         self.prev.clicked.connect(lambda: self._page(-1)); self.next.clicked.connect(lambda: self._page(1))
         self.list.currentRowChanged.connect(self._picked); self.addfav.clicked.connect(self._togglefav)
         self.module.currentIndexChanged.connect(self._module_changed)
-        self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: ((ctx.refresh_asl(True) if net == "AllStar" else ctx.refresh_hosts(True)), self.fill()))
+        self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: ((ctx.refresh_asl(True) if net == "AllStar" else (ctx.el_refresh() if net == "EchoLink" else ctx.refresh_hosts(True))), self.fill()))
         self.rxvol.valueChanged.connect(lambda v: ctx.rules.net_volume.__setitem__(net, v / 100))
         self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded); ctx.dmr_server_changed.connect(self._tx_show)
         self.srv_save.clicked.connect(self._srv_save); self.srv_reset.clicked.connect(self._srv_reset); self._srv_key = None
         ctx.changed.connect(self.refresh); self._hosts_loaded(); self._tx_show()
 
     def _dtmf(self):
-        t = self.ctx.dtmf_target()
-        if t is None: self.ctx.toast.emit("DTMF is sent to the connected AllStarLink node. Select the node and connect first."); return
+        t = self.ctx.dtmf_peer()
+        if t is None: self.ctx.toast.emit("DTMF is sent to the connected AllStarLink node or EchoLink station. Select it and connect first (EchoLink: with Connect (TX) on)."); return
         s, ok = W.QInputDialog.getText(self, "DTMF", tr("Node {}\nSequence (0-9 A-D * #, up to 32):").format(t.id))
         if ok: self.ctx.send_dtmf(s, t)
+
+    # ---- EchoLink page -----------------------------------------------------------------------------------------
+    def _el_login(self):
+        self.ctx.set_el_login(self.el_call.text(), self.el_pw.text(), self.el_rem.isChecked())
+
+    def _el_sign_in(self):
+        self._el_login(); self.ctx.el_sign_in()
+
+    def _el_test_run(self):
+        """Signs in again and then shows exactly what the EchoLink directory answered - for finding out why a sign-in or the list does not work."""
+        self._el_login(); self._el_testing = True; self.ctx.el_sign_in()
+
+    def _el_show(self):
+        c = self.ctx
+        self.el_state.setText(tr(c.el_status) if c.el_status else tr("Not signed in"))
+        self.el_sign.setEnabled(not c.el_busy); self.el_test.setEnabled(not c.el_busy)
+        if self._el_testing and not c.el_busy:
+            self._el_testing = False; r = c.el_result or {}
+            lines = [tr("Server") + ": " + (r.get("server") or "—"), tr("Sign-in answer") + ": " + (r.get("login_raw") or "—"), tr("Stations read") + f": {len(r.get('stations', []))}"]
+            if r.get("error"): lines.append(tr("Problem") + ": " + tr(r["error"]))
+            if r.get("list_raw"): lines += ["", tr("Start of the station list as the directory sent it") + ":", r["list_raw"][:1200]]
+            box = W.QMessageBox(self); box.setWindowTitle(tr("EchoLink test")); box.setText(tr("Result of the EchoLink test") + (": OK" if r.get("ok") else ": " + tr("failed")))
+            box.setDetailedText("\n".join(lines)); box.setInformativeText("\n".join(lines[:4])); box.exec()
+        self._hosts_loaded() if c.el_stations and len(self.entries) != len(c.el_stations) else None
+
+    def _el_nodes_show(self):
+        """Who is connected to the station we are connected to: the call signs in what the station itself sends (greeting, conference user list), as EchoLink shows them."""
+        if self.net != "EchoLink": return
+        t = self.ctx.selected; call = t.id.upper() if (t is not None and t.net == "EchoLink") else ""
+        self.el_list.clear(); self.el_msgs.setText("")
+        if not call or not self.ctx._el_in_use():
+            self.el_head.setText(tr("Connect to a station to see who is connected to it.")); return
+        st = self.ctx.el_nodes.get(call)
+        if not st: self.el_head.setText(tr("Waiting for the station to tell who is connected …")); return
+        self.el_head.setText(tr("{} · {} connected").format(call, len(st.get("calls", []))))
+        for c in st.get("calls", []):
+            country = countries.of_callsign(c)
+            self.el_list.addItem(c + (f"  ·  {country}" if country else ""))
+        self.el_msgs.setText("\n".join(st.get("lines", [])[-6:]))
 
     def _asl_login(self):
         self.ctx.set_asl_login(self.asl_user.text(), self.asl_pw.text(), self.asl_rem.isChecked())
 
     def _hosts_loaded(self):
-        self.entries = directory.entries(self.net, self.ctx.hosts, self.ctx.asl_nodes)
+        self.entries = directory.entries(self.net, self.ctx.hosts, self.ctx.asl_nodes, self.ctx.el_stations)
         cur = self.country.currentText()
         names = sorted({e.get("country", "") for e in self.entries if e.get("country")})
         self.country.blockSignals(True); self.country.clear(); self.country.addItems([tr("All countries")] + names); i18n.combo_item(self.country, 0, "All countries")
         if cur in names: self.country.setCurrentText(cur)
+        elif self.net == "EchoLink" and names and not getattr(self, "_el_country_set", False):          # EchoLink: the list opens on the user's own country (then it stays as the user picked it)
+            own = countries.of_callsign(self.ctx.store.settings.get("echolink_call") or self.ctx.store.settings.get("callsign") or "")
+            if own in names: self.country.setCurrentText(own); self._el_country_set = True
         self.country.blockSignals(False); self.fill()
 
     def _asl_links_show(self):
@@ -205,7 +256,7 @@ class Workspace(W.QWidget):
     def _srv_show(self, t, force=False):
         t = t or self._srv_target()
         key = (t.net, t.id) if t else None
-        stamp = (key, self.ctx.store.settings.get("dmr_server"), self.ctx.store.settings.get("dmr_port"), len(self.ctx.hosts.entries), len(self.ctx.servers.user))
+        stamp = (key, self.ctx.store.settings.get("dmr_server"), self.ctx.store.settings.get("dmr_port"), len(self.ctx.hosts.entries), len(self.ctx.servers.user), len(self.ctx.servers.el_hosts))
         if not force and stamp == getattr(self, "_srv_stamp", None): return          # do not overwrite what the user is typing
         self._srv_stamp = stamp
         if t is None:
@@ -215,7 +266,8 @@ class Workspace(W.QWidget):
         self.srv_src.setText({"your address": "Source: your own address (used instead of the list).", "built in": "Source: built into DigiConnect.",
                               "DMR master (Settings)": "Source: the DMR master you chose. Press «Choose DMR server» to change it.",
                               "worldwide list": "Source: the downloaded worldwide server list.",
-                              "AllStarLink DNS": "Source: AllStarLink node address (looked up when you connect)."}.get(src, "Not in the downloaded lists yet — press Refresh, or type the address here."))
+                              "AllStarLink DNS": "Source: AllStarLink node address (looked up when you connect).",
+                              "EchoLink directory": "Source: the EchoLink directory (the address of this station)."}.get(src, "Not in the downloaded lists yet — press Refresh, or type the address here."))
         self._srv_en(True)
         self.srv_reset.setEnabled(src == "your address")
 
@@ -293,7 +345,8 @@ class Workspace(W.QWidget):
                 self.count.setText(tr("DMR · {} entries — {} — press Refresh").format(total, " · ".join(bits)))
         if self.net == "AllStar":
             self.count.setText(f"AllStarLink · {total} nodes" if self.ctx.asl_nodes.nodes else "AllStarLink · node list not downloaded yet — press Refresh (needs internet), or type a node number")
-        if self.net == "EchoLink" and not total: self.count.setText("EchoLink")
+        if self.net == "EchoLink":
+            self.count.setText(f"EchoLink · {total} stations" if self.ctx.el_stations else "EchoLink · sign in to load the station list")
         self.refresh()
 
     def _module_changed(self, _=None):
