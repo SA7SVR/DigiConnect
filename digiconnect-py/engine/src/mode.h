@@ -173,11 +173,11 @@ protected:
 	QUdpSocket *m_udp = nullptr;
 	QHostAddress m_address;
 	char m_module;
-    uint8_t m_watchdog;
+    uint8_t m_watchdog = 0;
 	uint32_t m_dmrid;
 	uint16_t m_nxdnid;
 	QString m_refname;
-	bool m_tx;
+	bool m_tx = false;
 	uint16_t m_txcnt;
 	uint16_t m_ttscnt;
 	uint8_t m_ttsid;
@@ -193,9 +193,9 @@ protected:
 	cst_voice *voice_awb;
 	cst_wave *tts_audio;
 #endif
-	QTimer *m_ping_timer;
-	QTimer *m_txtimer;
-	QTimer *m_rxtimer;
+	QTimer *m_ping_timer = nullptr;
+	QTimer *m_txtimer = nullptr;
+	QTimer *m_rxtimer = nullptr;
 	AudioEngine *m_audio = nullptr;
 	QString m_audioin;
 	QString m_audioout;
@@ -208,18 +208,18 @@ protected:
 	QQueue<uint8_t> m_txcodecq;
 	QQueue<uint8_t> m_rxmodemq;
     imbe_vocoder m_imbevocoder;
-    MBEVocoder *m_mbevocoder;
+    MBEVocoder *m_mbevocoder = nullptr;
 	QString m_vocoder;
 	QString m_modemport;
 #if defined(Q_OS_IOS)
-	void *m_modem;
-	void *m_ambedev;
+	void *m_modem = nullptr;
+	void *m_ambedev = nullptr;
 #else
-	SerialModem *m_modem;
-	SerialAMBE *m_ambedev;
+	SerialModem *m_modem = nullptr;
+	SerialAMBE *m_ambedev = nullptr;
 #endif
-	bool m_hwrx;
-	bool m_hwtx;
+	bool m_hwrx = false;
+	bool m_hwtx = false;
 	bool m_ipv6;
 
 	uint32_t m_baud;
@@ -247,7 +247,7 @@ protected:
 	float m_pocsagTXLevel;
 	float m_fmTXLevel;
 	float m_m17TXLevel;
-	bool m_debug;
+	bool m_debug = false;
 	bool m_useCOSAsLockout;
 	bool m_dstarEnabled;
 	bool m_dmrEnabled;
