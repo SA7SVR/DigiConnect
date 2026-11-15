@@ -67,6 +67,7 @@ public:
 	}
 	virtual void set_dmr_params(uint8_t, QString, QString, QString, QString, QString, QString, QString, QString, QString, QString) {}
 	virtual void set_iax_params(QString, QString, QString, QString, QString, int) {}
+	virtual void set_el_params(QString, QString) {}
 	void set_dmr_cc(uint32_t cc) { m_dmrColorCode = cc; }
 	virtual void set_dmr_rewind(bool, quint16) {}
 	bool get_hwrx() { return m_hwrx; }

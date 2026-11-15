@@ -155,6 +155,10 @@ void Engine::connect_to(const QJsonObject &c) {
     m_thread = new QThread;
     m_mode->moveToThread(m_thread);
 
+    if (m_proto == "ELINK") {
+        m_mode->set_el_params(c.value("el_name").toString(), c.value("el_loc").toString());
+        connect(this, SIGNAL(dtmf(QByteArray)), m_mode, SLOT(send_dtmf(QByteArray)));
+    }
     if (m_proto == "IAX") {
         m_mode->set_iax_params(c.value("iax_user").toString(), c.value("iax_pass").toString(), c.value("iax_name").toString(), refname, host, port);
         connect(this, SIGNAL(dtmf(QByteArray)), m_mode, SLOT(send_dtmf(QByteArray)));
@@ -194,7 +198,8 @@ void Engine::connect_to(const QJsonObject &c) {
     Mode *started = m_mode;
     QTimer::singleShot(15000, this, [this, started] {
         if (m_mode == started && m_mode && m_status == Mode::CONNECTING)
-            teardown("error", "No answer from the server within 15 seconds - check the address and port, and that the network does not block UDP");
+            teardown("error", m_proto == "ELINK" ? "The EchoLink station did not answer within 15 seconds - it may be offline or busy, or a firewall blocks UDP 5198/5199"
+                                                 : "No answer from the server within 15 seconds - check the address and port, and that the network does not block UDP");
     });
 }
 
@@ -215,7 +220,7 @@ void Engine::teardown(const QString &state, const QString &msg) {
 void Engine::on_update(Mode::MODEINFO i) {
     if (!m_mode) return;
     if (m_status == Mode::CONNECTING && i.status == Mode::DISCONNECTED) {
-        teardown("error", i.netmsg.startsWith("DMR_") ? i.netmsg : QString("Connection refused or no answer from the server"));       // DMR_NAK_*: the master answered and refused (see DMR::process_udp)
+        teardown("error", i.netmsg.startsWith("DMR_") ? i.netmsg : i.netmsg.startsWith("EL_") ? i.netmsg.mid(3) : QString("Connection refused or no answer from the server"));       // DMR_NAK_*: the master answered and refused (see DMR::process_udp)
         return;
     }
     if (m_status == Mode::CONNECTING && (i.status == Mode::CONNECTED_RW || i.status == Mode::CONNECTED_RO)) {
@@ -225,7 +230,7 @@ void Engine::on_update(Mode::MODEINFO i) {
         return;
     }
     if ((m_status == Mode::CONNECTED_RW || m_status == Mode::CONNECTED_RO) && (i.status == Mode::TIMEOUT || i.status == Mode::DISCONNECTED || i.status == Mode::CLOSED)) {
-        teardown("timeout", "The server stopped answering");
+        teardown("timeout", i.netmsg.startsWith("EL_") ? i.netmsg.mid(3) : QString("The server stopped answering"));
         return;
     }
     static const char *names[] = {"new", "streaming", "end", "lost", "idle", "tx", "tx", "unknown", "packet", "packet"};
@@ -242,7 +247,10 @@ void Engine::on_update(Mode::MODEINFO i) {
     }
 }
 
-void Engine::on_log(QString s) { emit_ev({{"ev", "log"}, {"text", s}}); }
+void Engine::on_log(QString s) {
+    if (s.startsWith("EL_TEXT\t")) { emit_ev({{"ev", "nodetext"}, {"text", s.mid(8)}}); return; }     // a message from the EchoLink station (who is connected, greeting)
+    emit_ev({{"ev", "log"}, {"text", s}});
+}
 
 void Engine::on_level(unsigned short l) {
     qint64 now = QDateTime::currentMSecsSinceEpoch();
