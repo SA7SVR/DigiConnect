@@ -22,6 +22,7 @@
 #endif
 
 #include "m17.h"
+#include "elink.h"
 #include "ysf.h"
 #include "dmr.h"
 #include "p25.h"
@@ -69,6 +70,9 @@ Mode* Mode::create_mode(QString m)
 	}
 	else if(m == "IAX"){
 		mode = new IAX();
+	}
+	else if(m == "ELINK"){
+		mode = new ELINK();
 	}
 	return mode;
 }
