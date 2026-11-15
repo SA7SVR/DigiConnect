@@ -36,7 +36,7 @@ class AudioBlock(W.QWidget):
         self.b_ref = button("Refresh devices"); self.b_tm = button("Test microphone"); self.b_ts = button("Test speakers")
         for b in (self.b_ref, self.b_tm, self.b_ts): ar.addWidget(b)
         v.addLayout(ar)
-        self.gain = W.QSlider(Qt.Orientation.Horizontal); self.gain.setRange(0, 300)
+        self.gain = W.QSlider(Qt.Orientation.Horizontal); self.gain.setRange(0, 600)
         self.gain.setValue(int(ctx.store.settings.get("mic_gain", 100))); self.gain_val = label("", muted=True)
         gr = hbox(); gr.addWidget(label("Microphone volume", muted=True)); gr.addWidget(self.gain, 1); gr.addWidget(self.gain_val); v.addLayout(gr)
         self.gain.setToolTip("100% = the microphone level. Raise it above 100% if the other stations hear you too quietly.")

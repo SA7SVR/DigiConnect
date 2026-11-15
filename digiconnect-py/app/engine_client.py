@@ -3,7 +3,7 @@
 One helper process per link (network + destination). A link is shared by its roles: any number
 of Listen receivers and the one Connect(TX). The helper lives while it has at least one role.
 If the engine crashes, only that link is lost and the UI reports it; the UI never freezes."""
-import json, os, sys
+import json, math, os, sys
 from pathlib import Path
 from .qt import QtCore, Signal
 from .engine import Engine
@@ -332,14 +332,20 @@ class EngineClient(QtCore.QObject, Engine):
 
     def mic_gain(self) -> float:
         """Microphone level from the settings (percent; 100 = device level, above 100 = software gain)."""
-        try: return max(0.0, min(4.0, float(self.store.settings.get("mic_gain", 100)) / 100.0))
+        try: return max(0.0, min(6.0, float(self.store.settings.get("mic_gain", 100)) / 100.0))
         except (TypeError, ValueError): return 1.0
 
     def set_mic_gain(self, pct: float):
         self.store.settings["mic_gain"] = int(pct)
         for ln in self.links.values(): ln.send("volume", **{"in": self.mic_gain()})
 
-    def rx_level(self): return min(1.0, self._level / 20000.0)       # the engine reports one audio level; while nobody transmits it is the received audio
+    def rx_level(self):
+        """The engine reports one audio peak (0..32767): while nobody transmits it is the received audio, while I transmit it is my microphone.
+        Shown on a dB scale like every audio meter (-50 dBFS = empty, 0 dBFS = full): ordinary speech peaks around -20 dBFS and so fills over half of the bar
+        (a linear scale showed only 9-10 % for a normal voice)."""
+        p = float(self._level)
+        if p < 1: return 0.0
+        return max(0.0, min(1.0, (20.0 * math.log10(p / 32768.0) + 50.0) / 50.0))
     def mic_level(self): return self.rx_level()
 
     def tx_only_links(self):

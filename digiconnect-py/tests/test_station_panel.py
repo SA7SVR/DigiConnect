@@ -132,3 +132,15 @@ def test_typed_dstar_reflector_is_understood():
     assert norm_dstar("ref001c") == "REF001 C" and norm_dstar("REF001 b") == "REF001 B" and norm_dstar(" xlx 307 d ") == "XLX307 D"
     assert norm_dstar("REF001") == "REF001 C" and norm_dstar("DCS003") == "DCS003 A" and norm_dstar("XLX307") == "XLX307 A"
     assert norm_dstar("hello") is None and norm_dstar("REF01 C") is None and norm_dstar("") is None
+
+
+def test_meter_is_logarithmic_and_gain_goes_to_600(tmp_path):
+    from app.store import Store
+    from app.engine_client import EngineClient, find_engine
+    from app.qt import QtWidgets
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    st = Store(tmp_path); eng = EngineClient(find_engine(), st)
+    eng._level = 3000.0; assert 0.55 < eng.rx_level() < 0.65          # ordinary speech (-21 dBFS) fills over half of the bar, not 9-10 %
+    eng._level = 32767.0; assert eng.rx_level() > 0.99
+    eng._level = 0.0; assert eng.rx_level() == 0.0
+    st.settings["mic_gain"] = 600; assert abs(eng.mic_gain() - 6.0) < 1e-9

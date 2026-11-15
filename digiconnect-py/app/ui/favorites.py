@@ -43,15 +43,15 @@ class StationPanel(W.QFrame):
 
     def __init__(self, ctx, on_new_qso):
         super().__init__(); self.setObjectName("panel"); self.ctx = ctx; self.on_new_qso = on_new_qso; self.setFixedWidth(300); self.setVisible(False); self.cur = None
-        v = vbox(self, m=(16, 14, 16, 12), s=6)
+        v = vbox(self, m=(16, 12, 16, 10), s=4)
         v.addWidget(label("🎧  LISTENING STATION DETAILS", section=True))
         self.state = label(""); self.state.setStyleSheet("font-weight:700;"); v.addWidget(self.state)
         self.group = label(""); self.group.setWordWrap(True); self.group.setStyleSheet("font-size:15px;font-weight:700;"); v.addWidget(self.group)
-        self.net = label("", muted=True); v.addWidget(self.net); v.addSpacing(14)
+        self.net = label("", muted=True); v.addWidget(self.net); v.addSpacing(4)
         self.call = label(""); self.call.setStyleSheet("font-size:30px;font-weight:800;"); self.call.setWordWrap(True); v.addWidget(self.call)
         self.name = label(""); self.name.setStyleSheet("font-size:16px;font-weight:700;"); self.name.setWordWrap(True); v.addWidget(self.name); v.addSpacing(6)
         self.lvl = LevelBar(6); v.addWidget(self.lvl)
-        self.rows = label(""); self.rows.setTextFormat(Qt.TextFormat.RichText); self.rows.setWordWrap(True); v.addWidget(self.rows)
+        self.rows = label(""); self.rows.setTextFormat(Qt.TextFormat.RichText); self.rows.setWordWrap(False); v.addWidget(self.rows)
         self.src = label("", muted=True); self.src.setWordWrap(True); v.addWidget(self.src); v.addStretch()
         self.empty = label("Waiting for a station. Its details appear here as soon as someone talks on the group you are listening to.", muted=True); self.empty.setWordWrap(True); v.addWidget(self.empty)
         b = hbox(s=8); self.nq = button("New QSO", "primary", "plus"); self.rf = button("Refresh"); b.addWidget(self.nq); b.addWidget(self.rf); b.addStretch(); v.addLayout(b)
@@ -90,7 +90,7 @@ class StationPanel(W.QFrame):
         if st.get("country"): rows.append((tr("Country"), st["country"]))
         place = ", ".join(x for x in (st.get("city"), st.get("state")) if x)
         if place: rows.append((tr("City"), place))
-        self.rows.setText("<table cellspacing='4'>" + "".join(f"<tr><td style='color:{C['muted']}'>{k}&nbsp;&nbsp;</td><td><b>{v}</b></td></tr>" for k, v in rows) + "</table>")
+        self.rows.setText("<table cellspacing='4'>" + "".join(f"<tr><td style='color:{C['muted']}'>{k}&nbsp;&nbsp;</td><td><b>{v}</b></td></tr>" for k, v in rows) + "</table>"); self.rows.setMinimumHeight(28 * len(rows) + 6)
         if st.get("name") or st.get("country"): self.src.setText(tr("Source:") + " RadioID")
         elif t.net == "DMR" and st.get("srcid"): self.src.setText(tr("Not found in RadioID yet (or no internet): only the DMR ID is shown. Nothing is invented."))
         else: self.src.setText("")

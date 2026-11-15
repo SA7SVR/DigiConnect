@@ -22,13 +22,13 @@ class MicKnob(W.QWidget):
     def value(self) -> int: return self._v
 
     def set_value(self, v: int, from_user: bool = False):
-        v = max(0, min(300, int(v)))
+        v = max(0, min(600, int(v)))
         if v == self._v: return
         self._v = v; self.update()
         if from_user: self.ctx.set_mic_gain(v); bus().gain.emit(v)
 
     def _from_bus(self, v):
-        if v != self._v: self._v = max(0, min(300, int(v))); self.update()
+        if v != self._v: self._v = max(0, min(600, int(v))); self.update()
 
     def _poll(self):
         try: lv = float(self.ctx.engine.mic_level()) if self.ctx.rules.ptt else 0.0      # only while I transmit: received audio is shown on the station being listened to
@@ -63,7 +63,7 @@ class MicKnob(W.QWidget):
         fill = col(C["amber"] if boost else C["green"])
         pen = QtGui.QPen(track, 7, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap); p.setPen(pen)
         p.drawArc(r.adjusted(3, 3, -3, -3), int(self.START * 16), int(-self.SWEEP * 16))
-        frac = self._v / 300.0
+        frac = self._v / 600.0
         pen.setColor(fill); p.setPen(pen)
         if frac > 0: p.drawArc(r.adjusted(3, 3, -3, -3), int(self.START * 16), int(-self.SWEEP * frac * 16))
         # 100 % tick
