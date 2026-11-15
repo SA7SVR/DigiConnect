@@ -27,6 +27,8 @@ class Ctx(QtCore.QObject):
     policy_changed = Signal()           # the owner's server opened/closed a mode or switched transmitting
     asl_links_changed = Signal()        # the list of stations connected to an AllStar node was updated
     _asl_links_done = Signal(str, object)
+    el_changed = Signal()               # EchoLink: signed in / out, the station list arrived, or a station sent text (who is connected)
+    _el_done = Signal(object)
     _station_done = Signal(int, object)   # a callbook lookup (DMR ID -> callsign) finished
 
     def __init__(self, store: Store | None = None, engine=None):
@@ -40,6 +42,9 @@ class Ctx(QtCore.QObject):
         self._asl_busy = False
         self._asl_done.connect(self._on_asl_done)
         self.asl_links: dict[str, dict] = {}; self._asl_links_asked: dict[str, float] = {}
+        self.el_stations: list[dict] = []; self.el_status = ""; self.el_signed_in = False; self.el_busy = False; self.el_last = 0.0; self.el_result: dict = {}
+        self.el_nodes: dict[str, dict] = {}          # call sign of the station we are connected to -> {lines, calls}: what it told us (who is connected)
+        self._el_done.connect(self._on_el_done)
         self._asl_links_done.connect(self._on_asl_links)
         from .servers import Servers
         self.servers = getattr(self.engine, "servers", None) or Servers(self.store)      # one address book for the pages and the engine
@@ -65,6 +70,8 @@ class Ctx(QtCore.QObject):
         if hasattr(self.engine, "dmr_password"): self.engine.dmr_password = self.dmr_password
         self.asl_password = (self.store.settings.get("asl_pw") or "") if self.store.settings.get("asl_remember", True) else ""    # AllStarLink portal password: kept in the settings file only when "Remember" is ticked
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = self.asl_password
+        self.el_password = (self.store.settings.get("el_pw") or "") if self.store.settings.get("el_remember", True) else ""
+        if hasattr(self.engine, "nodetext"): self.engine.nodetext.connect(self._on_nodetext)
         if hasattr(self.engine, "status"):
             self.engine.status.connect(self._on_status); self.engine.heard.connect(self._on_heard)
             self.engine.volume_refresh.connect(lambda: self.__dict__.pop("_vol_cache", None))
@@ -172,6 +179,7 @@ class Ctx(QtCore.QObject):
     def _tick(self):
         self._sync_audio()
         self.poll_asl_links()
+        self._el_keepalive()
         if self.rules.ptt:
             self.rules.tick(250)
             if not self.rules.ptt:
@@ -271,8 +279,8 @@ class Ctx(QtCore.QObject):
 
     def send_dtmf(self, keys: str, target=None) -> bool:
         from .rules import valid_dtmf
-        keys = (keys or "").strip().upper(); target = target or self.dtmf_target()
-        if target is None: self.toast.emit("DTMF is sent to the connected AllStarLink node. Select the node and connect first."); return False
+        keys = (keys or "").strip().upper(); target = target or self.dtmf_peer()
+        if target is None: self.toast.emit("DTMF is sent to the connected AllStarLink node or EchoLink station. Select it and connect first (EchoLink: with Connect (TX) on)."); return False
         if not valid_dtmf(keys): self.toast.emit("DTMF accepts 1 to 32 characters from 0-9, A-D, * and #."); return False
         if not hasattr(self.engine, "send_dtmf"): self.toast.emit("No protocol engine connected (UI preview)"); return False
         err = self.engine.send_dtmf(target, keys)
@@ -289,6 +297,85 @@ class Ctx(QtCore.QObject):
         if changed: self.store.save_settings()
         self.asl_password = pw
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = pw
+
+    # ---- EchoLink: directory sign-in, station list, staying online ------------------------------------------------
+    def set_el_login(self, call: str, pw: str, remember=None):
+        s = self.store.settings
+        if remember is None: remember = bool(s.get("el_remember", True))
+        call = (call or "").strip().upper(); changed = False
+        for k, v in (("echolink_call", call), ("el_remember", bool(remember)), ("el_pw", pw if remember else "")):
+            if s.get(k) != v: s[k] = v; changed = True
+        if changed: self.store.save_settings()
+        self.el_password = pw
+
+    def el_sign_in(self, state: str = "ONLINE", want_list: bool = True, silent: bool = False):
+        """Signs in to the EchoLink directory and (when wanted) loads the station list, in a worker thread. The result is kept as it came (Test connection shows it)."""
+        if self.el_busy: return
+        s = self.store.settings; call = s.get("echolink_call") or s.get("callsign") or ""
+        self.el_busy = True
+        if not silent: self.el_status = "Signing in to EchoLink …"; self.el_changed.emit()
+        loc = str(s.get("echolink_loc") or "")
+        def work():
+            from . import echolink
+            try: res = echolink.sign_in(call, self.el_password, loc, state, want_list)
+            except Exception as ex: res = dict(ok=False, error=f"EchoLink sign-in failed ({ex}).", server="", login_raw="", list_raw="", stations=[])
+            res["state"] = state; res["silent"] = silent
+            if not self.closing: self._el_done.emit(res)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_el_done(self, res):
+        from . import diag, echolink
+        self.el_busy = False; self.el_result = res; self.el_last = __import__("time").monotonic()
+        diag.log(f"EchoLink {res.get('state')}: ok={res.get('ok')} server={res.get('server')} stations={len(res.get('stations', []))} login={res.get('login_raw', '')[:60]!r} error={res.get('error')}")
+        if res.get("state") == "OFFLINE": return
+        if res.get("ok"):
+            self.el_signed_in = True
+            if res.get("stations"):
+                self.el_stations = echolink.directory_rows(res["stations"])
+                self.servers.el_hosts = {e["id"].upper(): {"host": e["host"], "port": e["port"]} for e in self.el_stations}
+            self.el_status = f"Signed in to EchoLink · {len(self.el_stations)} stations"
+            if not res.get("silent"): self.toast.emit(self.el_status)
+        else:
+            if not res.get("silent") or not self.el_signed_in: self.el_signed_in = False
+            self.el_status = res.get("error") or "EchoLink sign-in failed."
+            if not res.get("silent"): self.toast.emit(self.el_status)
+        self.el_changed.emit(); self.hosts_changed.emit()
+
+    def el_info(self, call: str) -> dict | None:
+        """The directory row of an EchoLink station (place, node number, kind, status, country), or None."""
+        c = (call or "").strip().upper()
+        return next((e for e in self.el_stations if e["id"].upper() == c), None)
+
+    def el_refresh(self):
+        """Refresh on the EchoLink page: sign in again and reload the station list (or tell what is missing)."""
+        if not self.el_password: self.toast.emit("Enter your EchoLink password first."); return
+        self.el_sign_in()
+
+    def el_go_offline(self):
+        """Tells the directory we are leaving (the station list of others then shows us as offline). Quick, best effort."""
+        if not self.el_signed_in: return
+        from . import echolink
+        try: echolink.sign_in(self.store.settings.get("echolink_call") or self.store.settings.get("callsign") or "", self.el_password, "", "OFFLINE", False)
+        except Exception: pass
+        self.el_signed_in = False
+
+    def _el_in_use(self) -> bool:
+        r = self.rules
+        return any(x.target.net == "EchoLink" for x in r.rx) or (r.tx_connected and r.tx_target is not None and r.tx_target.net == "EchoLink")
+
+    def _el_keepalive(self):
+        """A station we call checks in the directory that the caller is online: say 'online' every 5 minutes while signed in (and connected to a station)."""
+        import time as _t
+        from . import echolink
+        if self.el_signed_in and not self.el_busy and _t.monotonic() - self.el_last > echolink.STAY_ONLINE_EVERY and self._el_in_use():
+            self.el_sign_in("BUSY" if self.rules.ptt else "ONLINE", want_list=False, silent=True)
+
+    def _on_nodetext(self, ln, text: str):
+        if ln.target.net != "EchoLink": return
+        from . import echolink
+        node = ln.target.id.upper(); st = echolink.apply_text(self.el_nodes.setdefault(node, {}), text)
+        st["calls"] = [c for c in st["calls"] if c != node]                  # the station itself is not "connected to" itself
+        self.el_changed.emit()
 
     def _bm_server_to_api(self):
         """A BrandMeister master chosen earlier from Pi-Star's list ('2022.master.brandmeister.network') becomes the same master from BrandMeister's own list

@@ -8,7 +8,7 @@ from .hostlists import HostLists
 
 # Standard UDP ports per protocol (used when the user types just a host name).
 DEFAULT_PORT = {"YSF": 42000, "DMR": 62031, "REF": 20001, "XRF": 30001, "DCS": 30051,
-                "NXDN": 41400, "P25": 41000, "M17": 17000, "IAX": 4569}
+                "NXDN": 41400, "P25": 41000, "M17": 17000, "IAX": 4569, "ELINK": 5198}
 
 # Entries known with certainty. Add more here as the HELLAS Zone endpoints are confirmed.
 BUILTIN: dict[str, dict] = {
@@ -25,7 +25,8 @@ def protocol_for(t: Target) -> str | None:
         if p.startswith("REF"): return "REF"
         if p.startswith("XRF"): return "XRF"
         return "DCS"            # DCSxxx and XLXxxx reflectors both speak DCS
-    return None                 # EchoLink: not available in this build
+    if t.net == "EchoLink": return "ELINK"
+    return None
 
 
 def split_dstar(t: Target) -> tuple[str, str]:
@@ -43,6 +44,7 @@ class Servers:
         except Exception:
             pass
         self.settings = store.settings
+        self.el_hosts: dict[str, dict] = {}          # EchoLink: call sign -> {host, port}, filled from the directory after sign-in
         self.hosts = HostLists.for_root(store.root)
 
     @staticmethod
@@ -55,6 +57,7 @@ class Servers:
             host = (self.settings.get("dmr_server") or "").strip()
             if not host: return None
             return {"host": host, "port": int(self.settings.get("dmr_port") or DEFAULT_PORT["DMR"])}
+        if t.net == "EchoLink": return self.user.get(self.key(t)) or self.el_hosts.get(t.id.strip().upper())
         if t.net == "AllStar":
             from . import allstar            # the real address comes from AllStarLink DNS just before connecting
             if self.user.get(self.key(t)): return self.user[self.key(t)]
@@ -74,6 +77,8 @@ class Servers:
         """(endpoint, where it comes from): 'your address', 'built in', 'DMR master (Settings)', 'worldwide list' or ''."""
         if t.net == "DMR":
             ep = self.resolve(t); return ep, ("DMR master (Settings)" if ep else "")
+        if t.net == "EchoLink":
+            ep = self.resolve(t); return ep, ("EchoLink directory" if ep else "")
         if t.net == "AllStar":
             if self.user.get(self.key(t)): return self.user[self.key(t)], "your address"
             ep = self.resolve(t); return ep, ("AllStarLink DNS" if ep else "")

@@ -45,15 +45,19 @@ class StationPanel(W.QFrame):
         super().__init__(); self.setObjectName("panel"); self.ctx = ctx; self.on_new_qso = on_new_qso; self.setFixedWidth(300); self.setVisible(False); self.cur = None
         v = vbox(self, m=(16, 12, 16, 10), s=4)
         v.addWidget(label("🎧  LISTENING STATION DETAILS", section=True))
-        self.state = label(""); self.state.setStyleSheet("font-weight:700;"); v.addWidget(self.state)
-        self.group = label(""); self.group.setWordWrap(True); self.group.setStyleSheet("font-size:15px;font-weight:700;"); v.addWidget(self.group)
-        self.net = label("", muted=True); v.addWidget(self.net); v.addSpacing(4)
-        self.call = label(""); self.call.setStyleSheet("font-size:30px;font-weight:800;"); self.call.setWordWrap(True); v.addWidget(self.call)
-        self.name = label(""); self.name.setStyleSheet("font-size:16px;font-weight:700;"); self.name.setWordWrap(True); v.addWidget(self.name); v.addSpacing(6)
-        self.lvl = LevelBar(6); v.addWidget(self.lvl)
-        self.rows = label(""); self.rows.setTextFormat(Qt.TextFormat.RichText); self.rows.setWordWrap(False); v.addWidget(self.rows)
-        self.src = label("", muted=True); self.src.setWordWrap(True); v.addWidget(self.src); v.addStretch()
-        self.empty = label("Waiting for a station. Its details appear here as soon as someone talks on the group you are listening to.", muted=True); self.empty.setWordWrap(True); v.addWidget(self.empty)
+        body = W.QWidget(); body.setObjectName("spbody"); body.setStyleSheet("#spbody{background:transparent;}"); bv = vbox(body, m=(0, 0, 4, 0), s=4)
+        scroll = W.QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(W.QFrame.Shape.NoFrame); scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea{background:transparent;border:none;} QScrollArea > QWidget > QWidget{background:transparent;}"); scroll.setWidget(body); v.addWidget(scroll, 1)       # many rows (EchoLink) scroll instead of overlapping
+        self.state = label(""); self.state.setStyleSheet("font-weight:700;"); bv.addWidget(self.state)
+        self.group = label(""); self.group.setWordWrap(True); self.group.setStyleSheet("font-size:15px;font-weight:700;"); bv.addWidget(self.group)
+        self.net = label("", muted=True); bv.addWidget(self.net); bv.addSpacing(4)
+        self.call = label(""); self.call.setStyleSheet("font-size:30px;font-weight:800;"); self.call.setWordWrap(True); bv.addWidget(self.call)
+        self.name = label(""); self.name.setStyleSheet("font-size:16px;font-weight:700;"); self.name.setWordWrap(True); bv.addWidget(self.name); bv.addSpacing(6)
+        self.lvl = LevelBar(6); bv.addWidget(self.lvl)
+        self.rows = label(""); self.rows.setTextFormat(Qt.TextFormat.RichText); self.rows.setWordWrap(False); bv.addWidget(self.rows)
+        self.also = label("", muted=True); self.also.setTextFormat(Qt.TextFormat.RichText); self.also.setWordWrap(True); bv.addWidget(self.also)        # EchoLink: who else is connected to the station
+        self.src = label("", muted=True); self.src.setWordWrap(True); bv.addWidget(self.src); bv.addStretch()
+        self.empty = label("Waiting for a station. Its details appear here as soon as someone talks on the group you are listening to.", muted=True); self.empty.setWordWrap(True); bv.addWidget(self.empty)
         b = hbox(s=8); self.nq = button("New QSO", "primary", "plus"); self.rf = button("Refresh"); b.addWidget(self.nq); b.addWidget(self.rf); b.addStretch(); v.addLayout(b)
         self.nq.clicked.connect(self._qso); self.rf.clicked.connect(self._refresh)
 
@@ -78,14 +82,30 @@ class StationPanel(W.QFrame):
         f = self._focus(); self.setVisible(f is not None); self.cur = None
         if f is None: return
         state, tone, t, st = f
-        self.state.setText(state); self.state.setStyleSheet(f"font-weight:700;color:{C[tone]};")
+        self.state.setStyleSheet(f"font-weight:700;color:{C[tone]};")
         self.group.setText(t.name or t.id); self.net.setText(f"{t.net} · " + (f"TG {t.id}" if t.net == "DMR" else t.id))
+        if st is None and t.net == "EchoLink": st, state = dict(src=t.id), "Connected · nobody talking"       # EchoLink: the station we are on is shown even when it is quiet
         self.empty.setVisible(st is None); self.nq.setEnabled(st is not None); self.rf.setEnabled(st is not None and bool(st.get("srcid")))
+        self.state.setText(state); self.also.setText("")
         for w in (self.call, self.name, self.rows, self.src): w.setVisible(st is not None)
         self.lvl.setVisible(st is not None and state == "Traffic detected")
         if st is None: return
         self.cur = st; self.call.setText(st["src"]); self.call.setStyleSheet(f"font-size:30px;font-weight:800;color:{C[tone]};"); self.name.setText(st.get("name") or "")
         rows = []
+        if t.net == "EchoLink":
+            from .. import countries
+            el = self.ctx.el_info(t.id) or {}; me = (self.ctx.store.settings.get("echolink_call") or self.ctx.store.settings.get("callsign") or "").upper()
+            kind = tr({"conference": "Conference", "repeater": "Repeater", "link": "Link", "station": "Station"}.get(el.get("kind", ""), "Station"))
+            parts = el.get("sub", "").split(" · "); place = parts[1] if len(parts) > 1 and not parts[1].startswith("Node") else ""
+            node = next((x[5:] for x in parts if x.startswith("Node ")), "")
+            self.net.setText("EchoLink")                                          # the station's call sign is the title above: not repeated
+            rows.append((tr("Station"), kind + (f" · {place}" if place else "")))
+            if node: rows.append((tr("Node"), node + (" · " + tr("busy") if el.get("status") == "BUSY" else "")))
+            st = dict(st, country=st.get("country") or el.get("country") or countries.of_callsign(st["src"]))
+            tx = self.ctx.rules.tx_connected and self.ctx.rules.tx_target == t
+            rows.append((tr("You"), f"{me or '—'} · " + (tr("listening and transmitting") if tx else tr("listening"))))
+            calls = self.ctx.el_nodes.get(t.id.upper(), {}).get("calls", [])
+            if calls: self.also.setText(tr("Also connected here") + f" ({len(calls)}): <b>" + ", ".join(calls[:6]) + "</b>" + (f" … +{len(calls) - 6}" if len(calls) > 6 else ""))
         if st.get("srcid"): rows.append((tr("DMR ID") if t.net == "DMR" else "ID", str(st["srcid"])))
         if st.get("country"): rows.append((tr("Country"), st["country"]))
         place = ", ".join(x for x in (st.get("city"), st.get("state")) if x)

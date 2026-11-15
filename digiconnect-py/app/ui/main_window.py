@@ -98,7 +98,7 @@ class MainWindow(W.QMainWindow):
         self.h_nq = button("New QSO", "", "plus"); self.h_set = button("Settings", "", "gear"); self.h_add = button("☆ Add favorite", "primary"); hr.addWidget(self.h_nq); hr.addWidget(self.h_add); hr.addWidget(self.h_set); hv.addLayout(hr)
         tabs = hbox(s=10); self.tabs = {}
         for k in ("favorites", *NETS):
-            b = button("My favorites" if k == "favorites" else ("EchoLink · soon" if k == "EchoLink" else k), "tab", checkable=True); b.clicked.connect(lambda _, k=k: self.nav("favorites" if k == "favorites" else "net:" + k)); self.tabs[k] = b; tabs.addWidget(b)
+            b = button("My favorites" if k == "favorites" else k, "tab", checkable=True); b.clicked.connect(lambda _, k=k: self.nav("favorites" if k == "favorites" else "net:" + k)); self.tabs[k] = b; tabs.addWidget(b)
         self.stop_all_btn = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_all_btn.clicked.connect(lambda: self.ctx.stop_all()); tabs.addWidget(self.stop_all_btn)   # always in reach, on the same line as the network tabs
         tabs.addStretch(); hv.addLayout(tabs); col.addWidget(self.head)
         # pages + right drawers
@@ -214,7 +214,7 @@ class MainWindow(W.QMainWindow):
         for t, b in self.tabs.items():
             if t != "favorites":
                 closed = not self.ctx.policy.allows(t)          # closed by the owner's server (EchoLink too; when open it still says 'soon' until it is built)
-                b.setText(t + " · " + tr("closed") if closed else ("EchoLink · soon" if t == "EchoLink" else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
+                b.setText(t + " · " + tr("closed") if closed else t); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
                 if bool(b.property("closed")) != closed: b.setProperty("closed", closed); repolish(b)
         self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else "Choose a station, then Listen. Connect transmission separately to participate.")
         self.h_add.setVisible(k == "favorites")

@@ -174,6 +174,7 @@ class EngineClient(QtCore.QObject, Engine):
     name = "dcengine"
     status = Signal(object, str, str)     # (link, state, message)
     heard = Signal(object, dict)          # (link, rx event)
+    nodetext = Signal(object, str)        # (link, text a station sent: greeting / who is connected)
     notice = Signal(str)                  # an engine warning for the user (e.g. the microphone delivers no sound)
     volume_refresh = Signal()             # a link just connected: re-send the receive volumes
     _tok_done = Signal(object, str, str)  # (callback, token, error) from the sign-in worker thread -> UI thread
@@ -214,7 +215,8 @@ class EngineClient(QtCore.QObject, Engine):
     def _params(self, t: Target, variant: int | None = None) -> tuple[dict | None, str]:
         s = self.store.settings
         proto = protocol_for(t)
-        if not proto: return None, "EchoLink is under construction — coming soon."
+        if not proto: return None, "This network is not available."
+        if proto == "ELINK" and not self.servers.resolve(t): return None, "Sign in to EchoLink on the EchoLink page and pick a station from the list first."
         if proto == "IAX":
             from . import allstar
             if not allstar.valid_node(t.id): return None, "Enter a valid AllStarLink node number (digits only)."
@@ -243,6 +245,8 @@ class EngineClient(QtCore.QObject, Engine):
             if not allstar.valid_user(user): return None, "Enter your AllStarLink portal username on the AllStar page (your callsign)."
             if not self.asl_password: return None, "Enter your AllStarLink portal password on the AllStar page."
             p.update(name=t.id.strip(), iax_user=allstar.PUBLIC_USER, iax_pass=allstar.PUBLIC_SECRET, asl_user=user)
+        elif proto == "ELINK":
+            p.update(name=t.id.strip().upper(), el_name=str(s.get("op_name") or ""), el_loc=str(s.get("echolink_loc") or ""))
         elif proto == "NXDN":
             if not str(s.get("nxdn_id") or "").strip().isdigit(): return None, "An NXDN ID is required for NXDN (Settings › Radio networks)."
             p.update(nxdnid=int(s["nxdn_id"]), name=t.id.strip())
@@ -327,7 +331,7 @@ class EngineClient(QtCore.QObject, Engine):
         """DTMF digits to the node of this target (AllStarLink uses them to control the node). Returns '' or the reason it was not sent."""
         ln = self.links.get(f"{target.net}:{target.id}")
         if ln is None or ln.state != "connected": return "DTMF can only be sent while the connection to that node is up."
-        if protocol_for(target) != "IAX": return "DTMF is available for AllStarLink nodes."
+        if protocol_for(target) not in ("IAX", "ELINK"): return "DTMF is available for AllStarLink nodes and EchoLink stations."
         ln.send("dtmf", keys=keys); return ""
 
     def mic_gain(self) -> float:
@@ -366,6 +370,8 @@ class EngineClient(QtCore.QObject, Engine):
         ev = e.get("ev")
         if ev == "warn":
             self.notice.emit(e.get("msg", "")); return
+        if ev == "nodetext":
+            self.nodetext.emit(ln, e.get("text", "")); return
         if ev == "log":
             from . import diag; diag.log(f"engine {ln.key}: {e.get('text', '')}"); return          # e.g. the steps of a DMR login (never the password)
         if ev in ("status", "error"):
