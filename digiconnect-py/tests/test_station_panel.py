@@ -125,3 +125,10 @@ def test_dtmf_keypad(tmp_path):
     from app.qt import Qt
     pad._set(""); QtTest.QTest.keyClick(pad, Qt.Key.Key_9); QtTest.QTest.keyClick(pad, Qt.Key.Key_Backspace); assert pad.seq == ""
     ctx.rules.ptt = True; ctx.changed.emit(); assert pad.stop.isEnabled()
+
+
+def test_typed_dstar_reflector_is_understood():
+    from app.ui.workspace import norm_dstar
+    assert norm_dstar("ref001c") == "REF001 C" and norm_dstar("REF001 b") == "REF001 B" and norm_dstar(" xlx 307 d ") == "XLX307 D"
+    assert norm_dstar("REF001") == "REF001 C" and norm_dstar("DCS003") == "DCS003 A" and norm_dstar("XLX307") == "XLX307 A"
+    assert norm_dstar("hello") is None and norm_dstar("REF01 C") is None and norm_dstar("") is None

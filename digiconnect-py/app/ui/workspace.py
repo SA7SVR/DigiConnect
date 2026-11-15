@@ -16,6 +16,15 @@ def valid_node_text(t): from ..allstar import valid_node; return valid_node(t)
 def valid_user_text(t): from ..allstar import valid_user; return valid_user(t)
 
 
+def norm_dstar(text: str) -> str | None:
+    """What a person types for a reflector ('ref001c', 'REF001 c', 'xlx307', 'DCS 003 B') -> 'REF001 C'; a missing module gets the usual one (REF/XRF: C, DCS/XLX: A)."""
+    import re
+    t = re.sub(r"[\s_-]+", "", (text or "").upper())
+    m = re.fullmatch(r"(REF|XRF|DCS|XLX)(\d{3})([A-Z]?)", t)
+    if not m: return None
+    return f"{m.group(1)}{m.group(2)} {m.group(3) or ('C' if m.group(1) in ('REF', 'XRF') else 'A')}"
+
+
 class Workspace(W.QWidget):
     def __init__(self, ctx, net, on_new_qso):
         super().__init__(); self.ctx, self.net = ctx, net; self.page = 0; self.show_favs = False
@@ -299,6 +308,9 @@ class Workspace(W.QWidget):
         if self.net in ("DMR", "NXDN", "P25") and not valid_dmr_tg(text):
             self.ctx.toast.emit("A manual TG must be a positive integer no greater than 16777215."); return
         if not text: return
+        if self.net == "D-Star":
+            text = norm_dstar(text)
+            if not text: self.ctx.toast.emit("A D-Star reflector looks like REF001 C, XRF012 A, DCS003 B or XLX307 D (name, then the module letter)."); return
         if self.net == "AllStar" and not valid_node_text(text):
             self.ctx.toast.emit("An AllStarLink node number has 3 to 8 digits."); return
         self.ctx.store.toggle_fav(self.net, text, f"{self.net} {text}") if not self.ctx.store.is_fav(self.net, text) else None

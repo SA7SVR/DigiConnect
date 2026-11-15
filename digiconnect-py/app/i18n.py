@@ -11,6 +11,7 @@ LANGS = {"English": "en", "Ελληνικά": "el"}
 _lang = "en"
 
 EL: dict[str, str] = {
+    "A D-Star reflector looks like REF001 C, XRF012 A, DCS003 B or XLX307 D (name, then the module letter).": "Ένας D-Star reflector γράφεται π.χ. REF001 C, XRF012 A, DCS003 B ή XLX307 D (όνομα και μετά το γράμμα του module).",
     "All modules": "Όλα τα modules", "D-Star: show only this module of every reflector. M17: module to link to.": "D-Star: δείχνει μόνο αυτό το module κάθε ρεφλέκτορα. M17: το module της σύνδεσης.",
     "DTMF keypad": "Πληκτρολόγιο DTMF", "DTMF sequence": "Ακολουθία DTMF", "A–D keys": "Πλήκτρα A–D", "Send": "Αποστολή", "Stop TX": "Διακοπή εκπομπής", "Clear": "Καθαρισμός",
     "Choose an EchoLink or AllStarLink connection.": "Διάλεξε μια σύνδεση EchoLink ή AllStarLink.", "Sending to {} {}": "Αποστολή προς {} {}",
