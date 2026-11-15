@@ -130,6 +130,14 @@ void Mode::init(QString callsign, uint32_t dmrid, uint16_t nxdnid, char module, 
 	voice_awb = register_cmu_us_awb(nullptr);
 #endif
     m_debug = false;
+
+	// D-Star header fields. Nothing else sets them, so the transmitted header used to carry blank callsigns
+	// (the reflector forwarded it, but the radio/hotspot ignored a stream from nobody) and the slow-data text was read past its end.
+	m_txmycall = callsign.simplified().toUpper().left(8);
+	m_txurcall = "CQCQCQ";
+	m_txrptr2 = (refname.simplified().toUpper().left(7) + " " + (module == ' ' ? QString("G") : QString(module))).toUpper();
+	m_txrptr1 = (callsign.simplified().toUpper().left(7) + " B");
+	m_txusrtxt = QString("DigiConnect").leftJustified(20, ' ');
 }
 
 void Mode::ambe_connect_status(bool s)

@@ -510,8 +510,11 @@ void REF::transmit()
 	if(m_ttsid == 0){
 		if(m_audio->read(pcm, 160)){
 		}
+		else if(m_tx){
+			return;			// still transmitting, the microphone has not delivered the next block yet
+		}
 		else{
-			return;
+			memset(pcm, 0, sizeof(pcm));		// key released but no audio arrived: still send the end-of-transmission packet, or the link stays 'transmitting' forever
 		}
 	}
 
