@@ -29,7 +29,7 @@ if ($chat === 'poll') {
   dc_upsert('dc_chat_th', ['token' => $tok], ['seen_u' => $now, 'inst' => $cid]);               // "online in the chat" for the panel
   foreach (dc_q('SELECT * FROM dc_chat WHERE token=? AND id>? ORDER BY id ASC LIMIT 100', [$tok, $after])->fetchAll() as $r) $out[] = dc_chat_row_out($r);
   $upd = []; foreach (dc_q("SELECT * FROM dc_chat WHERE token=? AND id<=? AND ((who='user' AND read_owner=1) OR del=1) ORDER BY id DESC LIMIT 60", [$tok, $after])->fetchAll() as $r) $upd[] = dc_chat_row_out($r);
-  if ($out && !empty($_GET['read'])) dc_q("UPDATE dc_chat SET read_user=1 WHERE token=? AND who='owner' AND read_user=0 AND id<=?", [$tok, (int)end($out)['id']]);   // only the open conversation window marks messages as read; the background check just counts
+  if (!empty($_GET['read'])) dc_q("UPDATE dc_chat SET read_user=1 WHERE token=? AND who='owner' AND read_user=0 AND id<=?", [$tok, max($after, $out ? (int)end($out)['id'] : 0)]);   // only the open conversation window marks messages as read; the background check just counts
   $typ = (int)dc_scalar('SELECT typ_o FROM dc_chat_th WHERE token=?', [$tok]) > $now - 4 ? 1 : 0;
   echo json_encode(['ok' => 1, 'msgs' => $out, 'upd' => $upd, 'on' => (int)dc_kv('chat_owner_seen', 0) > $now - 25 ? 1 : 0, 'typ' => $typ, 'now' => $now], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
   exit;

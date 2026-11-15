@@ -55,6 +55,11 @@ def test_a_message_from_the_program_is_a_conversation_the_owner_answers_and_the_
     assert chat_api(a, "msgs&t=" + t["token"] + "&after=0")["msgs"][1]["rd"] == 0                  # fetched in the background: not "read" yet
     get(srv, "inbox.php?chat=poll&id=inst-1&after=0&read=1")                                          # the user opens the conversation
     assert chat_api(a, "msgs&t=" + t["token"] + "&after=0")["msgs"][1]["rd"] == 1                  # now the owner sees that it was read
+    chat_api(a, "send", token=t["token"], body="second")                                              # fetched in the background first (not read) ...
+    last = json.loads(get(srv, "inbox.php?chat=poll&id=inst-1&after=%d" % poll["msgs"][-1]["id"]))["msgs"][-1]["id"]
+    assert chat_api(a, "msgs&t=" + t["token"] + "&after=0")["msgs"][-1]["rd"] == 0
+    get(srv, "inbox.php?chat=poll&id=inst-1&after=%d&read=1" % last)                                  # ... then the conversation is opened with nothing new to fetch
+    assert chat_api(a, "msgs&t=" + t["token"] + "&after=0")["msgs"][-1]["rd"] == 1
 
 
 def test_the_owner_can_start_a_conversation_with_any_user_from_the_users_list(srv):
