@@ -152,10 +152,10 @@ def test_favorite_tile_shows_listening_and_dmr_password_is_kept(tmp_path):
     from app.ui.workspace import Workspace
     st = Store(tmp_path); st.settings["callsign"] = "SA7SVR"; st.toggle_fav("C4FM", "00006", "Test reflector"); ctx = Ctx(st)
     fv = Favorites(ctx, lambda *a: None); card = fv.cards[0]
-    assert card.badge.isHidden()                                           # not listening: no badge
+    assert card.badge.isHidden() and "Activity unavailable" in card.act.text()          # not listening: nothing to say
     ctx.select(Target("C4FM", "00006", "Test reflector")); ctx.rules.listen(Target("C4FM", "00006", "Test reflector")); ctx.changed.emit()
-    assert not card.badge.isHidden() and "Listening" in card.badge.text()   # listening: the tile says so
-    ctx.rules.stop_listening(ctx.rules.rx[0].handle); ctx.changed.emit(); assert card.badge.isHidden()
+    assert "Idle" in card.act.text() and card.tx.text() == "Receive only"              # listening: the tile says so
+    ctx.rules.stop_listening(ctx.rules.rx[0].handle); ctx.changed.emit(); assert "Activity unavailable" in card.act.text()
     ws = Workspace(ctx, "DMR", lambda *a: None); ws.dm_pw.setText("bm-secret")
     assert ctx.dmr_password == "bm-secret" and Ctx(Store(tmp_path)).dmr_password == "bm-secret"      # entered once on the DMR page, kept
     ws.dm_rem.setChecked(False); assert Ctx(Store(tmp_path)).dmr_password == "" and ctx.dmr_password == "bm-secret"

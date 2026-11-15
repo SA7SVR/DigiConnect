@@ -20,7 +20,10 @@ class Card(W.QFrame):
         self.name = label(fav["name"]); self.name.setStyleSheet("font-size:15px;font-weight:700;"); self.name.setWordWrap(True); v.addWidget(self.name)
         if not names_only:
             v.addWidget(label(f"{fav['id']} · {'YSF' if fav['net'] == 'C4FM' else fav['net']}", muted=True))
-            v.addWidget(label("•  Activity unavailable", muted=True)); v.addStretch()
+            self.act = label("•  Activity unavailable", muted=True); v.addWidget(self.act)
+            self.who = label(""); self.who.setWordWrap(True); self.who.setStyleSheet("font-size:15px;font-weight:700;"); self.who.setVisible(False); v.addWidget(self.who)
+            self.who2 = label("", muted=True); self.who2.setWordWrap(True); self.who2.setVisible(False); v.addWidget(self.who2)
+            self.lvl = LevelBar(); self.lvl.setVisible(False); v.addWidget(self.lvl); v.addStretch()
             self.tx = label("Transmit disconnected", muted=True); b = hbox(); b.addWidget(self.tx); b.addStretch()
             self.edit = button("", "rail", "pencil"); self.edit.setFixedSize(26, 26); self.edit.clicked.connect(lambda: self.rename.emit(self.fav)); b.addWidget(self.edit)
             v.addLayout(b)
@@ -35,10 +38,83 @@ class Card(W.QFrame):
         else: super().keyPressEvent(e)
 
 
+class StationPanel(W.QFrame):
+    """Opens beside the cards while something is being listened to: the group, and the station that is talking (or was heard last) with callsign, name, DMR ID and country."""
+
+    def __init__(self, ctx, on_new_qso):
+        super().__init__(); self.setObjectName("panel"); self.ctx = ctx; self.on_new_qso = on_new_qso; self.setFixedWidth(300); self.setVisible(False); self.cur = None
+        v = vbox(self, m=(16, 14, 16, 12), s=6)
+        v.addWidget(label("🎧  LISTENING STATION DETAILS", section=True))
+        self.state = label(""); self.state.setStyleSheet("font-weight:700;"); v.addWidget(self.state)
+        self.group = label(""); self.group.setWordWrap(True); self.group.setStyleSheet("font-size:15px;font-weight:700;"); v.addWidget(self.group)
+        self.net = label("", muted=True); v.addWidget(self.net); v.addSpacing(14)
+        self.call = label(""); self.call.setStyleSheet("font-size:30px;font-weight:800;"); self.call.setWordWrap(True); v.addWidget(self.call)
+        self.name = label(""); self.name.setStyleSheet("font-size:16px;font-weight:700;"); self.name.setWordWrap(True); v.addWidget(self.name); v.addSpacing(6)
+        self.lvl = LevelBar(6); v.addWidget(self.lvl)
+        self.rows = label(""); self.rows.setTextFormat(Qt.TextFormat.RichText); self.rows.setWordWrap(True); v.addWidget(self.rows)
+        self.src = label("", muted=True); self.src.setWordWrap(True); v.addWidget(self.src); v.addStretch()
+        self.empty = label("Waiting for a station. Its details appear here as soon as someone talks on the group you are listening to.", muted=True); self.empty.setWordWrap(True); v.addWidget(self.empty)
+        b = hbox(s=8); self.nq = button("New QSO", "primary", "plus"); self.rf = button("Refresh"); b.addWidget(self.nq); b.addWidget(self.rf); b.addStretch(); v.addLayout(b)
+        self.nq.clicked.connect(self._qso); self.rf.clicked.connect(self._refresh)
+
+    def _focus(self):
+        """(state text, tone, target, station dict or None) - the group talking right now, else the last station heard on a group we listen to, else the selected / first listened group."""
+        r = self.ctx.rules
+        if not r.rx: return None
+        live = [(self.ctx.talking[(x.target.net, x.target.id)], x.target) for x in r.rx if x.reports_traffic and (x.target.net, x.target.id) in self.ctx.talking]
+        if live:
+            tk, t = max(live, key=lambda p: p[0]["since"]); return "Traffic detected", "green", t, self.ctx.talker(t)
+        mine = {(x.target.net, x.target.id): x.target for x in r.rx}
+        for h in self.ctx.last_heard:
+            t = mine.get((h["net"], h["target"]))
+            if t is not None:
+                st = dict(src=h["src"], srcid=h.get("srcid") or 0); info = self.ctx.station_info(st["srcid"])
+                if info: st.update(name=info["name"], country=info["country"], city=info["city"], state=info["state"])
+                return "Last station heard", "pink", t, st
+        t = r.selected if r.selected is not None and r.is_listening(r.selected) else r.rx[0].target
+        return "Idle", "pink", t, None
+
+    def refresh(self):
+        f = self._focus(); self.setVisible(f is not None); self.cur = None
+        if f is None: return
+        state, tone, t, st = f
+        self.state.setText(state); self.state.setStyleSheet(f"font-weight:700;color:{C[tone]};")
+        self.group.setText(t.name or t.id); self.net.setText(f"{t.net} · " + (f"TG {t.id}" if t.net == "DMR" else t.id))
+        self.empty.setVisible(st is None); self.nq.setEnabled(st is not None); self.rf.setEnabled(st is not None and bool(st.get("srcid")))
+        for w in (self.call, self.name, self.rows, self.src): w.setVisible(st is not None)
+        self.lvl.setVisible(st is not None and state == "Traffic detected")
+        if st is None: return
+        self.cur = st; self.call.setText(st["src"]); self.call.setStyleSheet(f"font-size:30px;font-weight:800;color:{C[tone]};"); self.name.setText(st.get("name") or "")
+        rows = []
+        if st.get("srcid"): rows.append((tr("DMR ID") if t.net == "DMR" else "ID", str(st["srcid"])))
+        if st.get("country"): rows.append((tr("Country"), st["country"]))
+        place = ", ".join(x for x in (st.get("city"), st.get("state")) if x)
+        if place: rows.append((tr("City"), place))
+        self.rows.setText("<table cellspacing='4'>" + "".join(f"<tr><td style='color:{C['muted']}'>{k}&nbsp;&nbsp;</td><td><b>{v}</b></td></tr>" for k, v in rows) + "</table>")
+        if st.get("name") or st.get("country"): self.src.setText(tr("Source:") + " RadioID")
+        elif t.net == "DMR" and st.get("srcid"): self.src.setText(tr("Not found in RadioID yet (or no internet): only the DMR ID is shown. Nothing is invented."))
+        else: self.src.setText("")
+
+    def _refresh(self):
+        c = self.cur
+        if c and c.get("srcid"):
+            self.ctx.callbook.mem.pop(int(c["srcid"]), None); self.ctx._ask_station(int(c["srcid"]))
+
+    def _qso(self):
+        c = self.cur
+        if not c: return
+        f = self._focus(); t = f[2] if f else None
+        self.ctx.qso_prefill = dict(callsign=c["src"] if not c["src"].isdigit() else "", name=c.get("name", ""), country=c.get("country", ""),
+                                    qth=", ".join(x for x in (c.get("city"), c.get("state")) if x), net=t.net if t else "", dest=t.id if t else "")
+        self.on_new_qso()
+
+
 class Favorites(W.QWidget):
     def __init__(self, ctx, on_new_qso):
         super().__init__(); self.ctx = ctx; self.filter = "all"
-        v = vbox(self, s=12)
+        outer = hbox(self, s=14); left = W.QWidget(); outer.addWidget(left, 1)
+        self.side = StationPanel(ctx, on_new_qso); outer.addWidget(self.side)
+        v = vbox(left, s=12)
         self.nq = button("New QSO", "", "plus"); self.add = button("☆ Add favorite", "primary")   # placed in the page head by MainWindow
         tb = FlowLayout(hspace=8, vspace=8); self.search = W.QLineEdit(); self.search.setPlaceholderText("Search favorites…"); self.search.setFixedWidth(280)
         tb.addWidget(self.search); self.fb = {}
@@ -46,7 +122,7 @@ class Favorites(W.QWidget):
             b = button(txt, "seg", checkable=True); b.clicked.connect(lambda _, k=k: self._filter(k)); tb.addWidget(b); self.fb[k] = b
         self.fb["all"].setChecked(True); self.refresh_b = button("Refresh"); tb.addWidget(self.refresh_b)
         self.single = button("Single listening", "seg", checkable=True); self.multi = button("Multiple listening", "seg", checkable=True)
-        self.display = button("Display"); self.dtmf = button("DTMF", "", "grid")
+        self.display = button("Display"); self.dtmf = button("DTMF", "", "grid", checkable=True)
         for b in (self.single, self.multi, self.display, self.dtmf): tb.addWidget(b)
         v.addLayout(tb)
         self.scroll = W.QScrollArea(); self.scroll.setWidgetResizable(True); self.host = W.QWidget(); self.grid = W.QGridLayout(self.host)
@@ -62,6 +138,15 @@ class Favorites(W.QWidget):
         self.single.clicked.connect(lambda: ctx.set_mode(ListenMode.SINGLE)); self.multi.clicked.connect(lambda: ctx.set_mode(ListenMode.MULTIPLE))
         self.display.clicked.connect(self._display); self.dtmf.clicked.connect(self._dtmf); self.add.clicked.connect(self._add)
         ctx.changed.connect(self.refresh_state); self.rebuild()
+        self._lv = QtCore.QTimer(self); self._lv.setInterval(90); self._lv.timeout.connect(self._levels); self._lv.start()
+
+    def _levels(self):
+        """The received audio moves a thin bar on the station that is talking (not on the microphone: that one moves only when I speak)."""
+        try: lv = float(self.ctx.engine.rx_level()) if not self.ctx.rules.ptt else 0.0
+        except Exception: lv = 0.0
+        for c in getattr(self, "cards", []):
+            if hasattr(c, "lvl") and not c.lvl.isHidden(): c.lvl.set_level(lv)
+        if not self.side.lvl.isHidden(): self.side.lvl.set_level(lv)
 
     def restyle(self):
         for d, key, txt in self.legend: d.setText(f"<span style='color:{C[key]}'>●</span> {tr(txt)}")
@@ -79,15 +164,15 @@ class Favorites(W.QWidget):
         self.ctx.toast.emit("Select a station in a network tab and press ☆ Add favorite (or use Manual entry).")
 
     def _dtmf(self):
-        r = self.ctx.rules; at = self.ctx.dtmf_target()
-        if at is not None:
-            s, ok = W.QInputDialog.getText(self, "DTMF", tr("Node {}\nSequence (0-9 A-D * #, up to 32):").format(at.id))
-            if ok: self.ctx.send_dtmf(s, at)
-            return
-        if not (r.tx_connected and r.tx_target and r.tx_target.net == "EchoLink"):
-            self.ctx.toast.emit("DTMF is sent to the connected EchoLink peer. Sign in and enable Connect (TX) on that peer first."); return
-        s, ok = W.QInputDialog.getText(self, "DTMF", tr("Peer {}\nSequence (0-9 A-D * #, up to 32):").format(r.tx_target.id))
-        if ok and not valid_dtmf(s.upper()): self.ctx.toast.emit("DTMF accepts 1 to 32 characters from 0-9, A-D, * and #.")
+        """The DTMF keypad opens over the cards (a second press closes it)."""
+        if getattr(self, "pad", None) is None:
+            from .dtmfpad import DtmfPad
+            self.pad = DtmfPad(self.ctx, self.window()); self.pad.closed.connect(lambda: self.dtmf.setChecked(False))
+        if self.pad.isVisible(): self.pad.close_pad(); return
+        self.dtmf.setChecked(True); self.pad.refresh(); self.pad.adjustSize()
+        top = self.window(); pos = self.dtmf.mapTo(top, QtCore.QPoint(0, self.dtmf.height() + 6))      # over the whole window, so it is never cut off by the page
+        self.pad.setParent(top); self.pad.adjustSize()
+        self.pad.move(max(0, min(pos.x() - 40, top.width() - self.pad.width() - 8)), max(0, min(pos.y(), top.height() - self.pad.height() - 8))); self.pad.show(); self.pad.raise_(); self.pad.setFocus()
 
     def _rename(self, fav):
         txt, ok = W.QInputDialog.getText(self, tr("Rename favorite"), tr("Display name (1–80 characters):"), text=fav["name"])
@@ -133,5 +218,17 @@ class Favorites(W.QWidget):
             c.setProperty("sel", bool(r.selected == t)); repolish(c)
             closed = not self.ctx.policy.allows(t.net)
             if bool(c.property("closed")) != closed: c.setProperty("closed", closed); repolish(c)
-            if hasattr(c, "tx"): c.tx.setText("Mode closed" if closed else "Transmit ready" if r.tx_connected and r.tx_target == t else "Transmit disconnected")
+            tk = self.ctx.talker(t) if rx is not None and rx.reports_traffic else None
+            if hasattr(c, "act"):
+                c.badge.setVisible(False)                       # the full card says it in its own line instead of the corner text
+                audible = rx is not None and st == "amber"
+                if rx is None: c.act.setText("•  Activity unavailable"); c.act.setStyleSheet("")
+                elif tk: c.act.setText("●  " + tr("Receiving audio" if audible else "Traffic detected")); c.act.setStyleSheet(f"font-weight:700;color:{C['amber' if audible else 'green']};")
+                else: c.act.setText("●  " + tr("Idle")); c.act.setStyleSheet(f"font-weight:700;font-size:14px;color:{C['pink']};")
+                c.who.setVisible(bool(tk)); c.lvl.setVisible(bool(tk)); c.who2.setVisible(bool(tk and (tk.get("name") or tk.get("country"))))
+                if tk:
+                    c.who.setText(tk["src"]); c.who2.setText(" · ".join(x for x in (tk.get("name"), tk.get("country")) if x))
+            if hasattr(c, "tx"):
+                c.tx.setText("Mode closed" if closed else "Transmit ready" if r.tx_connected and r.tx_target == t else "Receive only" if rx is not None else "Transmit disconnected")
+        self.side.refresh()
         self.updated.setText(tr("Updated {}").format(self.ctx.utc_now().strftime("%H:%M:%S UTC")))

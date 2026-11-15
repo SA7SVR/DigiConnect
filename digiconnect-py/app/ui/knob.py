@@ -31,7 +31,7 @@ class MicKnob(W.QWidget):
         if v != self._v: self._v = max(0, min(300, int(v))); self.update()
 
     def _poll(self):
-        try: lv = float(self.ctx.engine.mic_level())
+        try: lv = float(self.ctx.engine.mic_level()) if self.ctx.rules.ptt else 0.0      # only while I transmit: received audio is shown on the station being listened to
         except Exception: lv = 0.0
         if abs(lv - self._level) > 0.01 or (lv == 0 and self._level): self._level = lv; self.update()
 

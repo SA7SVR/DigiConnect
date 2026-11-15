@@ -339,7 +339,8 @@ class EngineClient(QtCore.QObject, Engine):
         self.store.settings["mic_gain"] = int(pct)
         for ln in self.links.values(): ln.send("volume", **{"in": self.mic_gain()})
 
-    def mic_level(self): return min(1.0, self._level / 20000.0)
+    def rx_level(self): return min(1.0, self._level / 20000.0)       # the engine reports one audio level; while nobody transmits it is the received audio
+    def mic_level(self): return self.rx_level()
 
     def tx_only_links(self):
         """Connected links that only transmit (Connect TX, no Listen): they still receive audio from the server, so they need the volume/mute too."""

@@ -88,6 +88,7 @@ void DMR::process_udp()
 	CSHA256 sha256;
 	char buffer[400U];
 
+	if(!m_udp){ return; }		// the socket was dropped by an earlier MSTNAK / MSTCL while more datagrams were queued (crashed on macOS Intel)
 	buf.resize(m_udp->pendingDatagramSize());
 	m_udp->readDatagram(buf.data(), buf.size(), &sender, &senderPort);
 
@@ -118,6 +119,7 @@ void DMR::process_udp()
 			m_ping_timer->stop();
 		}
 		if(m_udp){
+			m_udp->disconnect(this);
 			m_udp->deleteLater();
 			m_udp = nullptr;
 		}
@@ -138,6 +140,7 @@ void DMR::process_udp()
 			m_ping_timer->stop();
 		}
 		if(m_udp){
+			m_udp->disconnect(this);
 			m_udp->deleteLater();
 			m_udp = nullptr;
 		}
@@ -343,6 +346,7 @@ void DMR::hostname_lookup(QHostInfo i)
 
 void DMR::send_ping()
 {
+	if(!m_udp){ return; }
 	if(m_rewind){
 		rewind_keepalive();
 		if(m_rw_last_ms && (QDateTime::currentMSecsSinceEpoch() - m_rw_last_ms) > 15000){
@@ -375,6 +379,7 @@ void DMR::send_ping()
 
 void DMR::send_disconnect()
 {
+	if(!m_udp){ return; }
     if(m_mdirect){
                 return;
         }
@@ -1199,7 +1204,7 @@ void DMR::rewind_fail(const QString &code, const QString &why)
 	if(m_rw_timer){ m_rw_timer->stop(); }
 	m_modeinfo.netmsg = code;
 	m_modeinfo.status = DISCONNECTED;
-	if(m_udp){ m_udp->deleteLater(); m_udp = nullptr; }
+	if(m_udp){ m_udp->disconnect(this); m_udp->deleteLater(); m_udp = nullptr; }
 	emit update(m_modeinfo);
 }
 
@@ -1388,6 +1393,7 @@ void DMR::process_rewind(const QByteArray &buf)
 // Homebrew goes out as it is; with Rewind the same DMRD packet is converted
 void DMR::send_net(const QByteArray &dmrd)
 {
+	if(!m_udp){ return; }
 	if(m_rewind){
 		rewind_send_dmrd(dmrd);
 	}

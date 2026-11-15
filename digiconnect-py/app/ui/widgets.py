@@ -86,3 +86,19 @@ class FlowLayout(W.QLayout):
             if not test: it.setGeometry(QtCore.QRect(QtCore.QPoint(x, y), sz))
             x += sz.width() + self._h; row_h = max(row_h, sz.height())
         return y + row_h - rect.y() + m.bottom()
+
+
+class LevelBar(W.QWidget):
+    """Thin moving bar for the received audio of a station that is talking."""
+    def __init__(self, h=5):
+        super().__init__(); self.setFixedHeight(h); self.v = 0.0
+    def set_level(self, v):
+        v = max(0.0, min(1.0, float(v)))
+        if abs(v - self.v) > 0.01 or (v == 0 and self.v): self.v = v; self.update()
+    def paintEvent(self, _):
+        from ..theme import C
+        p = QtGui.QPainter(self); p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing); r = QtCore.QRectF(self.rect()); p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QtGui.QColor(C["groove"])); p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
+        if self.v > 0:
+            p.setBrush(QtGui.QColor(C["red"] if self.v > 0.9 else C["amber"] if self.v > 0.7 else C["green"]))
+            p.drawRoundedRect(QtCore.QRectF(r.x(), r.y(), r.width() * self.v, r.height()), r.height() / 2, r.height() / 2)

@@ -27,6 +27,7 @@ class Ctx(QtCore.QObject):
     policy_changed = Signal()           # the owner's server opened/closed a mode or switched transmitting
     asl_links_changed = Signal()        # the list of stations connected to an AllStar node was updated
     _asl_links_done = Signal(str, object)
+    _station_done = Signal(int, object)   # a callbook lookup (DMR ID -> callsign) finished
 
     def __init__(self, store: Store | None = None, engine=None):
         super().__init__()
@@ -55,6 +56,11 @@ class Ctx(QtCore.QObject):
         self.engine_msg = ""
         self._problem = ("", 0.0)                # the last refusal / failure, kept visible in the status line for a while
         self.last_heard: list[dict] = []        # newest first
+        from .callbook import Callbook
+        self.callbook = Callbook(self.store.root)   # DMR ID -> callsign, name, country (RadioID), remembered on this computer
+        self.talking: dict[tuple, dict] = {}    # (network, target id) -> the station that is talking there right now
+        self._station_done.connect(self._on_station)
+        self.qso_prefill = None                 # set by the station panel's New QSO button, read once by the QSO drawer
         self.dmr_password = (self.store.settings.get("dmr_pw") or "") if self.store.settings.get("remember_pw", True) else ""      # saved on this computer only while "Remember" is ticked
         if hasattr(self.engine, "dmr_password"): self.engine.dmr_password = self.dmr_password
         self.asl_password = (self.store.settings.get("asl_pw") or "") if self.store.settings.get("asl_remember", True) else ""    # AllStarLink portal password: kept in the settings file only when "Remember" is ticked
@@ -214,6 +220,17 @@ class Ctx(QtCore.QObject):
             self.engine.ptt(True)
         self.changed.emit()
 
+    def stop_tx(self):
+        """Ends a transmission at once (also a latched one), without stopping the listening."""
+        if self.rules.ptt: self.rules._end_ptt(); self.engine.ptt(False); self.changed.emit()
+
+    def dtmf_peer(self):
+        """Where the DTMF keypad sends: an AllStar node, else the connected EchoLink peer; None = nothing to send to yet."""
+        t = self.dtmf_target()
+        if t is not None: return t
+        r = self.rules
+        return r.tx_target if r.tx_connected and r.tx_target is not None and r.tx_target.net == "EchoLink" else None
+
     def ptt_up(self):
         if self.rules.ptt and not self.rules.latched:
             self.rules.ptt_release(); self.engine.ptt(False); self.changed.emit()
@@ -221,7 +238,7 @@ class Ctx(QtCore.QObject):
     def stop_all(self):
         for r in list(self.rules.rx): self.engine.stop_rx(r.handle)
         self.engine.ptt(False); self.engine.disconnect_tx()
-        self.rules.stop_all(); self.changed.emit()
+        self.rules.stop_all(); self.talking.clear(); self.changed.emit()
 
     def set_mode(self, m: ListenMode):
         o = self.rules.set_mode(m)
@@ -366,15 +383,17 @@ class Ctx(QtCore.QObject):
         self.changed.emit()
 
     def _on_heard(self, ln, e: dict):
-        st = e.get("state")
+        st = e.get("state"); key = (ln.target.net, ln.target.id)
         if st in ("new", "streaming"):
             for r in self.rules.rx:
                 if r.handle in ln.rx: r.reports_traffic = True
-            src = e.get("src") or e.get("callsign") or "?"
+            src, srcid = self._talker(ln, e)
             dst = (e.get("dst", "") or "").strip()
             if not dst.strip("*"): dst = ""                      # YSF sends '**********' = 'everyone': show nothing instead of stars
             now = self.utc_now()
-            cur = next((h for h in self.last_heard[:6] if h["net"] == ln.target.net and h["src"] == src), None)
+            tk = self.talking.get(key)
+            if tk is None or tk.get("stream_src") != src: self.talking[key] = dict(src=src, stream_src=src, srcid=srcid, since=now)
+            cur = next((h for h in self.last_heard[:6] if h["net"] == ln.target.net and h["stream_src"] == src), None)
             if cur is not None and (now - cur["last"]).total_seconds() < 4:
                 cur["last"] = now                                  # same transmission goes on (the engine reports every frame) -> one row
                 if dst and not cur["dst"]: cur["dst"] = dst
@@ -382,12 +401,52 @@ class Ctx(QtCore.QObject):
                 from . import diag; diag.log(f"heard {src} -> {dst} via {e.get('gw', '')} on {ln.target.net}:{ln.target.id}")
                 mine = (self.store.settings.get("callsign") or "").strip().upper()
                 self.last_heard.insert(0, dict(src=src, dst=dst, gw=(e.get("gw", "") or "").strip(), net=ln.target.net, target=ln.target.id,
-                                              stream_src=src, ts=now, last=now, me=bool(mine) and mine in src.upper().replace(" ", "").split("/")))
+                                              stream_src=src, srcid=srcid, ts=now, last=now, me=bool(mine) and mine in src.upper().replace(" ", "").split("/")))
                 del self.last_heard[60:]
         elif st in ("end", "lost"):
             for r in self.rules.rx:
                 if r.handle in ln.rx: r.reports_traffic = False
+            self.talking.pop(key, None)
         self.changed.emit()
+
+    # ---- who is talking: DMR gives only the DMR ID, the callbook turns it into a callsign ----------------
+    def _talker(self, ln, e: dict):
+        """(text shown, DMR ID or 0). Other modes send the callsign themselves; DMR sends only the ID (the engine's 'callsign' field is OUR own)."""
+        srcid = int(e.get("srcid") or 0)
+        src = (e.get("src") or "").strip()
+        if ln.target.net == "DMR" and srcid:
+            info = self.callbook.cached(srcid)
+            if info is None: self._ask_station(srcid)
+            return (info["call"] if info else (src or str(srcid))), srcid
+        if not src and srcid: return str(srcid), srcid
+        return (src or e.get("callsign") or "?"), srcid
+
+    def _ask_station(self, did: int):
+        if self.callbook.needs_fetch(did):
+            self.callbook.ask(did, lambda d, info: (not self.closing) and self._station_done.emit(d, info))
+
+    def _on_station(self, did: int, info):
+        """The callbook answered: the ID on the cards / in Last heard becomes the callsign."""
+        if not info: self.changed.emit(); return
+        for h in self.last_heard:
+            if h.get("srcid") == did and h["src"] == str(did):
+                h["src"] = info["call"]; h["stream_src"] = info["call"]
+                mine = (self.store.settings.get("callsign") or "").strip().upper(); h["me"] = bool(mine) and mine in info["call"].upper().split("/")
+        for t in self.talking.values():
+            if t.get("srcid") == did: t["src"] = info["call"]; t["stream_src"] = info["call"]
+        self.changed.emit()
+
+    def station_info(self, did: int) -> dict | None:
+        """What the callbook knows about a DMR ID (None: unknown / not answered yet)."""
+        return self.callbook.cached(did) if did else None
+
+    def talker(self, t: Target) -> dict | None:
+        """The station talking on this target right now: dict(src, srcid, name, country...) or None."""
+        tk = self.talking.get((t.net, t.id))
+        if not tk: return None
+        out = dict(tk); info = self.station_info(tk.get("srcid") or 0)
+        if info: out.update(name=info["name"], country=info["country"], city=info["city"], state=info["state"])
+        return out
 
     # ---- text helpers -----------------------------------------------------
     def status_text(self) -> str:

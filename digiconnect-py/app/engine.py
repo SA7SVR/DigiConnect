@@ -13,7 +13,8 @@ class Engine:
     def connect_tx(self, target: Target) -> str: ...
     def disconnect_tx(self) -> None: ...
     def ptt(self, on: bool) -> None: ...
-    def mic_level(self) -> float: return 0.0
+    def mic_level(self) -> float: return 0.0          # the microphone meter: moves only while I am transmitting
+    def rx_level(self) -> float: return 0.0           # the level of the received audio: shown on what I am listening to
 
 
 class NullEngine(Engine):

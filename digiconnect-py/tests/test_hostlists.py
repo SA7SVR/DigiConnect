@@ -132,9 +132,11 @@ def test_directory_and_ui(tmp_path, web):
     texts = [ws.list.item(i).text() for i in range(ws.list.count())]
     assert any("REF030" in t for t in texts) and ws.list.count() > before
     assert "Germany" in [ws.country.itemText(i) for i in range(ws.country.count())]
-    ws.country.setCurrentText("Germany"); app.processEvents(); assert all("XLX001" in ws.list.item(i).text() for i in range(ws.list.count())) and ws.list.count() == 1
-    ws.country.setCurrentIndex(0); ws.search.setText("REF030"); app.processEvents(); assert ws.list.count() == 1
-    ws.module.setCurrentText("F"); ws.list.setCurrentRow(0); assert ctx.selected == Target("D-Star", "REF030 F", "REF030")
+    ws.country.setCurrentText("Germany"); app.processEvents(); assert all("XLX001" in ws.list.item(i).text() for i in range(ws.list.count())) and ws.list.count() == 26       # one reflector = its 26 modules A-Z
+    ws.module.setCurrentText("B"); app.processEvents(); assert ws.list.count() == 1 and "XLX001 B" in ws.list.item(0).text()        # the module box shows one module of every reflector
+    ws.module.setCurrentIndex(0); app.processEvents(); assert ws.list.count() == 26
+    ws.country.setCurrentIndex(0); ws.search.setText("REF030"); app.processEvents(); assert ws.list.count() == 26
+    ws.module.setCurrentText("F"); app.processEvents(); assert ws.list.count() == 1; ws.list.setCurrentRow(0); assert ctx.selected == Target("D-Star", "REF030 F", "REF030 F")
     # the server card shows the address read from the downloaded list for whatever is selected
     assert ws.srv_host.text() == "ref030.example.org" and ws.srv_port.text() == "20001" and "worldwide" in ws.srv_src.text()
     cw = w.ws["C4FM"]; assert cw.list.count() == len(ctx.hosts.for_net("C4FM")) >= 3          # nothing invented: exactly what the list holds

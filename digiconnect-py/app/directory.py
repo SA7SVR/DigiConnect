@@ -16,7 +16,22 @@ def entries(net: str, hosts=None, asl=None) -> list[dict]:
     seed = _seed(net)
     if hosts is None: return seed
     have = {e["id"].split()[0] for e in seed}
-    return seed + [e for e in hosts.for_net(net) if e["id"].split()[0] not in have]
+    out = seed + [e for e in hosts.for_net(net) if e["id"].split()[0] not in have]
+    return dstar_modules(out) if net == "D-Star" else out
+
+
+MODULES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def dstar_modules(rows: list[dict]) -> list[dict]:
+    """A D-Star reflector has up to 26 modules (A-Z) and every client lists each one: the host lists have one line per reflector, so it is
+    shown once for every module, the module in the name and in the id ('REF001 B'). The address is the reflector's (the module is only a letter)."""
+    out = []
+    for e in rows:
+        ref = e["id"].split()[0]
+        for m in MODULES:
+            out.append(dict(e, id=f"{ref} {m}", name=f"{ref} {m}", sub=f"{ref} · module {m} · {e.get('proto', '')}"))
+    return out
 
 
 def _seed(net: str) -> list[dict]:

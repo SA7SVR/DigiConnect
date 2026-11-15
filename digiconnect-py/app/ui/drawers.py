@@ -238,6 +238,12 @@ class QsoDrawer(W.QFrame):
         self.w["start_utc"].setText(now); self.w["equipment"].setText(s.get("equipment", "")); self.w["grid"].setText("")
         t = t or self.ctx.selected
         if t: self.sys.setCurrentText(t.net); self.w["dest"].setText(t.id)
+        pf = getattr(self.ctx, "qso_prefill", None); self.ctx.qso_prefill = None       # "New QSO" from the station panel: the details of the station that was heard
+        if pf:
+            for k in ("callsign", "name", "country", "qth"):
+                if pf.get(k): self.w[k].setText(pf[k])
+            if pf.get("net"): self.sys.setCurrentText(pf["net"]); self.w["dest"].setText(pf.get("dest", ""))
+            if pf.get("callsign"): self.src.setText("Source: RadioID\nYour manual corrections are preserved.")
 
     def clear(self):
         for e in self.w.values(): e.clear()

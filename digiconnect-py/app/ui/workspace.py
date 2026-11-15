@@ -29,8 +29,9 @@ class Workspace(W.QWidget):
         self.refresh_btn = button("Refresh"); top.addWidget(self.b_cat); top.addWidget(self.b_fav); top.addStretch(); top.addWidget(self.refresh_btn)
         self.search = W.QLineEdit(); self.search.setPlaceholderText("Search TG, name or callsign…" if net in ("DMR", "NXDN", "P25") else ("Search node number, callsign or description…" if net == "AllStar" else "Search name or callsign…"))
         self.country = W.QComboBox(); self.country.addItems([tr("All countries")]); i18n.combo_item(self.country, 0, "All countries")
-        self.module = W.QComboBox(); self.module.addItems([tr("Default module")] + [chr(c) for c in range(65, 91)]); i18n.combo_item(self.module, 0, "Default module"); self.module.setVisible(net in ("D-Star", "M17"))
-        self.module.setToolTip("Reflector module to link to (REF/XRF default C, DCS/XLX default A)")
+        first = "All modules" if net == "D-Star" else "Default module"
+        self.module = W.QComboBox(); self.module.addItems([tr(first)] + [chr(c) for c in range(65, 91)]); i18n.combo_item(self.module, 0, first); self.module.setVisible(net in ("D-Star", "M17"))
+        self.module.setToolTip("D-Star: show only this module of every reflector. M17: module to link to.")
         self.country.setVisible(net != "AllStar")
         self.manual = button("Manual entry"); cr = hbox(s=6); cr.addWidget(self.country, 1); cr.addWidget(self.module); cr.addWidget(self.manual)
         self.count = label("", muted=True); self.count.setWordWrap(True)
@@ -121,6 +122,7 @@ class Workspace(W.QWidget):
         self.search.textChanged.connect(lambda: (setattr(self, "page", 0), self.fill())); self.country.currentIndexChanged.connect(lambda: self.fill())
         self.prev.clicked.connect(lambda: self._page(-1)); self.next.clicked.connect(lambda: self._page(1))
         self.list.currentRowChanged.connect(self._picked); self.addfav.clicked.connect(self._togglefav)
+        self.module.currentIndexChanged.connect(self._module_changed)
         self.manual.clicked.connect(self._manual); self.refresh_btn.clicked.connect(lambda: ((ctx.refresh_asl(True) if net == "AllStar" else ctx.refresh_hosts(True)), self.fill()))
         self.rxvol.valueChanged.connect(lambda v: ctx.rules.net_volume.__setitem__(net, v / 100))
         self.choose.clicked.connect(self._choose_master); ctx.hosts_changed.connect(self._hosts_loaded); ctx.dmr_server_changed.connect(self._tx_show)
@@ -238,6 +240,8 @@ class Workspace(W.QWidget):
         if self.show_favs: src = src + [dict(e, sub=e["id"], activity="Activity unavailable") for e in manual]
         c = self.country.currentText()
         if c and self.country.currentIndex() > 0: src = [e for e in src if e.get("country") == c]
+        if self.net == "D-Star" and self.module.currentIndex() > 0 and not self.show_favs:           # the module box filters the list: only the chosen module of every reflector
+            src = [e for e in src if e["id"].endswith(" " + self.module.currentText())]
         if q and not self.show_favs and self.net == "AllStar" and valid_node_text(q) and not any(e["id"] == q for e in src):
             src = [dict(net="AllStar", id=q, name=f"AllStar node {q}", sub=f"Node {q} · typed number", activity="", proto="IAX", country="")] + src
         res = [e for e in src if q in (e["name"] + " " + e["id"] + " " + e["sub"] + " " + e.get("country", "")).lower()] if q else src
@@ -272,12 +276,16 @@ class Workspace(W.QWidget):
         if self.net == "EchoLink" and not total: self.count.setText("EchoLink · "+"under construction — coming soon")
         self.refresh()
 
+    def _module_changed(self, _=None):
+        if self.net == "D-Star": setattr(self, "page", 0); self.fill()
+        elif self.list.currentRow() >= 0: self._picked(self.list.currentRow())               # M17: the chosen module applies to the entry that is selected now
+
     def _picked(self, row):
         it = self.list.item(row)
         if not it: return
         e = it.data(Qt.ItemDataRole.UserRole); self.ctx.last_net = self.net
         id_ = e["id"]
-        if self.net in ("D-Star", "M17") and self.module.currentIndex() > 0 and " " in id_ and e.get("proto"): id_ = id_.split()[0] + " " + self.module.currentText()
+        if self.net == "M17" and self.module.currentIndex() > 0 and " " in id_ and e.get("proto"): id_ = id_.split()[0] + " " + self.module.currentText()
         self.ctx.select(Target(e["net"], id_, e["name"]))
 
     def _togglefav(self):

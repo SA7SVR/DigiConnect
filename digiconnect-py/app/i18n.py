@@ -11,6 +11,13 @@ LANGS = {"English": "en", "Ελληνικά": "el"}
 _lang = "en"
 
 EL: dict[str, str] = {
+    "All modules": "Όλα τα modules", "D-Star: show only this module of every reflector. M17: module to link to.": "D-Star: δείχνει μόνο αυτό το module κάθε ρεφλέκτορα. M17: το module της σύνδεσης.",
+    "DTMF keypad": "Πληκτρολόγιο DTMF", "DTMF sequence": "Ακολουθία DTMF", "A–D keys": "Πλήκτρα A–D", "Send": "Αποστολή", "Stop TX": "Διακοπή εκπομπής", "Clear": "Καθαρισμός",
+    "Choose an EchoLink or AllStarLink connection.": "Διάλεξε μια σύνδεση EchoLink ή AllStarLink.", "Sending to {} {}": "Αποστολή προς {} {}",
+    "Audio tones to the active connection. Use the repeater codes; execution depends on its configuration.": "Ηχητικοί τόνοι προς την ενεργή σύνδεση. Χρησιμοποίησε τους κωδικούς του αναμεταδότη· η εκτέλεση εξαρτάται από τη ρύθμισή του.",
+    "Receive only": "Μόνο λήψη", "🎧  LISTENING STATION DETAILS": "🎧  ΣΤΟΙΧΕΙΑ ΣΤΑΘΜΟΥ ΠΟΥ ΑΚΟΥΩ", "Traffic detected": "Εντοπίστηκε κίνηση", "City": "Πόλη", "Source:": "Πηγή:",
+    "Waiting for a station. Its details appear here as soon as someone talks on the group you are listening to.": "Αναμονή σταθμού. Τα στοιχεία του εμφανίζονται εδώ μόλις κάποιος μιλήσει στο γκρουπ που ακούς.",
+    "Not found in RadioID yet (or no internet): only the DMR ID is shown. Nothing is invented.": "Δεν βρέθηκε ακόμη στο RadioID (ή δεν υπάρχει internet): φαίνεται μόνο το DMR ID. Τίποτα δεν επινοείται.",
     # ---- navigation / chrome
     "My favorites": "Αγαπημένα", "New QSO": "Νέο QSO", "QSO log": "Ημερολόγιο QSO", "Log analysis": "Ανάλυση ημερολογίου",
     "Last heard": "Τελευταίοι ακουστοί", "Audio mixer": "Μίξερ ήχου", "Recordings": "Ηχογραφήσεις", "Updates": "Ενημερώσεις", "Help": "Βοήθεια",

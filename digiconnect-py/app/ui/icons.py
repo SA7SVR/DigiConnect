@@ -59,6 +59,13 @@ def icon(name: str, color=None, size=22) -> QtGui.QIcon:
     elif name == "speaker_off":                      # muted: the same speaker, no sound waves, a cross instead
         p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(3, 9), QtCore.QPointF(7, 9), QtCore.QPointF(11, 5), QtCore.QPointF(11, 17), QtCore.QPointF(7, 13), QtCore.QPointF(3, 13)]))
         p.drawLine(14, 8, 19, 14); p.drawLine(19, 8, 14, 14)
+    elif name == "backspace":
+        path = QtGui.QPainterPath(); path.moveTo(8, 5); path.lineTo(18, 5); path.lineTo(18, 17); path.lineTo(8, 17); path.lineTo(3, 11); path.closeSubpath(); p.drawPath(path)
+        p.drawLine(10, 8, 15, 14); p.drawLine(15, 8, 10, 14)
+    elif name == "wave":                              # audio tones: vertical bars of different heights
+        for x, h in ((4, 4), (7, 9), (10, 14), (13, 8), (16, 11), (19, 5)): p.drawLine(x, 11 - h / 2, x, 11 + h / 2)
+    elif name == "stop":
+        p.drawRoundedRect(R(5, 5, 12, 12), 1.5, 1.5)
     p.end()
     return QtGui.QIcon(pm)
 

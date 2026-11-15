@@ -1,0 +1,35 @@
+DigiConnect 2.3.3 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+===========================================================================
+
+ΕΛΛΗΝΙΚΑ
+--------
+ΝΕΑ ΣΤΗΝ 2.3.3 — ΑΚΡΟΑΣΗ ΜΕ ΣΤΟΙΧΕΙΑ ΣΤΑΘΜΟΥ ΚΑΙ ΕΝΙΑΙΑ ΣΥΝΟΜΙΛΙΑ
+• Ακρόαση: το πλακίδιο του γκρουπ δείχνει «Idle» όταν δεν μιλάει κανείς, «Receiving audio» με το διακριτικό, το όνομα και τη χώρα του σταθμού που μιλάει, και «Receive only» στο κάτω μέρος.
+• Νέο δεξί πλαίσιο «Στοιχεία σταθμού ακρόασης»: ανοίγει μόνο του όταν ακούς, δείχνει διακριτικό, όνομα, DMR ID και χώρα (πηγή RadioID.net) και μετά το τέλος της εκπομπής κρατά τον τελευταίο σταθμό. Κουμπιά «New QSO» (συμπληρωμένο) και «Refresh». Το DMR στέλνει μόνο το DMR ID· το διακριτικό βρίσκεται στη βάση RadioID και θυμάται στον υπολογιστή σου. Αν δεν βρεθεί, φαίνεται μόνο το ID — τίποτα δεν επινοείται.
+• Η μπάρα του μικροφώνου κινείται μόνο όταν μιλάς εσύ. Ο ήχος που ακούς κινεί μια μπάρα πάνω στο πλακίδιο και στο πλαίσιο του σταθμού που μιλάει.
+• Πληκτρολόγιο DTMF: πλήκτρα 0–9, *, #, A–D, οθόνη ακολουθίας, σβήσιμο/Clear, Send και Stop TX· δουλεύει και με το πληκτρολόγιο του υπολογιστή.
+• D-Star: κάθε reflector εμφανίζεται με όλα τα modules A–Z· το κουτί module φιλτράρει τη λίστα και εφαρμόζεται αμέσως στην επιλογή.
+• Ενιαία συνομιλία με τον δημιουργό: ένα νήμα ανά χρήστη, κοινό για το πρόγραμμα, την ιστοσελίδα και το control panel. Στο panel (Users) ο διαχειριστής διαλέγει οποιονδήποτε χρήστη και γράφει επιτόπου, ακόμη κι αν δεν έχει γράψει ποτέ. Οι γενικές ανακοινώσεις μένουν ξεχωριστά. Το πρόγραμμα: «Άδεια › Συνομιλία με τον δημιουργό…», με ένδειξη αδιάβαστων.
+• Ο server: αναβάθμιση βάσης αυτόματη (παλιά μηνύματα μεταφέρονται στις συνομιλίες). Ανέβασε ΟΛΑ τα αρχεία του φακέλου server.
+
+ENGLISH
+-------
+NEW IN 2.3.3 — LISTENING WITH STATION DETAILS AND ONE CONVERSATION
+• Listening: the group tile says "Idle" while nobody talks, "Receiving audio" with the callsign, name and country of the station that talks, and "Receive only" at the bottom.
+• New side panel "Listening station details": opens by itself while you listen and shows callsign, name, DMR ID and country (source RadioID.net); after the transmission it keeps the last station heard. Buttons "New QSO" (pre-filled) and "Refresh". DMR sends only the DMR ID; the callsign comes from the RadioID database and is remembered on your computer. If it is not found only the ID is shown — nothing is invented.
+• The microphone meter moves only when you talk. The audio you receive moves a bar on the tile and in the panel of the station that is talking.
+• DTMF keypad: keys 0–9, *, #, A–D, sequence display, delete/Clear, Send and Stop TX; also works with the computer keyboard.
+• D-Star: every reflector is listed with all modules A–Z; the module box filters the list and applies at once to the selection.
+• One conversation with the owner: one thread per user, shared by the program, the website and the control panel. In the panel (Users) the administrator can pick any user and write at once, even if the user never wrote. General announcements stay separate. In the program: Licence › Conversation with the owner…, with an unread counter.
+• Server: the database upgrade is automatic (old messages move into the conversations). Upload ALL the files of the server folder.
+
+SVENSKA
+-------
+NYTT I 2.3.3 — LYSSNING MED STATIONSUPPGIFTER OCH EN GEMENSAM KONVERSATION
+• Lyssning: gruppens ruta visar "Idle" när ingen pratar, "Receiving audio" med anropssignal, namn och land för stationen som pratar, och "Receive only" längst ned.
+• Ny sidopanel "Listening station details": öppnas av sig själv när du lyssnar och visar anropssignal, namn, DMR-ID och land (källa RadioID.net); efter sändningen behåller den senast hörda stationen. Knapparna "New QSO" (förifylld) och "Refresh". DMR skickar bara DMR-ID; anropssignalen hämtas från RadioID-databasen och sparas på din dator. Hittas den inte visas bara ID — inget hittas på.
+• Mikrofonmätaren rör sig bara när du själv pratar. Ljudet du tar emot rör en stapel på rutan och i panelen för stationen som pratar.
+• DTMF-knappsats: tangenterna 0–9, *, #, A–D, sekvensfönster, radera/Clear, Send och Stop TX; fungerar också med datorns tangentbord.
+• D-Star: varje reflektor visas med alla moduler A–Z; modulrutan filtrerar listan och gäller direkt för valet.
+• En gemensam konversation med ägaren: en tråd per användare, delad av programmet, webbplatsen och kontrollpanelen. I panelen (Users) kan administratören välja vilken användare som helst och skriva direkt, även om användaren aldrig skrivit. Allmänna meddelanden hålls separata. I programmet: Licence › Conversation with the owner…, med räknare för olästa.
+• Server: databasuppgraderingen sker automatiskt (gamla meddelanden flyttas in i konversationerna). Ladda upp ALLA filer i serverkatalogen.
