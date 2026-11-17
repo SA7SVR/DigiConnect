@@ -106,6 +106,11 @@ class SettingsDrawer(W.QFrame):
         ab = hbox(); self.adif_choose = button("Choose ADIF file"); self.adif_off = button("Stop sending"); ab.addWidget(self.adif_choose); ab.addWidget(self.adif_off); ab.addStretch(); l4.addLayout(ab)
         l4.addWidget(label("Each contact you save is added to this file in ADIF format. In the logbook, import the same file (File > Import ADIF). Logger32 must be set to import ADIF; this build has not verified an automatic watch of the file.", muted=True))
         self.adif_choose.clicked.connect(self._adif_choose); self.adif_off.clicked.connect(self._adif_off)
+        # network logbook: every saved contact is also sent as ADIF over UDP to this address (take host and port from the logbook's own settings)
+        self.lb_host = W.QLineEdit(ctx.store.settings.get("logbook_udp_host", "")); self.lb_host.setPlaceholderText("127.0.0.1")
+        self.lb_port = W.QLineEdit(str(ctx.store.settings.get("logbook_udp_port", "") or "")); self.lb_port.setPlaceholderText("port")
+        l4.addWidget(field("Logbook network address (host)", self.lb_host)); l4.addWidget(field("Logbook network port", self.lb_port))
+        self.lb_save = button("Save logbook address"); self.lb_save.clicked.connect(self._lb_save); l4.addWidget(self.lb_save, 0, Qt.AlignmentFlag.AlignLeft)
         l4.addStretch()
         p5 = W.QWidget(); l5 = vbox(p5, m=(16, 4, 16, 4), s=8); self.bk = button("Back up application"); self.rs = button("Restore a backup"); self.dg = button("Export diagnostics")
         for b in (self.bk, self.rs, self.dg): l5.addWidget(b, 0, Qt.AlignmentFlag.AlignLeft)
@@ -123,6 +128,13 @@ class SettingsDrawer(W.QFrame):
         if not fn: return
         self.ctx.store.settings["adif_auto_path"] = fn; self.ctx.store.save_settings()
         self.adif_path.setText(fn)
+
+    def _lb_save(self):
+        host = self.lb_host.text().strip(); port = self.lb_port.text().strip()
+        if port and not (port.isdigit() and 0 < int(port) < 65536):
+            self.ctx.toast.emit("The logbook port must be a number between 1 and 65535."); return
+        self.ctx.store.settings["logbook_udp_host"] = host; self.ctx.store.settings["logbook_udp_port"] = int(port) if port else 0
+        self.ctx.store.save_settings(); self.ctx.toast.emit("Logbook address saved.")
 
     def _adif_off(self):
         self.ctx.store.settings["adif_auto_path"] = ""; self.ctx.store.save_settings()

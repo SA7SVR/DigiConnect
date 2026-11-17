@@ -66,6 +66,7 @@ class Store:
                               [q.get(k, "") for k in self.FIELDS])
         self.db.commit()
         self._auto_adif(q)
+        self.send_qso_udp(q)
         return cur.lastrowid
 
     def _auto_adif(self, q: dict):
@@ -81,6 +82,23 @@ class Store:
                 fh.write(self.to_adif([{k: q.get(k, "") for k in self.FIELDS}], self.settings.get("callsign", "")).split("<EOH>\n", 1)[-1] + "\n")
         except OSError as ex:
             from . import diag; diag.log(f"ADIF auto export failed: {ex}")
+
+    def send_qso_udp(self, q: dict) -> bool:
+        """Send one contact as ADIF over UDP to the logbook's network port (host and port chosen by the user, as the logbook shows them).
+        Returns False when no host/port is set or the send fails; never raises."""
+        import socket
+        host = (self.settings.get("logbook_udp_host") or "").strip()
+        try: port = int(self.settings.get("logbook_udp_port") or 0)
+        except (TypeError, ValueError): port = 0
+        if not host or not (0 < port < 65536): return False
+        rec = self.to_adif([{k: q.get(k, "") for k in self.FIELDS}], self.settings.get("callsign", "")).split("<EOH>\n", 1)[-1]
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+                sk.sendto(rec.encode("utf-8"), (host, port))
+            return True
+        except OSError as ex:
+            from . import diag; diag.log(f"logbook UDP send failed: {ex}")
+            return False
 
     def search_qso(self, text="", system="", d_from="", d_to="", country="", trash=False):
         sql, args = "SELECT * FROM qso WHERE deleted=?", [1 if trash else 0]
