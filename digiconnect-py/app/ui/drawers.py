@@ -110,6 +110,10 @@ class SettingsDrawer(W.QFrame):
         self.lb_host = W.QLineEdit(ctx.store.settings.get("logbook_udp_host", "")); self.lb_host.setPlaceholderText("127.0.0.1")
         self.lb_port = W.QLineEdit(str(ctx.store.settings.get("logbook_udp_port", "") or "")); self.lb_port.setPlaceholderText("port")
         l4.addWidget(field("Logbook network address (host)", self.lb_host)); l4.addWidget(field("Logbook network port", self.lb_port))
+        # presets only where the logger's own manual names the port: Log4OM receives ADIF over UDP on 2333 (its ADIF_INBOUND setting).
+        # Logger32's documentation found no network input, so for it the ADIF file above is the way in.
+        self.lb_preset = W.QComboBox(); self.lb_preset.addItems(["Custom", "Log4OM (ADIF inbound, port 2333)"]); l4.addWidget(field("Logbook", self.lb_preset))
+        self.lb_preset.currentTextChanged.connect(self._lb_preset)
         self.lb_save = button("Save logbook address"); self.lb_save.clicked.connect(self._lb_save); l4.addWidget(self.lb_save, 0, Qt.AlignmentFlag.AlignLeft)
         l4.addStretch()
         p5 = W.QWidget(); l5 = vbox(p5, m=(16, 4, 16, 4), s=8); self.bk = button("Back up application"); self.rs = button("Restore a backup"); self.dg = button("Export diagnostics")
@@ -128,6 +132,10 @@ class SettingsDrawer(W.QFrame):
         if not fn: return
         self.ctx.store.settings["adif_auto_path"] = fn; self.ctx.store.save_settings()
         self.adif_path.setText(fn)
+
+    def _lb_preset(self, name: str):
+        if name.startswith("Log4OM"):
+            self.lb_host.setText("127.0.0.1"); self.lb_port.setText("2333")
 
     def _lb_save(self):
         host = self.lb_host.text().strip(); port = self.lb_port.text().strip()
