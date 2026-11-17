@@ -231,7 +231,7 @@ class MainWindow(W.QMainWindow):
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
         for t, b in self.tabs.items():
             if t != "favorites":
-                closed = t in self.ctx.policy.off              # closed by the owner's server (EchoLink too; when open it still says 'soon' until it is built)
+                closed = t in self.ctx.policy.off              # closed by the owner's server (EchoLink too)
                 off = t in self.ctx.policy.user_off
                 b.setText(t + " · " + tr("closed") if closed else (t + " · " + tr("off") if off else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
                 if bool(b.property("closed")) != closed: b.setProperty("closed", closed); repolish(b)

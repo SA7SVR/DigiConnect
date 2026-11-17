@@ -19,7 +19,7 @@ What is new in this version (2.3.3)
   • Signed updates: only what the HELLAS Zone server signs is installed.
   • Bottom licence card with logo, installation number, licence and callsign.
   • A demo cannot go on past its end, not even without a connection.
-  • EchoLink: under construction - coming soon (the page is there, it does not connect yet).
+  • EchoLink: connects with your own EchoLink account (call sign and password entered in the program).
   New in 2.2.0:
   • NEW: AllStarLink. Sign in with your own AllStarLink portal account (callsign +
     password), search the worldwide node list (or type a node number) and listen / talk.
