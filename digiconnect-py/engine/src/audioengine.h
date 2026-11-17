@@ -34,6 +34,7 @@
 #include <QJsonArray>
 #include <functional>
 #include "micdsp.h"
+#include "wavwriter.h"
 
 #define AUDIO_OUT 1
 #define AUDIO_IN  0
@@ -63,6 +64,8 @@ public:
 	void set_agc(bool agc) { m_agc = agc; }
 	// Microphone processing (gain, EQ, high-pass, gate, compressor, output level), from the Microphone page settings as JSON.
 	void set_mic_dsp(const QString &json);
+	// Recording of what is played to the person (received audio): path to a WAV file, or empty to stop.
+	void set_record(const QString &path);
 	// Receives short blocks of the processed microphone signal for the waveform box: samples in -1..1, gate state, limiter gain in dB.
 	// Called from the audio thread, so the receiver must be thread-safe (the engine writes one whole JSON line per call).
 	static void set_wave_sink(std::function<void(const QJsonArray &, bool, double)> f) { s_wave_sink = std::move(f); }
@@ -103,6 +106,7 @@ private:
 	QAudioFormat::SampleFormat m_infmt = QAudioFormat::Int16; // sample format delivered by the capture device
 	float m_rs_acc = 0, m_rs_pos = 0; int m_rs_n = 0;       // resampler state (box average)
 	MicDsp m_mic;                                           // microphone processing
+	WavWriter m_rec;                                        // recording of the received audio (see set_record)
 	QVector<float> m_wave_acc;                              // processed samples collected for the waveform box
 	static inline std::function<void(const QJsonArray &, bool, double)> s_wave_sink;
 	QString m_inname;

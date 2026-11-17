@@ -67,6 +67,8 @@ void Engine::handle(const QJsonObject &c) {
     } else if (cmd == "mic") {
         m_micJson = QString::fromUtf8(QJsonDocument(c.value("settings").toObject()).toJson(QJsonDocument::Compact));
         emit mic_dsp(m_micJson);
+    } else if (cmd == "record") {
+        emit record_ctl(c.value("on").toBool() ? c.value("path").toString() : QString());
     } else if (cmd == "agc") {
         emit agc(c.value("on").toBool());
     } else if (cmd == "tg") {
@@ -185,6 +187,7 @@ void Engine::connect_to(const QJsonObject &c) {
     connect(this, SIGNAL(tx_released()), m_mode, SLOT(stop_tx()));
     connect(this, SIGNAL(in_vol(qreal)), m_mode, SLOT(in_audio_vol_changed(qreal)));
     connect(this, SIGNAL(mic_dsp(QString)), m_mode, SLOT(mic_dsp_changed(QString)));
+    connect(this, SIGNAL(record_ctl(QString)), m_mode, SLOT(record_changed(QString)));
     connect(this, SIGNAL(out_vol(qreal)), m_mode, SLOT(out_audio_vol_changed(qreal)));
     connect(this, SIGNAL(swrx(int)), m_mode, SLOT(swrx_state_changed(int)));
     connect(this, SIGNAL(swtx(int)), m_mode, SLOT(swtx_state_changed(int)));

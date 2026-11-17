@@ -249,6 +249,12 @@ void AudioEngine::set_mic_dsp(const QString &json)
     if(err.error == QJsonParseError::NoError && d.isObject()) m_mic.configure(d.object());
 }
 
+void AudioEngine::set_record(const QString &path)
+{
+    m_rec.close();
+    if(!path.isEmpty()) m_rec.open(path.toStdString(), 8000);
+}
+
 void AudioEngine::stop_capture()
 {
 	if(m_in != nullptr){
@@ -310,6 +316,8 @@ void AudioEngine::write(int16_t *pcm, size_t s, float fade_from, float fade_to)
 			pcm[i] = static_cast<int16_t>(pcm[i] * m_outvol);
 		}
 	}
+
+    if(m_rec.is_open()) m_rec.write(pcm, s);                 // what is played to the person is what gets recorded
 
     if(m_outdev != nullptr){
         const qint64 want = (qint64)(sizeof(int16_t) * s);

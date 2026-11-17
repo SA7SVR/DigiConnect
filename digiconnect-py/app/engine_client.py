@@ -335,6 +335,11 @@ class EngineClient(QtCore.QObject, Engine):
         if protocol_for(target) not in ("IAX", "ELINK"): return "DTMF is available for AllStarLink nodes and EchoLink stations."
         ln.send("dtmf", keys=keys); return ""
 
+    def set_record(self, on: bool, path: str = ""):
+        """Recording of the received audio: starts or stops it in every running engine (and on the next connection)."""
+        self.record_state = (bool(on), path)
+        for ln in self.links.values(): ln.send("record", on=bool(on), path=path)
+
     def set_mic(self, settings: dict):
         """Microphone processing from the Microphone page: sent to every running engine now and on each new connection."""
         self.mic_settings = dict(settings)
@@ -388,7 +393,7 @@ class EngineClient(QtCore.QObject, Engine):
             if ln.state == "connected" and ln.target.net == "DMR" and self.cfg_variant() != ln.cfg_variant:
                 self.store.settings["dmr_cfg_variant"] = ln.cfg_variant; self.store.save_settings()          # this set was accepted: start with it next time
             if ln.state == "connected":
-                self.__dict__.pop("_resend", None); ln.send("volume", **{"in": self.mic_gain()}); ln.send("mic", settings=getattr(self, "mic_settings", {})); self.volume_refresh.emit()
+                self.__dict__.pop("_resend", None); ln.send("volume", **{"in": self.mic_gain()}); ln.send("mic", settings=getattr(self, "mic_settings", {})); st = getattr(self, "record_state", (False, "")); ln.send("record", on=st[0], path=st[1]); self.volume_refresh.emit()
             self.status.emit(ln, ln.state, e.get("msg", ""))
             if ln.state in ("error", "timeout", "disconnected"):
                 ln.rx.clear(); ln.tx = False; self._release(ln)

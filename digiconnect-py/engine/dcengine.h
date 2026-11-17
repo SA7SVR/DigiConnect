@@ -24,6 +24,7 @@ signals:
     void dmr_tg(int);
     void dtmf(QByteArray);
     void mic_dsp(QString);
+    void record_ctl(QString);
 private:
     void connect_to(const QJsonObject &c);
     void test_mic(const QString &name, int ms);

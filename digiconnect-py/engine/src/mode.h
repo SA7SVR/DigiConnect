@@ -156,6 +156,7 @@ protected slots:
 	void deleteLater();
 	void in_audio_vol_changed(qreal);
 	void mic_dsp_changed(QString json);
+	void record_changed(QString path) { if (m_audio) m_audio->set_record(path); }
 	void out_audio_vol_changed(qreal);
 	bool load_vocoder_plugin();
 	void swrx_state_changed(int s) {m_hwrx = !s; }

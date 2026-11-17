@@ -5,10 +5,11 @@ from ..qt import QtWidgets as W, QtCore, QtGui, Qt
 from .widgets import label, button, vbox, hbox
 
 
+from ..recording import recordings_dir as _rd
+
+
 def recordings_dir(ctx) -> Path:
-    """Chosen in the settings (rec_dir); otherwise DigiConnect/Recordings in the user's data folder. Created when first needed."""
-    d = ctx.store.settings.get("rec_dir") or str(Path.home() / "DigiConnect" / "Recordings")
-    p = Path(d); p.mkdir(parents=True, exist_ok=True); return p
+    return _rd(ctx.store)
 
 
 class RecordPage(W.QWidget):

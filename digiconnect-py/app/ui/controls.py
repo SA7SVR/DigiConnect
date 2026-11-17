@@ -10,6 +10,15 @@ def _mmss(s): return f"{s // 60:02d}:{s % 60:02d}"
 
 
 class _Sync:
+    def _rec_toggle(self, ctx):
+        """Record audio: starts or stops recording of what is played; the button shows the state."""
+        ctx.toggle_record(); self._rec_look(ctx)
+
+    def _rec_look(self, ctx):
+        on = bool(getattr(ctx, "recording", ""))
+        for b in (getattr(self, "rec", None),):
+            if b is not None: b.setText("Stop recording" if on else "Record audio"); b.setProperty("danger", on); repolish(b)
+
     """Shared behaviour: wire PTT buttons and keep them in sync with ctx."""
     def _wire(self, ctx, hold, latch, limit, countdown):
         self.ctx, self.hold, self.latch, self.limit, self.countdown = ctx, hold, latch, limit, countdown
@@ -54,7 +63,7 @@ class TxControls(W.QWidget, _Sync):
         self._wire(ctx, self.hold, self.latch, self.limit, self.countdown)
         self.listen.clicked.connect(ctx.toggle_listen); self.connect.clicked.connect(ctx.toggle_tx)
         self.stopall.clicked.connect(ctx.stop_all); self.nq.clicked.connect(on_new_qso)
-        self.rec.clicked.connect(lambda: ctx.toast.emit("Audio recording needs a running receiver (engine step)"))
+        self.rec.clicked.connect(lambda: self._rec_toggle(ctx))
         ctx.changed.connect(self.refresh); self.refresh()
 
     def refresh(self):
@@ -98,7 +107,7 @@ class Dock(W.QFrame, _Sync):
         l.addWidget(self.countdown, 0, Qt.AlignmentFlag.AlignVCenter); l.addWidget(self.stop, 0, Qt.AlignmentFlag.AlignVCenter)
         self._wire(ctx, self.hold, self.latch, self.limit, self.countdown)
         self.listen.clicked.connect(ctx.toggle_listen); self.connect.clicked.connect(ctx.toggle_tx); self.stop.clicked.connect(ctx.stop_all)
-        self.rec.clicked.connect(lambda: ctx.toast.emit("Audio recording needs a running receiver (engine step)"))
+        self.rec.clicked.connect(lambda: self._rec_toggle(ctx))
         ctx.changed.connect(self.refresh); self.refresh()
 
     def refresh(self):

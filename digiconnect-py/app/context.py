@@ -411,6 +411,17 @@ class Ctx(QtCore.QObject):
     def _no_tx(self):
         m = self.policy.tx_reason(); self.note_problem(m); self.toast.emit(m); self.changed.emit()
 
+    def toggle_record(self) -> str:
+        """Start or stop recording what is played to the person. Returns the file being written, or '' when stopped."""
+        from .recording import recordings_dir
+        from datetime import datetime
+        if getattr(self, "recording", ""):
+            self.engine.set_record(False); self.recording = ""
+            self.toast.emit("Recording stopped."); self.changed.emit(); return ""
+        path = str(recordings_dir(self.store) / f"DigiConnect_{datetime.now():%Y%m%d_%H%M%S}.wav")
+        self.engine.set_record(True, path); self.recording = path
+        self.toast.emit("Recording started: " + path); self.changed.emit(); return path
+
     def set_mode_enabled(self, net: str, on: bool):
         """The person switches a mode on or off from the network tabs. A mode that is off is stopped at once and cannot be started."""
         off = set(self.store.settings.get("modes_off", []) or []); (off.discard if on else off.add)(net)
