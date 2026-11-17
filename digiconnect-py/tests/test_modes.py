@@ -155,7 +155,7 @@ def test_echolink_closed_by_the_owner_looks_closed(srv, win):
     assert w.tabs["EchoLink"].text() == "EchoLink · " + __import__("app.i18n", fromlist=["tr"]).tr("closed") and w.tabs["EchoLink"].property("closed") is True
     assert w.ws["EchoLink"].closed_note.isVisibleTo(w.ws["EchoLink"])
     ctx.apply_policy(dict(off=[]))
-    assert w.tabs["EchoLink"].text() == "EchoLink · soon" and w.tabs["EchoLink"].property("closed") is False
+    assert w.tabs["EchoLink"].text() == "EchoLink" and w.tabs["EchoLink"].property("closed") is False
 
 
 def test_licence_window_says_when_the_servers_answer_was_not_accepted_and_which_modes_are_closed(srv):
