@@ -176,6 +176,7 @@ class EngineClient(QtCore.QObject, Engine):
     heard = Signal(object, dict)          # (link, rx event)
     notice = Signal(str)                  # an engine warning for the user (e.g. the microphone delivers no sound)
     volume_refresh = Signal()             # a link just connected: re-send the receive volumes
+    mic_wave = Signal(object, bool, float)  # (samples -1..1, gate open, limiter gain in dB) from the microphone while transmitting
     _tok_done = Signal(object, str, str)  # (callback, token, error) from the sign-in worker thread -> UI thread
 
     def __init__(self, path: str, store, parent=None):
@@ -330,6 +331,11 @@ class EngineClient(QtCore.QObject, Engine):
         if protocol_for(target) != "IAX": return "DTMF is available for AllStarLink nodes."
         ln.send("dtmf", keys=keys); return ""
 
+    def set_mic(self, settings: dict):
+        """Microphone processing from the Microphone page: sent to every running engine now and on each new connection."""
+        self.mic_settings = dict(settings)
+        for ln in self.links.values(): ln.send("mic", settings=self.mic_settings)
+
     def mic_gain(self) -> float:
         """Microphone level from the settings (percent; 100 = device level, above 100 = software gain)."""
         try: return max(0.0, min(6.0, float(self.store.settings.get("mic_gain", 100)) / 100.0))
@@ -375,7 +381,8 @@ class EngineClient(QtCore.QObject, Engine):
             ln.state = e.get("state", ln.state)
             if ln.state == "connected" and ln.target.net == "DMR" and self.cfg_variant() != ln.cfg_variant:
                 self.store.settings["dmr_cfg_variant"] = ln.cfg_variant; self.store.save_settings()          # this set was accepted: start with it next time
-            if ln.state == "connected": self.__dict__.pop("_resend", None); ln.send("volume", **{"in": self.mic_gain()}); self.volume_refresh.emit()
+            if ln.state == "connected":
+                self.__dict__.pop("_resend", None); ln.send("volume", **{"in": self.mic_gain()}); ln.send("mic", settings=getattr(self, "mic_settings", {})); self.volume_refresh.emit()
             self.status.emit(ln, ln.state, e.get("msg", ""))
             if ln.state in ("error", "timeout", "disconnected"):
                 ln.rx.clear(); ln.tx = False; self._release(ln)
@@ -383,6 +390,8 @@ class EngineClient(QtCore.QObject, Engine):
             self.heard.emit(ln, e)
         elif ev == "level":
             self._level = max(self._level, float(e.get("out", 0)))
+        elif ev == "wave":
+            self.mic_wave.emit(list(e.get("s", [])), bool(e.get("gate", True)), float(e.get("lim", 0.0)))
 
     def _on_finished(self, ln: Link):
         if self.links.get(ln.key) is ln:

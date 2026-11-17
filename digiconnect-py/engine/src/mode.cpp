@@ -170,6 +170,13 @@ void Mode::mmdvm_connect_status(bool s)
 	emit update(m_modeinfo);
 }
 
+void Mode::mic_dsp_changed(QString json)
+{
+	if (m_audio) {
+		m_audio->set_mic_dsp(json);       // microphone processing (Microphone page); applied to the next audio block
+	}
+}
+
 void Mode::in_audio_vol_changed(qreal v)
 {
 	if (m_audio) {

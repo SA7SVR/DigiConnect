@@ -25,6 +25,10 @@
 
 Engine::Engine(QObject *parent) : QObject(parent) {
     qRegisterMetaType<Mode::MODEINFO>("Mode::MODEINFO");
+    // Waveform blocks from the microphone (100 ms each) go to the UI as "wave" events. emit_ev writes one whole line per call.
+    AudioEngine::set_wave_sink([this](const QJsonArray &pts, bool gate, double lim) {
+        emit_ev({{"ev", "wave"}, {"s", pts}, {"gate", gate}, {"lim", lim}});
+    });
 }
 
 void Engine::emit_ev(const QJsonObject &o) {
@@ -60,6 +64,9 @@ void Engine::handle(const QJsonObject &c) {
         m_inVol = c.value("in").toDouble(1.0); emit in_vol(m_inVol);
     } else if (cmd == "out_volume") {
         emit out_vol(c.value("out").toDouble(1.0));
+    } else if (cmd == "mic") {
+        m_micJson = QString::fromUtf8(QJsonDocument(c.value("settings").toObject()).toJson(QJsonDocument::Compact));
+        emit mic_dsp(m_micJson);
     } else if (cmd == "agc") {
         emit agc(c.value("on").toBool());
     } else if (cmd == "tg") {
@@ -173,6 +180,7 @@ void Engine::connect_to(const QJsonObject &c) {
     connect(this, SIGNAL(tx_pressed()), m_mode, SLOT(start_tx()));
     connect(this, SIGNAL(tx_released()), m_mode, SLOT(stop_tx()));
     connect(this, SIGNAL(in_vol(qreal)), m_mode, SLOT(in_audio_vol_changed(qreal)));
+    connect(this, SIGNAL(mic_dsp(QString)), m_mode, SLOT(mic_dsp_changed(QString)));
     connect(this, SIGNAL(out_vol(qreal)), m_mode, SLOT(out_audio_vol_changed(qreal)));
     connect(this, SIGNAL(swrx(int)), m_mode, SLOT(swrx_state_changed(int)));
     connect(this, SIGNAL(swtx(int)), m_mode, SLOT(swtx_state_changed(int)));
@@ -220,7 +228,7 @@ void Engine::on_update(Mode::MODEINFO i) {
     }
     if (m_status == Mode::CONNECTING && (i.status == Mode::CONNECTED_RW || i.status == Mode::CONNECTED_RO)) {
         m_status = i.status;
-        emit swrx(1); emit swtx(1); emit in_vol(m_inVol);
+        emit swrx(1); emit swtx(1); emit in_vol(m_inVol); emit mic_dsp(m_micJson);
         emit_ev({{"ev", "status"}, {"state", "connected"}, {"rw", i.status == Mode::CONNECTED_RW}, {"vocoder", i.sw_vocoder_loaded}});
         return;
     }

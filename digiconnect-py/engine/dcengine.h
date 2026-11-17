@@ -23,6 +23,7 @@ signals:
     void agc(int);
     void dmr_tg(int);
     void dtmf(QByteArray);
+    void mic_dsp(QString);
 private:
     void connect_to(const QJsonObject &c);
     void test_mic(const QString &name, int ms);
@@ -35,4 +36,5 @@ private:
     QString m_proto;
     qint64 m_lastLevel = 0;
     double m_inVol = 1.0;      // microphone level (1 = full device level; above 1 = software gain)
+    QString m_micJson = "{}"; // microphone processing from the Microphone page (sent again on every connection)
 };

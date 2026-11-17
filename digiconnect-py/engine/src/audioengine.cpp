@@ -19,6 +19,8 @@
 #include <QDebug>
 #include <QTimer>
 #include <cmath>
+#include <QJsonDocument>
+#include <QJsonParseError>
 
 #if defined (Q_OS_MACOS) || defined(Q_OS_IOS)
 #define MACHAK 1
@@ -219,11 +221,32 @@ void AudioEngine::input_data_received()
             if(m_rs_pos < 0) m_rs_pos = 0;
             float o = (m_rs_acc / (float)m_rs_n) * m_ingain;
             m_rs_acc = 0; m_rs_n = 0;
+            o = m_mic.process(o);                            // gain, EQ, high-pass, gate, compressor, output level
             if(o > 32767.0f) o = 32767.0f; else if(o < -32768.0f) o = -32768.0f;
             m_audioinq.enqueue(static_cast<int16_t>(o));
+            if(s_wave_sink){                                 // 100 ms blocks of 8 kHz audio: 40 points, each the loudest sample of 20
+                m_wave_acc.append(o / 32768.0f);
+                if(m_wave_acc.size() >= 800){
+                    QJsonArray pts;
+                    for(int b = 0; b < 800; b += 20){
+                        float best = 0;
+                        for(int k = b; k < b + 20; ++k) if(std::fabs(m_wave_acc[k]) > std::fabs(best)) best = m_wave_acc[k];
+                        pts.append(std::round(best * 1000.0) / 1000.0);
+                    }
+                    s_wave_sink(pts, m_mic.gate_open(), m_mic.limit_db());
+                    m_wave_acc.clear();
+                }
+            }
         }
     }
     while(m_audioinq.size() > 8000){ m_audioinq.dequeue(); ++m_in_dropped; }    // never let a stalled consumer build up seconds of delay
+}
+
+void AudioEngine::set_mic_dsp(const QString &json)
+{
+    QJsonParseError err;
+    const QJsonDocument d = QJsonDocument::fromJson(json.toUtf8(), &err);
+    if(err.error == QJsonParseError::NoError && d.isObject()) m_mic.configure(d.object());
 }
 
 void AudioEngine::stop_capture()

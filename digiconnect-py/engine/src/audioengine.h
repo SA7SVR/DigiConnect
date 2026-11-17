@@ -31,6 +31,9 @@
 #endif
 #include <QAudioOutput>
 #include <QQueue>
+#include <QJsonArray>
+#include <functional>
+#include "micdsp.h"
 
 #define AUDIO_OUT 1
 #define AUDIO_IN  0
@@ -58,6 +61,11 @@ public:
 	// Microphone level: 0..1 goes to the device (session) volume; above 1 is applied as software gain (clipped), so a quiet microphone can be raised.
 	void set_input_volume(qreal v){ if(v < 0) v = 0; m_ingain = (float)(v > 1.0 ? v : 1.0); if(m_in != nullptr) m_in->setVolume(v > 1.0 ? 1.0 : v); }
 	void set_agc(bool agc) { m_agc = agc; }
+	// Microphone processing (gain, EQ, high-pass, gate, compressor, output level), from the Microphone page settings as JSON.
+	void set_mic_dsp(const QString &json);
+	// Receives short blocks of the processed microphone signal for the waveform box: samples in -1..1, gate state, limiter gain in dB.
+	// Called from the audio thread, so the receiver must be thread-safe (the engine writes one whole JSON line per call).
+	static void set_wave_sink(std::function<void(const QJsonArray &, bool, double)> f) { s_wave_sink = std::move(f); }
 	bool has_samples(int n) const { return m_audioinq.size() >= n; }
 	bool frame_available() { return (m_audioinq.size() >= 320) ? true : false; }
 	uint16_t read(int16_t *, int);
@@ -94,6 +102,9 @@ private:
 	int m_inchan = 1;                                       // channels delivered by the capture device
 	QAudioFormat::SampleFormat m_infmt = QAudioFormat::Int16; // sample format delivered by the capture device
 	float m_rs_acc = 0, m_rs_pos = 0; int m_rs_n = 0;       // resampler state (box average)
+	MicDsp m_mic;                                           // microphone processing
+	QVector<float> m_wave_acc;                              // processed samples collected for the waveform box
+	static inline std::function<void(const QJsonArray &, bool, double)> s_wave_sink;
 	QString m_inname;
 	qint64 m_inbytes = 0;                                   // bytes received from the microphone (diagnostics)
 
