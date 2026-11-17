@@ -215,7 +215,7 @@ class EngineClient(QtCore.QObject, Engine):
     def _params(self, t: Target, variant: int | None = None) -> tuple[dict | None, str]:
         s = self.store.settings
         proto = protocol_for(t)
-        if not proto: return None, "EchoLink is under construction — coming soon."
+        if not proto: return None, "EchoLink is not available in this build."
         if proto == "IAX":
             from . import allstar
             if not allstar.valid_node(t.id): return None, "Enter a valid AllStarLink node number (digits only)."
