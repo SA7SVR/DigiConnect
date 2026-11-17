@@ -125,7 +125,7 @@ class Workspace(W.QWidget):
         rv.addWidget(self.now_box); rv.addSpacing(6)
         # last heard: its own table, so the talk time is not folded under the callsign
         rv.addWidget(label("LAST HEARD", section=True))
-        self.lh_tbl = W.QTableWidget(0, 6); self.lh_tbl.setHorizontalHeaderLabels([tr(c) for c in ("Callsign", "DMR ID", "Country", "Network", "Time (UTC)", "Talk time")])
+        self.lh_tbl = W.QTableWidget(0, 5); self.lh_tbl.setHorizontalHeaderLabels([tr(c) for c in ("Callsign", "DMR ID", "Country", "UTC", "Talk")])
         self.lh_tbl.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers); self.lh_tbl.verticalHeader().setVisible(False)
         self.lh_tbl.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows); self.lh_tbl.setMinimumHeight(160)
         rv.addWidget(self.lh_tbl, 1)
@@ -352,9 +352,11 @@ class Workspace(W.QWidget):
         for r, h in enumerate(rows):
             info = self.ctx.station_info(h.get("srcid") or 0) if h.get("srcid") else None
             vals = [h["src"] + (" (you)" if h.get("me") else ""), str(h.get("srcid") or "—"), (info or {}).get("country") or "—",
-                    h.get("net", ""), f"{h['ts']:%H:%M:%S}", duration(h)]
+                    f"{h['ts']:%H:%M:%S}", duration(h)]
             for c, val in enumerate(vals): self.lh_tbl.setItem(r, c, W.QTableWidgetItem(val))
-        self.lh_tbl.resizeColumnsToContents()
+        hd = self.lh_tbl.horizontalHeader(); hd.setStretchLastSection(False)
+        hd.setSectionResizeMode(W.QHeaderView.ResizeMode.Stretch)             # the six columns share the width: nothing is cut off
+        self.lh_tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     def refresh(self):
         closed = not self.ctx.policy.allows(self.net)
