@@ -12,7 +12,7 @@ HP_CHOICES = [("Off", 0), ("80 Hz", 80), ("120 Hz", 120), ("200 Hz", 200)]
 class Wave(W.QFrame):
     """Box that draws the microphone waveform: a line of samples in -1..1, newest on the right. Empty until the engine sends samples."""
     def __init__(self):
-        super().__init__(); self.setObjectName("wave"); self.setFixedSize(300, 250); self.samples: list = []
+        super().__init__(); self.setObjectName("wave"); self.setMinimumSize(300, 300); self.samples: list = []
     def set_samples(self, xs):
         self.samples = list(xs)[-400:]; self.update()
     def paintEvent(self, ev):
@@ -43,23 +43,30 @@ class MicPage(W.QWidget):
         v = vbox(self, m=(24, 18, 24, 18), s=10)
         t = label("Microphone"); t.setStyleSheet("font-size:22px;font-weight:700;"); v.addWidget(t)
         v.addWidget(label("Adjust the sound that goes from this computer to the radio network. Watch the level meter while you speak.", muted=True))
-        body = hbox(s=24); left = vbox(s=10); lw = W.QWidget(); lw.setLayout(left); lw.setMaximumWidth(620)
+        H = 350  # both columns share this height so the sliders run to the top and bottom of the waveform box
+        body = hbox(s=24)
+        lw = W.QFrame(); lw.setObjectName("card"); lw.setFixedHeight(H); lw.setMaximumWidth(680)
+        left = vbox(m=(18, 16, 18, 16), s=8); lw.setLayout(left)
+        sec = label("CONTROLS"); sec.setStyleSheet("font-size:11px;font-weight:700;letter-spacing:1px;"); left.addWidget(sec)
         self.sliders: dict = {}; self.values: dict = {}
         for key, name, lo, hi, unit in self.ROWS:
             r = hbox(s=10); nm = label(name); nm.setFixedWidth(190); r.addWidget(nm)
-            s = W.QSlider(Qt.Orientation.Horizontal); s.setRange(lo, hi); s.setValue(int(self.cur[key])); s.setMaximumWidth(300); r.addWidget(s)
+            s = W.QSlider(Qt.Orientation.Horizontal); s.setRange(lo, hi); s.setValue(int(self.cur[key])); s.setMinimumWidth(260); s.setMaximumWidth(460); r.addWidget(s)
             val = label(f"{int(self.cur[key])} {unit.split(' ')[0]}"); val.setFixedWidth(120); r.addWidget(val); r.addStretch(1)
             s.valueChanged.connect(lambda x, k=key, u=unit, lab=val: lab.setText(f"{x} {u.split(' ')[0]}"))
-            left.addLayout(r); self.sliders[key] = s; self.values[key] = val
+            left.addLayout(r); left.addStretch(1); self.sliders[key] = s; self.values[key] = val
         hp = hbox(s=10); hl = label("High-pass filter (cuts rumble)"); hl.setFixedWidth(190); hp.addWidget(hl)
         self.hp = W.QComboBox(); self.hp.addItems([n for n, _ in HP_CHOICES])
         self.hp.setCurrentIndex(next((i for i, (_, hz) in enumerate(HP_CHOICES) if hz == int(self.cur["highpass"])), 0))
-        self.hp.setMaximumWidth(300); hp.addWidget(self.hp); hp.addStretch(1); left.addLayout(hp)
+        self.hp.setMaximumWidth(300); hp.addWidget(self.hp); hp.addStretch(1); left.addLayout(hp); left.addStretch(1)
         btns = hbox(s=10); self.save = button("Save", "primary"); self.reset = button("Reset to defaults"); self.test = button("Speak to test")
         btns.addWidget(self.save); btns.addWidget(self.reset); btns.addWidget(self.test); btns.addStretch(1); left.addLayout(btns)
-        self.note = label("", muted=True); self.note.setWordWrap(True); left.addWidget(self.note); left.addStretch(1)
-        body.addWidget(lw, 0, Qt.AlignmentFlag.AlignTop); body.addStretch(1)
-        self.wave = Wave(); body.addWidget(self.wave, 0, Qt.AlignmentFlag.AlignTop)
+        self.note = label("", muted=True); self.note.setWordWrap(True); left.addWidget(self.note)
+        body.addWidget(lw, 0, Qt.AlignmentFlag.AlignTop)
+        rc = W.QFrame(); rc.setObjectName("card"); rc.setFixedHeight(H); right = vbox(m=(18, 16, 18, 16), s=8); rc.setLayout(right)
+        wl = label("LIVE WAVEFORM"); wl.setStyleSheet("font-size:11px;font-weight:700;letter-spacing:1px;"); right.addWidget(wl)
+        self.wave = Wave(); right.addWidget(self.wave, 1)
+        body.addWidget(rc, 1, Qt.AlignmentFlag.AlignTop)
         v.addLayout(body); v.addStretch(1)
         self.save.clicked.connect(self._save); self.reset.clicked.connect(self._reset)
         self.test.clicked.connect(lambda: ctx.toast.emit("Speak into the microphone with the transmit button held. The level is shown on the bar at the bottom."))
