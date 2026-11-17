@@ -84,8 +84,23 @@ class SettingsDrawer(W.QFrame):
         l3.addWidget(label("RECORDINGS", section=True)); self.recp = label(s.get("rec_path") or str(ctx.store.root / "Recordings"), muted=True); self.recp.setWordWrap(True); l3.addWidget(self.recp)
         self.choose = button("Choose"); l3.addWidget(self.choose, 0, Qt.AlignmentFlag.AlignLeft); l3.addStretch()
         # -- Callbooks / Backup
-        p4 = W.QWidget(); l4 = vbox(p4, m=(16, 4, 16, 4), s=8); self.pref = W.QComboBox(); self.pref.addItems(["QRZ.com", "QRZCQ.com", "RadioID"]); l4.addWidget(field("Preferred callbook", self.pref))
-        l4.addWidget(label("Callbook lookups are not connected in this build.", muted=True)); l4.addStretch()
+        p4 = W.QWidget(); l4 = vbox(p4, m=(16, 4, 16, 4), s=8)
+        self.pref = W.QComboBox(); self.pref.addItems(["RadioID", "QRZ.com", "QRZCQ.com", "Ham Radio Deluxe"]); l4.addWidget(field("Preferred callbook", self.pref))
+        # what each callbook is, its state in this build, and what the user must do to connect it (no card or paid step is assumed)
+        self.cb_status = label("", muted=True); self.cb_status.setWordWrap(True); l4.addWidget(self.cb_status)
+        self.cb_help = label("", muted=True); self.cb_help.setWordWrap(True); l4.addWidget(self.cb_help)
+        self.cb_info = {
+            "RadioID": ("Connected. Free public database, no account needed. Used to show the name and country of a DMR ID.",
+                        "Nothing to do. Lookups run when a DMR station is heard."),
+            "QRZ.com": ("Not connected in this build. Automatic lookup needs an XML subscription on QRZ.com.",
+                        "1. Open qrz.com and sign in (or create a free account).\n2. Check whether your account has XML access (QRZ shows this on its subscription page).\n3. This build has no fields for the account yet, so the lookup stays off until they are added."),
+            "QRZCQ.com": ("Not connected in this build. Automatic lookup needs a Premium account on QRZCQ.com.",
+                          "1. Open qrzcq.com and sign in.\n2. Check that your account has the Premium lookup service.\n3. Enter the username and password in this section."),
+            "Ham Radio Deluxe": ("Not connected in this build. We have not yet verified an interface that lets DigiConnect query Ham Radio Deluxe.",
+                                 "Nothing to enter yet. This entry is kept so the choice is visible; it will be connected only when HRD's interface is confirmed."),
+        }
+        self.pref.currentTextChanged.connect(self._cb_show); self._cb_show(self.pref.currentText())
+        l4.addStretch()
         p5 = W.QWidget(); l5 = vbox(p5, m=(16, 4, 16, 4), s=8); self.bk = button("Back up application"); self.rs = button("Restore a backup"); self.dg = button("Export diagnostics")
         for b in (self.bk, self.rs, self.dg): l5.addWidget(b, 0, Qt.AlignmentFlag.AlignLeft)
         l5.addWidget(label("Backup is a ZIP of settings, favorites and the journal. Restoring replaces them.", muted=True)); l5.addStretch()
@@ -96,6 +111,10 @@ class SettingsDrawer(W.QFrame):
         cl.clicked.connect(self.closed.emit); self.save.clicked.connect(self._save); self.saveprof.clicked.connect(self._saveprof); self.load.clicked.connect(self._load)
         self.bk.clicked.connect(self._backup); self.rs.clicked.connect(self._restore); self.dg.clicked.connect(self._diag); self.choose.clicked.connect(self._choose)
         self.mode = None; self.set_mode(None); self._tab(0)
+
+    def _cb_show(self, name: str):
+        st, how = self.cb_info.get(name, ("", ""))
+        self.cb_status.setText(st); self.cb_help.setText(how)
 
     def sync_theme(self):
         self.theme.setCurrentIndex(max(0, self.theme.findData(self.ctx.store.settings.get("theme", "dark"))))
