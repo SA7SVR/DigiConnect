@@ -28,7 +28,7 @@ def _logo() -> Path:
 
 LOGO = _logo()
 RAIL = [("favorites", "grid", "My favorites"), ("newqso", "plus", "New QSO"), ("log", "doc", "QSO log"), ("analysis", "bars", "Log analysis"),
-        ("heard", "clock", "Last heard"), ("mixer", "headphones", "Audio mixer"), ("rec", "circle", "Recordings")]
+        ("heard", "clock", "Last heard"), ("mixer", "headphones", "Audio mixer"), ("mic", "mic", "Microphone"), ("rec", "circle", "Recordings")]
 
 
 class Toast(W.QLabel):
@@ -108,6 +108,8 @@ class MainWindow(W.QMainWindow):
         self.favs = Favorites(self.ctx, self.open_qso); self.log = QsoLog(self.ctx, self.open_qso)
         self.ws = {n: Workspace(self.ctx, n, self.open_qso) for n in NETS}
         self.heard = HeardPage(self.ctx); self.pages.addWidget(self.favs); self.pages.addWidget(self.log); self.pages.addWidget(self.heard)
+        from .micpage import MicPage
+        self.micp = MicPage(self.ctx); self.pages.addWidget(self.micp)
         for n in NETS: self.pages.addWidget(self.ws[n])
         self.mixer = Mixer(self.ctx); self.dock = Dock(self.ctx, lambda: None)
         col.addWidget(self.mixer); col.addWidget(self._pad(self.dock, 14, 14))   # the control bar keeps a clear gap above and below
@@ -186,6 +188,7 @@ class MainWindow(W.QMainWindow):
     def nav(self, key):
         if key == "settings": self.open_settings(); return
         if key == "newqso": self.open_qso(); return
+        if key == "mic": self.current = "mic"; self.pages.setCurrentWidget(self.micp); self._sync_chrome(); return
         if key == "mixer": self._mixer_user = True; self.mixer.setVisible(not self.mixer.isVisible()); self._sync_chrome(); return
         if key in ("analysis",): self.nav("log"); self.log._analysis(); return
         if key == "updates": self.show_updates(); return
