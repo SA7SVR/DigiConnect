@@ -88,11 +88,14 @@ class Dock(W.QFrame, _Sync):
         self.hold = fix(button("Hold PTT", "ptt", "mic")); self.latch = fix(button("Latch PTT", "latch", "lock"))
         self.stop = fix(button("Stop all", "danger", "close")); self.stop.setToolTip("Stop all")
         self.limit = W.QComboBox(); self.limit.setFixedSize(92, BH); self.limit.setStyleSheet("padding:2px 8px;")
-        self.countdown = label("02:00"); self.countdown.setFixedWidth(60)
+        self.countdown = label("02:00"); self.countdown.setFixedSize(64, BH); self.countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        for w_ in (self.hold, self.latch):                          # the PTT themes ask for min-height 40 + border: pin them to the same 40 px
+            w_.setStyleSheet(f"min-height:{BH-2}px; max-height:{BH-2}px; padding:0px 12px;"); w_.setFixedHeight(BH)
         for w_ in (self.listen, self.connect, self.rec, self.hold, self.latch):
-            l.addWidget(w_)
+            l.addWidget(w_, 0, Qt.AlignmentFlag.AlignVCenter)
         l.addStretch(1)
-        l.addWidget(label("Limit", muted=True)); l.addWidget(self.limit); l.addWidget(self.countdown); l.addWidget(self.stop)
+        l.addWidget(label("Limit", muted=True), 0, Qt.AlignmentFlag.AlignVCenter); l.addWidget(self.limit, 0, Qt.AlignmentFlag.AlignVCenter)
+        l.addWidget(self.countdown, 0, Qt.AlignmentFlag.AlignVCenter); l.addWidget(self.stop, 0, Qt.AlignmentFlag.AlignVCenter)
         self._wire(ctx, self.hold, self.latch, self.limit, self.countdown)
         self.listen.clicked.connect(ctx.toggle_listen); self.connect.clicked.connect(ctx.toggle_tx); self.stop.clicked.connect(ctx.stop_all)
         self.rec.clicked.connect(lambda: ctx.toast.emit("Audio recording needs a running receiver (engine step)"))
