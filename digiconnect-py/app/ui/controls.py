@@ -71,7 +71,7 @@ class Dock(W.QFrame, _Sync):
     """Bottom station dock shown on pages other than the workspace."""
     def __init__(self, ctx, on_go_workspace):
         super().__init__(); self.setObjectName("dock"); self.ctx = ctx
-        self.setFixedHeight(76)                                     # a thin single row: every control is the same size and on the same line
+        self.setFixedHeight(68)                                     # a thin single row: every control is the same size and on the same line
         l = hbox(self, m=(14, 6, 14, 6), s=8)
         info = vbox(s=0)
         self.name = label("No station selected"); self.name.setStyleSheet("font-size:14px;font-weight:700;")
@@ -81,7 +81,7 @@ class Dock(W.QFrame, _Sync):
         info.addWidget(self.dest); self.dest.setVisible(False)
         iw = W.QWidget(); iw.setLayout(info); iw.setFixedWidth(210); l.addWidget(iw)
         self.knob = MicKnob(ctx, 40); l.addWidget(self.knob)
-        BW, BH = 134, 40                                            # one size for every action button
+        BW, BH = 130, 36                                            # one size for every action button
         def fix(b): b.setFixedSize(BW, BH); return b
         self.listen = fix(button("Listen", "", "headphones")); self.connect = fix(button("Connect (TX)", "primary", "power"))
         self.rec = fix(button("Record audio", "", "circle"))

@@ -110,7 +110,7 @@ class MainWindow(W.QMainWindow):
         self.heard = HeardPage(self.ctx); self.pages.addWidget(self.favs); self.pages.addWidget(self.log); self.pages.addWidget(self.heard)
         for n in NETS: self.pages.addWidget(self.ws[n])
         self.mixer = Mixer(self.ctx); self.dock = Dock(self.ctx, lambda: None)
-        col.addWidget(self.mixer); col.addWidget(self._pad(self.dock))
+        col.addWidget(self.mixer); col.addWidget(self._pad(self.dock, 14, 14))   # the control bar keeps a clear gap above and below
         foot = W.QFrame(); foot.setObjectName("footer"); foot.setFixedHeight(52); fh = hbox(foot, m=(24, 0, 24, 0), s=10)
         # licence card: logo, program + version, installation number, licence, callsign, this computer (the same facts as in the HAM Digi bottom bar)
         flogo = W.QLabel(); flogo.setFixedSize(34, 34); flogo.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -179,8 +179,8 @@ class MainWindow(W.QMainWindow):
         finally: self._blocking = False
 
     @staticmethod
-    def _pad(w):
-        f = W.QWidget(); l = vbox(f, m=(24, 6, 24, 8)); l.addWidget(w); return f
+    def _pad(w, top=6, bottom=8):
+        f = W.QWidget(); l = vbox(f, m=(24, top, 24, bottom)); l.addWidget(w); return f
 
     # ---- navigation -------------------------------------------------------
     def nav(self, key):
