@@ -116,9 +116,19 @@ class Workspace(W.QWidget):
         # --- right: last heard
         right = panel(); rv = vbox(right, m=(16, 16, 16, 12), s=10)
         rv.addWidget(label("Last station heard")); rv.itemAt(0).widget().setStyleSheet("font-weight:700;font-size:14px;")
-        self.lh_empty = label("🎧\nStation details will appear on reception."); self.lh_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lh_empty.setProperty("muted", True); rv.addWidget(self.lh_empty); rv.addSpacing(10)
-        rv.addWidget(label("LAST HEARD", section=True)); self.lh_list = label("Waiting for data", muted=True); rv.addWidget(self.lh_list)
+        # "now talking" block on top: who is on the air on this network, and a bar while they talk
+        self.now_box = W.QFrame(); self.now_box.setObjectName("nowTalking"); nb = vbox(self.now_box, m=(10, 10, 10, 10), s=4)
+        self.now_head = label("NOW TALKING", section=True); nb.addWidget(self.now_head)
+        self.now_call = label("Nobody is talking right now."); self.now_call.setStyleSheet("font-size:20px;font-weight:700;"); self.now_call.setWordWrap(True); nb.addWidget(self.now_call)
+        self.now_info = label("", muted=True); self.now_info.setWordWrap(True); nb.addWidget(self.now_info)
+        self.now_bar = W.QProgressBar(); self.now_bar.setRange(0, 0); self.now_bar.setTextVisible(False); self.now_bar.setFixedHeight(6); self.now_bar.setVisible(False); nb.addWidget(self.now_bar)
+        rv.addWidget(self.now_box); rv.addSpacing(6)
+        # last heard: its own table, so the talk time is not folded under the callsign
+        rv.addWidget(label("LAST HEARD", section=True))
+        self.lh_tbl = W.QTableWidget(0, 6); self.lh_tbl.setHorizontalHeaderLabels([tr(c) for c in ("Callsign", "DMR ID", "Country", "Network", "Time (UTC)", "Talk time")])
+        self.lh_tbl.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers); self.lh_tbl.verticalHeader().setVisible(False)
+        self.lh_tbl.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows); self.lh_tbl.setMinimumHeight(160)
+        rv.addWidget(self.lh_tbl, 1)
         if net == "AllStar":
             rv.addSpacing(8); rv.addWidget(label("CONNECTED TO THIS NODE", section=True))
             self.asl_head = label("Connect to a node to see who is connected to it.", muted=True); self.asl_head.setWordWrap(True); rv.addWidget(self.asl_head)
@@ -316,6 +326,36 @@ class Workspace(W.QWidget):
         self.ctx.store.toggle_fav(self.net, text, f"{self.net} {text}") if not self.ctx.store.is_fav(self.net, text) else None
         self.ctx.select(Target(self.net, text, f"{self.net} {text}")); self.fill(); self.ctx.changed.emit()
 
+
+    def _show_now(self):
+        """Who is on the air on this network right now (callsign, DMR ID, site) and a bar while they talk."""
+        live = [v for (n, _), v in self.ctx.talking.items() if n == self.net]
+        if live:
+            v = live[0]; info = self.ctx.station_info(v.get("srcid") or 0) or {}
+            self.now_call.setText(v.get("src") or "?")
+            bits = [f"DMR ID {v['srcid']}"] if v.get("srcid") else []
+            site = ", ".join(x for x in (info.get("name"), info.get("city"), info.get("country")) if x)
+            if site: bits.append(site)
+            self.now_info.setText(" · ".join(bits)); self.now_bar.setVisible(True)
+            self.now_head.setText("NOW TALKING ●")
+            col = NET_COLOR.get(self.net, C["muted"]) if isinstance(NET_COLOR, dict) else C["muted"]
+            self.now_box.setStyleSheet(f"#nowTalking {{ border:2px solid {col}; border-radius:8px; }}")
+        else:
+            self.now_call.setText("Nobody is talking right now."); self.now_info.setText("")
+            self.now_bar.setVisible(False); self.now_head.setText("NOW TALKING")
+            self.now_box.setStyleSheet("")
+
+    def _fill_heard(self, rows):
+        from .heardpage import duration
+        rows = rows[:40]
+        self.lh_tbl.setRowCount(len(rows))
+        for r, h in enumerate(rows):
+            info = self.ctx.station_info(h.get("srcid") or 0) if h.get("srcid") else None
+            vals = [h["src"] + (" (you)" if h.get("me") else ""), str(h.get("srcid") or "—"), (info or {}).get("country") or "—",
+                    h.get("net", ""), f"{h['ts']:%H:%M:%S}", duration(h)]
+            for c, val in enumerate(vals): self.lh_tbl.setItem(r, c, W.QTableWidgetItem(val))
+        self.lh_tbl.resizeColumnsToContents()
+
     def refresh(self):
         closed = not self.ctx.policy.allows(self.net)
         self.closed_note.setVisible(closed); self._sc.setEnabled(not closed)
@@ -326,11 +366,5 @@ class Workspace(W.QWidget):
         self.addfav.setEnabled(mine)
         self.addfav.setText("★  Remove favorite" if mine and self.ctx.store.is_fav(t.net, t.id) else "☆  Add favorite")
         self._srv_show(t if mine else None); self._tx_show()
-        heard = list(self.ctx.last_heard)                    # every network, newest first (a station heard on C4FM also shows on the DMR page)
-        self.lh_empty.setVisible(not heard)
-        if heard:
-            from .heardpage import html_rows
-            self.lh_list.setText(html_rows(heard, C['muted']))
-            self.lh_list.setTextFormat(Qt.TextFormat.RichText)
-        else:
-            self.lh_list.setText("Waiting for data")
+        self._show_now()
+        self._fill_heard(list(self.ctx.last_heard))          # every network, newest first (a station heard on C4FM also shows on the DMR page)
