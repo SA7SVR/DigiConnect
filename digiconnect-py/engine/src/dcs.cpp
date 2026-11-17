@@ -398,6 +398,8 @@ void DCS::transmit()
 
 void DCS::send_frame(uint8_t *ambe)
 {
+	// own copy: data() of a temporary QByteArray is a dangling pointer (crashed the Release build on macOS Intel)
+	const QByteArray usr = m_txusrtxt.toLocal8Bit().leftJustified(24, ' ');
 	QByteArray txdata;
 	static uint16_t txstreamid = 0;
 
@@ -427,43 +429,43 @@ void DCS::send_frame(uint8_t *ambe)
 		break;
 	case 1:
 		txdata[55] = 0x40 ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[0] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[1] ^ 0x93;
+		txdata[56] = usr.data()[0] ^ 0x4f;
+		txdata[57] = usr.data()[1] ^ 0x93;
 		break;
 	case 2:
-		txdata[55] = m_txusrtxt.toLocal8Bit().data()[2] ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[3] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[4] ^ 0x93;
+		txdata[55] = usr.data()[2] ^ 0x70;
+		txdata[56] = usr.data()[3] ^ 0x4f;
+		txdata[57] = usr.data()[4] ^ 0x93;
 		break;
 	case 3:
 		txdata[55] = 0x41 ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[5] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[6] ^ 0x93;
+		txdata[56] = usr.data()[5] ^ 0x4f;
+		txdata[57] = usr.data()[6] ^ 0x93;
 		break;
 	case 4:
-		txdata[55] = m_txusrtxt.toLocal8Bit().data()[7] ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[8] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[9] ^ 0x93;
+		txdata[55] = usr.data()[7] ^ 0x70;
+		txdata[56] = usr.data()[8] ^ 0x4f;
+		txdata[57] = usr.data()[9] ^ 0x93;
 		break;
 	case 5:
 		txdata[55] = 0x42 ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[10] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[11] ^ 0x93;
+		txdata[56] = usr.data()[10] ^ 0x4f;
+		txdata[57] = usr.data()[11] ^ 0x93;
 		break;
 	case 6:
-		txdata[55] = m_txusrtxt.toLocal8Bit().data()[12] ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[13] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[14] ^ 0x93;
+		txdata[55] = usr.data()[12] ^ 0x70;
+		txdata[56] = usr.data()[13] ^ 0x4f;
+		txdata[57] = usr.data()[14] ^ 0x93;
 		break;
 	case 7:
 		txdata[55] = 0x43 ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[15] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[16] ^ 0x93;
+		txdata[56] = usr.data()[15] ^ 0x4f;
+		txdata[57] = usr.data()[16] ^ 0x93;
 		break;
 	case 8:
-		txdata[55] = m_txusrtxt.toLocal8Bit().data()[17] ^ 0x70;
-		txdata[56] = m_txusrtxt.toLocal8Bit().data()[18] ^ 0x4f;
-		txdata[57] = m_txusrtxt.toLocal8Bit().data()[19] ^ 0x93;
+		txdata[55] = usr.data()[17] ^ 0x70;
+		txdata[56] = usr.data()[18] ^ 0x4f;
+		txdata[57] = usr.data()[19] ^ 0x93;
 		break;
 	default:
 		txdata[55] = 0x16;
