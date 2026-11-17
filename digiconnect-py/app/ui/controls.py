@@ -123,14 +123,16 @@ class Mixer(W.QFrame):
         self.hidebtn = button("Hide  ✕", "")
         for b in (self.single, self.multi, self.hidebtn): top.addWidget(b)
         l.addLayout(top)
-        strips = W.QGridLayout(); strips.setSpacing(10); self.sliders, self.mutes, self.caption = {}, {}, {}
+        strips = W.QGridLayout(); strips.setSpacing(10); self.sliders, self.mutes, self.caption, self.lvl = {}, {}, {}, {}
         for i, n in enumerate(NETS):
             f = panel("card"); v = vbox(f, m=(12, 8, 12, 8), s=4)
             h = hbox(); nm = label(n, net=n); cap = label("RX volume", muted=True)
             mute = button("", "", "speaker", checkable=True); mute.setFixedSize(32, 28)
             h.addWidget(nm); h.addStretch(); h.addWidget(cap); h.addStretch(); h.addWidget(mute)
             s = W.QSlider(Qt.Orientation.Horizontal); s.setRange(0, 100); s.setValue(int(ctx.rules.net_volume[n] * 100))
-            v.addLayout(h); v.addWidget(s); strips.addWidget(f, i // 4, i % 4); strips.setColumnStretch(i % 4, 1)
+            # the station indicator: the received audio moves this bar while a station of this network is heard
+            lv = LevelBar(6); self.lvl[n] = lv
+            v.addLayout(h); v.addWidget(s); v.addWidget(lv); strips.addWidget(f, i // 4, i % 4); strips.setColumnStretch(i % 4, 1)
             s.valueChanged.connect(lambda val, n=n: self._vol(n, val)); mute.toggled.connect(lambda m, n=n: self._mute(n, m))
             self.sliders[n], self.mutes[n], self.caption[n] = s, mute, cap
         l.addLayout(strips)
@@ -138,6 +140,15 @@ class Mixer(W.QFrame):
         self.single.clicked.connect(lambda: ctx.set_mode(ListenMode.SINGLE)); self.multi.clicked.connect(lambda: ctx.set_mode(ListenMode.MULTIPLE))
         self.hidebtn.clicked.connect(self.hide_requested.emit)
         ctx.changed.connect(self.refresh); self.refresh()
+        # follow the station indicator: the bar of a network moves while a station of that network is heard, and shows its name
+        self._tick = QtCore.QTimer(self); self._tick.setInterval(90); self._tick.timeout.connect(self._follow); self._tick.start()
+
+    def _follow(self):
+        try: lv = float(self.ctx.engine.rx_level()) if not self.ctx.rules.ptt else 0.0
+        except Exception: lv = 0.0
+        for n in NETS:
+            heard = [r for r in self.ctx.rules.rx if r.target.net == n]
+            self.lvl[n].set_level(lv if heard and not self.ctx.rules.net_muted[n] else 0.0)
 
     def _vol(self, n, v): self.ctx.rules.net_volume[n] = v / 100; self.refresh_caption()
     def _mute(self, n, m): self.ctx.rules.net_muted[n] = m; self._mute_look(n); self.refresh_caption(); self.ctx.changed.emit()
@@ -149,7 +160,11 @@ class Mixer(W.QFrame):
         b.setToolTip("Muted - click to turn the sound on" if off else "Sound on - click to mute")
 
     def refresh_caption(self):
-        for n in NETS: self.caption[n].setText("Reception muted" if self.ctx.rules.net_muted[n] else "RX volume")
+        for n in NETS:
+            heard = [r for r in self.ctx.rules.rx if r.target.net == n]
+            if self.ctx.rules.net_muted[n]: self.caption[n].setText("Reception muted")
+            elif heard: self.caption[n].setText(heard[0].target.name or heard[0].target.id)
+            else: self.caption[n].setText("RX volume")
 
     def refresh(self):
         m = self.ctx.rules.mode
