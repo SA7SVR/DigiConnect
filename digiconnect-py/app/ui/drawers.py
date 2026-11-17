@@ -95,7 +95,7 @@ class SettingsDrawer(W.QFrame):
             "QRZ.com": ("Not connected in this build. Automatic lookup needs an XML subscription on QRZ.com.",
                         "1. Open qrz.com and sign in (or create a free account).\n2. Check whether your account has XML access (QRZ shows this on its subscription page).\n3. This build has no fields for the account yet, so the lookup stays off until they are added."),
             "QRZCQ.com": ("Not connected in this build. Automatic lookup needs a Premium account on QRZCQ.com.",
-                          "1. Open qrzcq.com and sign in.\n2. Check that your account has the Premium lookup service.\n3. Enter the username and password in this section."),
+                          "1. Open qrzcq.com and sign in.\n2. Check that your account has the Premium lookup service.\n3. This build has no fields for the account yet, so the lookup stays off until they are added."),
             "Ham Radio Deluxe": ("Not connected in this build. We have not yet verified an interface that lets DigiConnect query Ham Radio Deluxe.",
                                  "Nothing to enter yet. This entry is kept so the choice is visible; it will be connected only when HRD's interface is confirmed."),
         }
