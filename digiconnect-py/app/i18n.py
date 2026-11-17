@@ -187,7 +187,7 @@ EL: dict[str, str] = {
     "No password entered yet": "Δεν έχει δοθεί ακόμη κωδικός",
     " — DMR: check the master address, your DMR ID and your personal hotspot password (BrandMeister SelfCare › Hotspot Security).": " — DMR: έλεγξε τη διεύθυνση του master, το DMR ID σου και τον προσωπικό κωδικό hotspot (BrandMeister SelfCare › Hotspot Security).",
     "A DMR ID is required for DMR (Settings › Radio networks).": "Απαιτείται DMR ID για το DMR (Ρυθμίσεις › Ραδιοδίκτυα).",
-    "closed": "κλειστό", "Mode closed": "Το mode είναι κλειστό",
+    "off": "απενεργό", "Turn off ": "Απενεργοποίηση ", "Turn on ": "Ενεργοποίηση ", "closed": "κλειστό", "Mode closed": "Το mode είναι κλειστό",
     "This mode is not available yet.": "Αυτό το mode δεν είναι ακόμη διαθέσιμο.",
     "Transmitting is not available on this installation (listen only).": "Η εκπομπή δεν είναι διαθέσιμη σε αυτή την εγκατάσταση (μόνο ακρόαση).",
     "Send diagnostics to the owner": "Στείλε διαγνωστικά στον ιδιοκτήτη", "Sending…": "Αποστολή…", "Diagnostics": "Διαγνωστικά",

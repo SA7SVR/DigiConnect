@@ -99,6 +99,9 @@ class MainWindow(W.QMainWindow):
         tabs = hbox(s=10); self.tabs = {}
         for k in ("favorites", *NETS):
             b = button("My favorites" if k == "favorites" else k, "tab", checkable=True); b.clicked.connect(lambda _, k=k: self.nav("favorites" if k == "favorites" else "net:" + k)); self.tabs[k] = b; tabs.addWidget(b)
+            if k != "favorites":                             # right click: switch this mode on or off for this installation
+                b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+                b.customContextMenuRequested.connect(lambda pos, n=k, w=b: self._mode_menu(n, w, pos))
         self.stop_all_btn = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_all_btn.clicked.connect(lambda: self.ctx.stop_all()); tabs.addWidget(self.stop_all_btn)   # always in reach, on the same line as the network tabs
         tabs.addStretch(); hv.addLayout(tabs); col.addWidget(self.head)
         # pages + right drawers
@@ -180,6 +183,12 @@ class MainWindow(W.QMainWindow):
             elif d.result_verdict: self._license_changed(d.result_verdict)
         finally: self._blocking = False
 
+    def _mode_menu(self, net, w, pos):
+        from ..qt import QtWidgets as _W
+        on = net not in self.ctx.policy.user_off
+        m = _W.QMenu(w); a = m.addAction(tr("Turn off ") + net if on else tr("Turn on ") + net)
+        if m.exec(w.mapToGlobal(pos)) is a: self.ctx.set_mode_enabled(net, not on)
+
     @staticmethod
     def _pad(w, top=6, bottom=8):
         f = W.QWidget(); l = vbox(f, m=(24, top, 24, bottom)); l.addWidget(w); return f
@@ -216,8 +225,9 @@ class MainWindow(W.QMainWindow):
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
         for t, b in self.tabs.items():
             if t != "favorites":
-                closed = not self.ctx.policy.allows(t)          # closed by the owner's server (EchoLink too; when open it still says 'soon' until it is built)
-                b.setText(t + " · " + tr("closed") if closed else t); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
+                closed = t in self.ctx.policy.off              # closed by the owner's server (EchoLink too; when open it still says 'soon' until it is built)
+                off = t in self.ctx.policy.user_off
+                b.setText(t + " · " + tr("closed") if closed else (t + " · " + tr("off") if off else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
                 if bool(b.property("closed")) != closed: b.setProperty("closed", closed); repolish(b)
         self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else "Choose a station, then Listen. Connect transmission separately to participate.")
         self.h_add.setVisible(k == "favorites")

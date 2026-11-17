@@ -52,6 +52,7 @@ class Ctx(QtCore.QObject):
         self._hosts_done.connect(self._on_hosts_done)
         from .policy import Policy
         self.policy = Policy()                # what the server allows (modes, transmit); the licence check updates it
+        self.policy.user_off = set(store.settings.get("modes_off", []) or [])
         self.rules = SessionRules()
         self.rules.limit = self.store.settings.get("max_ptt", 120)
         self.rules.ducking = bool(self.store.settings.get("duck", True))
@@ -409,6 +410,18 @@ class Ctx(QtCore.QObject):
 
     def _no_tx(self):
         m = self.policy.tx_reason(); self.note_problem(m); self.toast.emit(m); self.changed.emit()
+
+    def set_mode_enabled(self, net: str, on: bool):
+        """The person switches a mode on or off from the network tabs. A mode that is off is stopped at once and cannot be started."""
+        off = set(self.store.settings.get("modes_off", []) or []); (off.discard if on else off.add)(net)
+        self.store.settings["modes_off"] = sorted(off); self.store.save_settings()
+        self.policy.user_off = off
+        for r in list(self.rules.rx):
+            if not self.policy.allows(r.target.net): self.rules.stop_listening(r.handle); self.engine.stop_rx(r.handle)
+        t = self.rules.tx_target
+        if self.rules.tx_connected and t is not None and not self.policy.allows(t.net):
+            self.rules.disconnect_tx(); self.engine.ptt(False); self.engine.disconnect_tx()
+        self.policy_changed.emit(); self.changed.emit()
 
     def apply_policy(self, pol) -> bool:
         """The server's modes/transmit policy (from the signed licence answer). Whatever is now closed is stopped at once. Returns True when it changed."""

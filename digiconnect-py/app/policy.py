@@ -19,8 +19,9 @@ class Policy:
         self.txnote = str(p.get("txnote") or "")
         self.old = bool(p.get("old"))
         self.minv = str(p.get("minv") or "")
+        self.user_off: set = set()          # modes this person switched off on the network tabs (settings, not the owner's)
 
-    def allows(self, net: str) -> bool: return net not in self.off
+    def allows(self, net: str) -> bool: return net not in self.off and net not in self.user_off
 
     def reason(self, net: str = "") -> str:
         return pick(self.note) or "This mode is not available yet."
