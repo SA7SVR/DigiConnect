@@ -96,6 +96,7 @@ class Workspace(W.QWidget):
         self.dtmf = button("DTMF", "", "grid"); self.dtmf.setVisible(net == "AllStar"); self.dtmf.setToolTip("Send DTMF digits to the connected AllStarLink node (control codes of the node)")
         mv.addWidget(self.dtmf, 0, Qt.AlignmentFlag.AlignLeft); self.dtmf.clicked.connect(self._dtmf)
         self.tx = TxControls(ctx, on_new_qso); mv.addWidget(self.tx)
+        self.tx.setVisible(False)            # the same controls are in the fixed bar at the bottom of every page (the widget stays, its signals still work)
         mv.addWidget(label("AUDIO", section=True))
         if net == "EchoLink":
             note = panel("note"); nv = vbox(note, m=(12, 10, 12, 10)); nv.addWidget(label("EchoLink is under construction — coming soon. The page is here so you can see where it will be; it does not connect yet."))

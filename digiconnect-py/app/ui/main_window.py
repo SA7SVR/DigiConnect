@@ -221,7 +221,8 @@ class MainWindow(W.QMainWindow):
         self.tabs["favorites"].setText(f"My favorites   {len(self.ctx.store.favorites)}")
         for key, b in self.rail_btn.items():
             b.setChecked((key == "favorites" and k == "favorites") or (key == "log" and k == "log") or (key == "mixer" and self.mixer.isVisible()))
-        self.dock.setVisible(not ws and k != "favorites" or k in ("favorites", "log")); self.dock.parentWidget().setVisible(k in ("favorites", "log"))
+        # one fixed control bar on every page: Listen / PTT / limit stay in the same place at the bottom
+        self.dock.setVisible(True); self.dock.parentWidget().setVisible(True)
         self.h_nq.setVisible(ws or k == 'favorites'); self.h_set.setVisible(ws)
         n = len(getattr(self.ctx.engine, "links", {}))
         self.foot_l.setText("Engine: " + self.ctx.engine.name + (f" · {n} link{'s' if n != 1 else ''}" if n else ""))
