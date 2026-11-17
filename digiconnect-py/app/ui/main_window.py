@@ -28,7 +28,7 @@ def _logo() -> Path:
 
 LOGO = _logo()
 RAIL = [("favorites", "grid", "My favorites"), ("newqso", "plus", "New QSO"), ("log", "doc", "QSO log"), ("analysis", "bars", "Log analysis"),
-        ("heard", "clock", "Last heard"), ("mixer", "headphones", "Audio mixer"), ("mic", "mic", "Microphone"), ("rec", "circle", "Recordings")]
+        ("heard", "clock", "Last heard"), ("mixer", "headphones", "Audio mixer"), ("mic", "mic", "Microphone"), ("map", "map", "Map"), ("rec", "circle", "Recordings")]
 
 
 class Toast(W.QLabel):
@@ -114,6 +114,8 @@ class MainWindow(W.QMainWindow):
         from .micpage import MicPage
         self.micp = MicPage(self.ctx); self.pages.addWidget(self.micp)
         from .recordpage import RecordPage
+        from .mappage import MapPage
+        self.mapp = MapPage(self.ctx); self.pages.addWidget(self.mapp)
         self.recp = RecordPage(self.ctx); self.pages.addWidget(self.recp)
         for n in NETS: self.pages.addWidget(self.ws[n])
         self.mixer = Mixer(self.ctx); self.dock = Dock(self.ctx, lambda: None)
@@ -203,6 +205,7 @@ class MainWindow(W.QMainWindow):
         if key == "mixer": self._mixer_user = True; self.mixer.setVisible(not self.mixer.isVisible()); self._sync_chrome(); return
         if key in ("analysis",): self.nav("log"); self.log._analysis(); return
         if key == "updates": self.show_updates(); return
+        if key == "map": self.current = "map"; self.mapp.refresh(); self.pages.setCurrentWidget(self.mapp); self._sync_chrome(); return
         if key == "rec": self.current = "rec"; self.recp.refresh(); self.pages.setCurrentWidget(self.recp); self._sync_chrome(); return
         if key in ("help",):
             self.ctx.toast.emit("Help: see docs/SPEC.md (operating rules) in the source package."); return

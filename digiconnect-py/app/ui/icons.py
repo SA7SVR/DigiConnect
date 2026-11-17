@@ -10,6 +10,9 @@ def icon(name: str, color=None, size=22) -> QtGui.QIcon:
     p.setPen(pen); p.setBrush(Qt.BrushStyle.NoBrush)
     R = QtCore.QRectF
     s = size
+    if name == "map":                                    # a folded map
+        p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(2.5 * s / 22, 5 * s / 22), QtCore.QPointF(8 * s / 22, 3 * s / 22), QtCore.QPointF(14 * s / 22, 5 * s / 22), QtCore.QPointF(19.5 * s / 22, 3 * s / 22), QtCore.QPointF(19.5 * s / 22, 17 * s / 22), QtCore.QPointF(14 * s / 22, 19 * s / 22), QtCore.QPointF(8 * s / 22, 17 * s / 22), QtCore.QPointF(2.5 * s / 22, 19 * s / 22)]))
+        p.drawLine(QtCore.QPointF(8 * s / 22, 3 * s / 22), QtCore.QPointF(8 * s / 22, 17 * s / 22)); p.drawLine(QtCore.QPointF(14 * s / 22, 5 * s / 22), QtCore.QPointF(14 * s / 22, 19 * s / 22))
     if name == "grid":
         for x in (4, 12):
             for y in (4, 12): p.drawRoundedRect(R(x, y, 6, 6), 1.5, 1.5)
