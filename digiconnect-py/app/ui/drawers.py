@@ -100,6 +100,12 @@ class SettingsDrawer(W.QFrame):
                                  "Nothing to enter yet. This entry is kept so the choice is visible; it will be connected only when HRD's interface is confirmed."),
         }
         self.pref.currentTextChanged.connect(self._cb_show); self._cb_show(self.pref.currentText())
+        # send every saved contact to a logbook: an ADIF file that the logbook (for example Logger32) can import
+        l4.addWidget(label("SEND CONTACTS TO A LOGBOOK", section=True))
+        self.adif_path = label(ctx.store.settings.get("adif_auto_path") or "Not set: contacts are not sent anywhere.", muted=True); self.adif_path.setWordWrap(True); l4.addWidget(self.adif_path)
+        ab = hbox(); self.adif_choose = button("Choose ADIF file"); self.adif_off = button("Stop sending"); ab.addWidget(self.adif_choose); ab.addWidget(self.adif_off); ab.addStretch(); l4.addLayout(ab)
+        l4.addWidget(label("Each contact you save is added to this file in ADIF format. In the logbook, import the same file (File > Import ADIF). Logger32 must be set to import ADIF; this build has not verified an automatic watch of the file.", muted=True))
+        self.adif_choose.clicked.connect(self._adif_choose); self.adif_off.clicked.connect(self._adif_off)
         l4.addStretch()
         p5 = W.QWidget(); l5 = vbox(p5, m=(16, 4, 16, 4), s=8); self.bk = button("Back up application"); self.rs = button("Restore a backup"); self.dg = button("Export diagnostics")
         for b in (self.bk, self.rs, self.dg): l5.addWidget(b, 0, Qt.AlignmentFlag.AlignLeft)
@@ -111,6 +117,16 @@ class SettingsDrawer(W.QFrame):
         cl.clicked.connect(self.closed.emit); self.save.clicked.connect(self._save); self.saveprof.clicked.connect(self._saveprof); self.load.clicked.connect(self._load)
         self.bk.clicked.connect(self._backup); self.rs.clicked.connect(self._restore); self.dg.clicked.connect(self._diag); self.choose.clicked.connect(self._choose)
         self.mode = None; self.set_mode(None); self._tab(0)
+
+    def _adif_choose(self):
+        fn, _ = W.QFileDialog.getSaveFileName(self, "ADIF file", "digiconnect-contacts.adi", "ADIF (*.adi *.adif)")
+        if not fn: return
+        self.ctx.store.settings["adif_auto_path"] = fn; self.ctx.store.save_settings()
+        self.adif_path.setText(fn)
+
+    def _adif_off(self):
+        self.ctx.store.settings["adif_auto_path"] = ""; self.ctx.store.save_settings()
+        self.adif_path.setText("Not set: contacts are not sent anywhere.")
 
     def _cb_show(self, name: str):
         st, how = self.cb_info.get(name, ("", ""))

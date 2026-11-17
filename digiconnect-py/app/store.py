@@ -64,7 +64,23 @@ class Store:
     def add_qso(self, q: dict) -> int:
         cur = self.db.execute(f"INSERT INTO qso({','.join(self.FIELDS)}) VALUES({','.join('?'*len(self.FIELDS))})",
                               [q.get(k, "") for k in self.FIELDS])
-        self.db.commit(); return cur.lastrowid
+        self.db.commit()
+        self._auto_adif(q)
+        return cur.lastrowid
+
+    def _auto_adif(self, q: dict):
+        """If the user chose a file in Callbooks > 'Send contacts to a logbook', every saved contact is appended to it as ADIF.
+        A logbook such as Logger32 reads ADIF, so it can import this file. Errors are logged, never stop the save."""
+        path = (self.settings.get("adif_auto_path") or "").strip()
+        if not path: return
+        try:
+            from pathlib import Path
+            p = Path(path); new = not p.exists() or p.stat().st_size == 0
+            with open(p, "a", encoding="utf-8") as fh:
+                if new: fh.write("DigiConnect automatic ADIF export\n<ADIF_VER:5>3.1.4 <EOH>\n")
+                fh.write(self.to_adif([{k: q.get(k, "") for k in self.FIELDS}], self.settings.get("callsign", "")).split("<EOH>\n", 1)[-1] + "\n")
+        except OSError as ex:
+            from . import diag; diag.log(f"ADIF auto export failed: {ex}")
 
     def search_qso(self, text="", system="", d_from="", d_to="", country="", trash=False):
         sql, args = "SELECT * FROM qso WHERE deleted=?", [1 if trash else 0]
