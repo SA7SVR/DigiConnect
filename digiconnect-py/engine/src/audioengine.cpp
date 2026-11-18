@@ -172,9 +172,9 @@ void AudioEngine::start_capture()
         return;
     }
     m_inbytes = 0; m_rs_acc = 0; m_rs_pos = 0; m_rs_n = 0;
-    if(m_indev != nullptr){ disconnect(m_indev, nullptr, this, nullptr); m_indev = nullptr; }
+    if(m_indev){ disconnect(m_indev, nullptr, this, nullptr); }
     m_indev = m_in->start();
-    if(m_indev != nullptr){
+    if(m_indev){
         connect(m_indev, &QIODevice::readyRead, this, &AudioEngine::input_data_received);
     }
     else{
@@ -191,7 +191,7 @@ void AudioEngine::start_capture()
 
 void AudioEngine::input_data_received()
 {
-    if(m_indev == nullptr) return;
+    if(!m_indev) return;
     const QByteArray data = m_indev->readAll();
     if(data.isEmpty()) return;
     m_inbytes += data.size();
@@ -257,8 +257,9 @@ void AudioEngine::set_record(const QString &path)
 
 void AudioEngine::stop_capture()
 {
+	if(m_indev){ disconnect(m_indev, nullptr, this, nullptr); }
 	if(m_in != nullptr){
-        m_in->reset();
+        m_in->reset();      // the device returned by start() is deleted here on some platforms
 	}
 }
 
