@@ -18,6 +18,7 @@
 #ifndef AUDIOENGINE_H
 #define AUDIOENGINE_H
 
+#include <QPointer>
 #include <QObject>
 #if QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
 #include <QAudio>
@@ -95,7 +96,7 @@ private:
 #endif
 	QIODevice *m_outdev = nullptr;
 	uint32_t m_out_dropped = 0, m_in_dropped = 0;
-	QIODevice *m_indev = nullptr;
+	QPointer<QIODevice> m_indev;   // owned by the QAudioSource, which deletes it on reset()/stop(): a plain pointer dangled and the next start crashed (macOS)
 	QQueue<int16_t> m_audioinq;
 	uint16_t m_maxlevel;
 	bool m_agc;

@@ -1,6 +1,6 @@
 """Microphone page: input gain, 3-band equaliser, high-pass filter, noise gate, compressor and output level.
 Every change is sent to the protocol engine at once, so a hold-to-talk press on this page lets you hear the effect on the
-other station's receiver. The values are kept per computer (settings['mic'])."""
+other station's receiver. The values are kept per computer (settings['mic_fx']; settings['mic'] is the name of the capture device)."""
 import math
 from ..qt import QtWidgets as W, QtCore, Qt
 from .widgets import label, button, vbox, hbox
@@ -41,7 +41,10 @@ class MicPage(W.QWidget):
 
     def __init__(self, ctx):
         super().__init__(); self.ctx = ctx
-        self.cur = dict(DEFAULT); self.cur.update(ctx.store.settings.get("mic", {}) or {})
+        st = ctx.store.settings
+        if isinstance(st.get("mic"), dict): st["mic_fx"] = st.pop("mic")   # an earlier build saved these values under 'mic', the key of the capture device name
+        fx = st.get("mic_fx")
+        self.cur = dict(DEFAULT); self.cur.update({k: v for k, v in (fx if isinstance(fx, dict) else {}).items() if k in DEFAULT})
         # live push to the engine: a short pause after the last change, so dragging a slider sends one update
         self._push_timer = QtCore.QTimer(self); self._push_timer.setSingleShot(True); self._push_timer.setInterval(120)
         self._push_timer.timeout.connect(self._push)
@@ -92,7 +95,7 @@ class MicPage(W.QWidget):
         self.ctx.engine.set_mic(self._values())
 
     def _save(self):
-        self.ctx.store.settings["mic"] = self._values(); self.ctx.store.save_settings()
+        self.ctx.store.settings["mic_fx"] = self._values(); self.ctx.store.save_settings()
         self._push()
         self.ctx.toast.emit("Microphone settings saved.")
         self._show_state()
