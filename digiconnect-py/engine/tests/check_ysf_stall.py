@@ -102,6 +102,19 @@ b = stats()
 print("   after transmission 2:", b)
 check("second transmission is heard too", len(b) == len(a) + 1 and b[-1][0] >= 5 * (len(frames) - 3), b)
 
+# third transmission: a bridged reflector delivers in BURSTS (10 packets back to back, then a pause); every packet of every burst must be heard
+def replay_bursts(burst=10, pause=0.9):
+    for i in range(0, len(frames), burst):
+        for f in frames[i:i + burst]: sock.sendto(b"YSFD" + b"REMOTEGW  " + b"DL4LGV    " + b"ALL       " + f[34:], peer[0])
+        time.sleep(pause)
+    time.sleep(2.5)
+replay_bursts()
+c = stats()
+print("   after transmission 3 (bursts):", c)
+check("burst-wise transmission is heard completely", len(c) == len(b) + 1 and c[-1][0] >= 5 * (len(frames) - 3), c)
+st = [l for l in logev if "YSF receive statistics" in l]
+check("the engine reports receive statistics (packets, headers, terminators, longest wait, datagrams read at once)", len(st) >= 3 and "most datagrams read at once" in st[-1], st[-1:] )
+
 send("quit"); time.sleep(0.5); stop.set()
 try: p.wait(timeout=4)
 except subprocess.TimeoutExpired: p.kill()

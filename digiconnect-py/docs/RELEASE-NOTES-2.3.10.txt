@@ -1,8 +1,21 @@
-DigiConnect 2.3.9 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+DigiConnect 2.3.10 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
 ===========================================================================
 
 ΕΛΛΗΝΙΚΑ
 --------
+ΝΕΑ ΣΤΗΝ 2.3.10 — ΧΑΡΤΗΣ ΜΕ ΞΕΧΩΡΙΣΤΟΥΣ ΣΤΑΘΜΟΥΣ, ΔΙΟΡΘΩΣΕΙΣ ΕΜΦΑΝΙΣΗΣ, ECHOLINK
+• ΝΕΟ (Χάρτης): κλικ σε κύκλο χώρας → η χώρα ανοίγει και ΚΑΘΕ σταθμός είναι ξεχωριστή τελεία· με το ποντίκι (ή αγγίζοντάς την) φαίνεται το διακριτικό και οι λεπτομέρειες· κλικ στην τελεία → ο σταθμός επιλέγεται στον πίνακα. Μέσα σε ανοιγμένη χώρα είναι γνωστή μόνο η χώρα, γι' αυτό οι τελείες απλώνονται για να φαίνονται ξεχωριστά και ΔΕΝ είναι οι πραγματικές θέσεις (το γράφει ο χάρτης). Σταθμός με γνωστό grid είναι στην πραγματική του θέση.
+• Χάρτης: μπήκαν και οι κόμβοι AllStarLink· ο χάρτης ακολουθεί τον σταθμό που επιλέγεις σε σελίδα δικτύου (zoom στη χώρα και τονισμένη τελεία).
+• ΔΙΟΡΘΩΘΗΚΕ (Last heard): κάθε mode δείχνει μόνο τους δικούς του σταθμούς· στήλες στοιχισμένες και χωρίς κομμένο κείμενο· χώρα από το callbook ή από το πρόθεμα του διακριτικού. NXDN/P25: το δικό σου ID γράφεται με το διακριτικό σου, ID 7+ ψηφίων ψάχνεται στο RadioID, αριθμός που δεν είναι καταχωρημένος μένει όπως είναι (τίποτα δεν μαντεύεται).
+• ΔΙΟΡΘΩΘΗΚΕ (Last station heard): το NOW TALKING και ποιος μιλάει σε μία γραμμή (αχνό γκρι όταν δεν μιλά κανείς)· τίτλος με περίγραμμα· μεγαλύτερος πίνακας.
+• ΔΙΟΡΘΩΘΗΚΕ (QSO log): στήλες στοιχισμένες, νεότερα πρώτα, και το γράμμα «T» δεν χάνεται πια από τα ονόματα (το «Tomasz» εμφανιζόταν «omasz»).
+• Πάνω μπάρα: ώρα (UTC και τοπική) και διακριτικό σε μία γραμμή με τα κουμπιά· νέο κουμπί Exit με κόκκινο περίγραμμα (ρωτά πριν κλείσει αν υπάρχει σύνδεση).
+• Μικρόφωνο, Χάρτης, Ηχογραφήσεις, QSO log, Heard: πρώτο πάτημα ανοίγει, δεύτερο κλείνει (όπως ο audio mixer).
+• ΔΙΟΡΘΩΘΗΚΕ: τα μενού επιλογής (π.χ. Preferred callbook στα Settings) άνοιγαν σε όλο το πλάτος της οθόνης.
+• EchoLink: η λίστα με τη σειρά του επίσημου προγράμματος (repeaters, links, χρήστες, conferences, μετά αλφαβητικά)· η χώρα από το πρόθεμα του διακριτικού· καμία προτεραιότητα στον χρήστη. ΔΕΝ έχει δοκιμαστεί ακόμα με πραγματική σύνδεση.
+• C4FM/YSF (YSF00006): η 2.3.9 ΔΕΝ έλυσε το πρόβλημα. Η μηχανή διαβάζει τώρα ΟΛΑ τα πακέτα που περιμένουν (οι γέφυρες στέλνουν σε ριπές) και γράφει στατιστικά στα diagnostics («YSF receive statistics»). Αν το πρόβλημα μείνει, στείλε diagnostics (Settings › Export diagnostics) αμέσως μετά.
+• Αλλαγή στη μηχανή: χρειάζεται ο πλήρης installer (η αυτόματη ενημέρωση δεν αντικαθιστά τη μηχανή). Ο server δεν άλλαξε.
+
 ΝΕΑ ΣΤΗΝ 2.3.9 — ΑΚΡΟΑΣΗ C4FM/YSF ΣΕ REFLECTOR ΜΕ ΓΕΦΥΡΑ (π.χ. YSF00006)
 • ΔΙΟΡΘΩΘΗΚΕ: στον YSF00006 (και σε άλλους reflectors που είναι δεμένοι με άλλο δίκτυο, π.χ. DMR) ο ήχος κοβόταν μετά από λίγα δευτερόλεπτα και η επόμενη εκπομπή δεν ακουγόταν. Αιτία (από το αρχείο διαγνωστικών): η εκπομπή έρχεται από τη γέφυρα με παύσεις στα πακέτα· το πρόγραμμα έκρινε «χάθηκε το σήμα» μόλις περνούσαν ~0,4 δευτ. χωρίς πακέτο και έκοβε την εκπομπή σε κομμάτια των 10–55 πλαισίων. Τώρα το όριο είναι 1,5 δευτ. πραγματικού χρόνου· μια παύση στη μέση της ομιλίας δεν κόβει πια την εκπομπή, και αν δεν έρθει ποτέ τερματικό πλαίσιο η εκπομπή κλείνει μετά από 1,5 δευτ.
 • Νέο τεστ: tests/test_engine_stall.py (engine/tests/check_ysf_stall.py): εκπομπή με παύση 0,6 / 0,9 / 1,2 δευτ. παίζει ως ΜΙΑ ολόκληρη εκπομπή και η δεύτερη εκπομπή ακούγεται. Πριν τη διόρθωση η ίδια εκπομπή έσπαγε σε 2 κομμάτια.
@@ -41,6 +54,19 @@ DigiConnect 2.3.9 — Release notes / Σημειώσεις έκδοσης / Vers
 
 ENGLISH
 -------
+NEW IN 2.3.10 — MAP WITH SEPARATE STATIONS, DISPLAY FIXES, ECHOLINK
+• NEW (Map): click a country circle → the country opens and EVERY station is its own dot; hover (or touch) a dot to see its call sign and details; click it to select the station in the table. Inside an opened country only the country is known, so the dots are spread out to be seen separately and are NOT their real places (the map says so). A station with a known grid square is at its real place.
+• Map: AllStarLink nodes are on the map too; the map follows the station you choose in a network page (zooms to its country, dot pointed out).
+• FIXED (Last heard): each mode shows only its own stations; columns aligned, no cut-off text; country from the callbook or from the call sign prefix. NXDN/P25: your own ID shows your call sign, an ID of 7+ digits is looked up in RadioID, a number that is not registered stays as it is (nothing is guessed).
+• FIXED (Last station heard): NOW TALKING and who is talking on one line (faint grey when nobody talks); framed title; larger table.
+• FIXED (QSO log): aligned columns, newest first, and the letter "T" is no longer lost from names ("Tomasz" showed as "omasz").
+• Top bar: time (UTC and local) and call sign on one line with the buttons; new Exit button with a red outline (asks first when connected).
+• Microphone, Map, Recordings, QSO log, Heard: first press opens, second press closes (like the audio mixer).
+• FIXED: drop-down menus (e.g. Preferred callbook in Settings) opened across the whole screen width.
+• EchoLink: the list in the order of the official program (repeaters, links, users, conferences, then alphabetical); country from the call sign prefix; no priority for the user. NOT yet tested with a real connection.
+• C4FM/YSF (YSF00006): 2.3.9 did NOT solve it. The engine now reads ALL packets that are waiting (bridges send in bursts) and writes statistics to the diagnostics ("YSF receive statistics"). If it still happens, send the diagnostics (Settings › Export diagnostics) right after.
+• Engine change: the full installer is needed (the automatic update does not replace the engine). The server did not change.
+
 NEW IN 2.3.9 — C4FM/YSF LISTENING ON A BRIDGED REFLECTOR (e.g. YSF00006)
 • FIXED: on YSF00006 (and other reflectors linked to another network, e.g. DMR) the sound stopped after a few seconds and the next transmission was not heard. Cause (from the diagnostics file): the bridge delivers the transmission with pauses between packets; the program declared "signal lost" as soon as ~0.4 s passed without a packet and cut the transmission into pieces of 10–55 frames. The limit is now 1.5 s of real time; a pause in the middle of speech no longer cuts the transmission, and if no end frame ever arrives the transmission is closed after 1.5 s.
 • New test: tests/test_engine_stall.py (engine/tests/check_ysf_stall.py): a transmission with a 0.6 / 0.9 / 1.2 s pause is played as ONE whole transmission and the second transmission is heard. Before the fix the same transmission broke into 2 pieces.
@@ -79,6 +105,19 @@ NEW IN 2.3.5 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHO
 
 SVENSKA
 -------
+NYTT I 2.3.10 — KARTA MED SEPARATA STATIONER, VISNINGSFIXAR, ECHOLINK
+• NYTT (Karta): klicka på ett lands cirkel → landet öppnas och VARJE station är en egen prick; håll pekaren över (eller rör) en prick för anropssignal och detaljer; klicka för att markera stationen i tabellen. I ett öppnat land är bara landet känt, så prickarna sprids ut för att synas var för sig och är INTE de verkliga platserna (kartan säger det). En station med känd lokator ligger på sin verkliga plats.
+• Karta: AllStarLink-noder finns också på kartan; kartan följer stationen du väljer på en nätverkssida (zoomar till landet, pricken markeras).
+• FIXAT (Last heard): varje läge visar bara sina egna stationer; kolumnerna linjerade, ingen avklippt text; land från callbook eller anropssignalens prefix. NXDN/P25: ditt eget ID visar din anropssignal, ett ID med 7+ siffror slås upp i RadioID, ett oregistrerat nummer lämnas som det är (inget gissas).
+• FIXAT (Last station heard): NOW TALKING och vem som pratar på en rad (svagt grått när ingen pratar); ramad rubrik; större tabell.
+• FIXAT (QSO log): linjerade kolumner, senaste först, och bokstaven "T" försvinner inte längre ur namn ("Tomasz" visades som "omasz").
+• Överrad: tid (UTC och lokal) och anropssignal på en rad med knapparna; ny Exit-knapp med röd kant (frågar först om du är ansluten).
+• Mikrofon, Karta, Inspelningar, QSO log, Heard: första trycket öppnar, andra stänger (som ljudmixern).
+• FIXAT: rullgardinsmenyer (t.ex. Preferred callbook i Settings) öppnades över hela skärmbredden.
+• EchoLink: listan i det officiella programmets ordning (repeaters, links, användare, konferenser, sedan alfabetiskt); land från anropssignalens prefix; ingen prioritet för användaren. Ännu INTE testat med en riktig anslutning.
+• C4FM/YSF (YSF00006): 2.3.9 löste det INTE. Motorn läser nu ALLA väntande paket (bryggor skickar i skurar) och skriver statistik till diagnostiken ("YSF receive statistics"). Om det händer igen, skicka diagnostiken (Settings › Export diagnostics) direkt efter.
+• Motorändring: den fullständiga installationen behövs (automatisk uppdatering byter inte ut motorn). Servern är oförändrad.
+
 NYTT I 2.3.9 — C4FM/YSF-LYSSNING PÅ EN BRYGGAD REFLEKTOR (t.ex. YSF00006)
 • FIXAT: på YSF00006 (och andra reflektorer som är länkade till ett annat nät, t.ex. DMR) tystnade ljudet efter några sekunder och nästa sändning hördes inte. Orsak (från diagnostikfilen): bryggan levererar sändningen med pauser mellan paketen; programmet förklarade "signal förlorad" så fort ~0,4 s gått utan paket och skar sändningen i bitar om 10–55 ramar. Gränsen är nu 1,5 s verklig tid; en paus mitt i talet klipper inte längre sändningen, och om ingen slutram kommer stängs sändningen efter 1,5 s.
 • Nytt test: tests/test_engine_stall.py (engine/tests/check_ysf_stall.py): en sändning med 0,6 / 0,9 / 1,2 s paus spelas som EN hel sändning och den andra sändningen hörs. Före rättningen delades samma sändning i 2 bitar.

@@ -66,6 +66,7 @@ public:
 	void set_fcs_mode(bool y, std::string f = "        "){ m_fcs = y; m_fcsname = f; }
 private slots:
 	void process_udp();
+	void process_one();                            // one datagram (process_udp reads ALL that are waiting)
 	void process_rx_data();
 	void get_ambe();
 	void send_ping();
@@ -113,6 +114,7 @@ private:
 	uint32_t m_rx_played = 0, m_rx_gaps = 0;      // statistics of the current received stream (diagnostics)
 	bool m_rx_wasplaying = false;
 	bool m_rx_primed = false;                     // jitter buffer filled, playout running
+	uint32_t m_st_pkts = 0, m_st_hdr = 0, m_st_term = 0, m_st_fichbad = 0, m_st_maxgap = 0, m_st_backlog = 0;   // received-stream statistics (diagnostics)
 	QElapsedTimer m_rx_pkt;                       // time since the last received voice packet (stream watchdog)
 	QElapsedTimer m_playclock; int64_t m_rx_due = 0;   // playout clock: one frame per 20 ms
 };

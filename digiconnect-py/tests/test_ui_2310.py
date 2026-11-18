@@ -77,3 +77,17 @@ def test_qso_log_does_not_eat_the_letter_T_in_names(tmp_path):
     w.ctx.store.add_qso(dict(callsign="SP1ABC", start_utc="2026-01-01T10:00:00", system="DMR", name="Tomasz Test", notes="T"))
     w.log.reload(); t = w.log.table
     assert t.item(0, 1).text() == "2026-01-01 10:00:00" and t.item(0, 4).text() == "Tomasz Test"
+
+
+def test_nxdn_p25_numbers_become_call_signs_only_where_that_is_certain(tmp_path):
+    import types
+    from app.rules import Target
+    w = _win(tmp_path); ctx = w.ctx; s = ctx.store.settings
+    s["callsign"] = "sa7svr"; s["dmr_id"] = "2407219"; s["nxdn_id"] = "31"
+    asked = []; ctx._ask_station = lambda d: asked.append(d)
+    ln = lambda net: types.SimpleNamespace(target=Target(net, "202", "x"))
+    assert ctx._talker(ln("NXDN"), dict(src="31", srcid=31)) == ("SA7SVR", 31)             # our own NXDN ID is our call sign
+    assert ctx._talker(ln("P25"), dict(src="2407219", srcid=2407219)) == ("SA7SVR", 2407219)
+    assert ctx._talker(ln("NXDN"), dict(src="44", srcid=44)) == ("44", 44) and asked == []       # a short number is nobody's registered ID: left alone, nothing asked
+    assert ctx._talker(ln("P25"), dict(src="2021015", srcid=2021015)) == ("2021015", 2021015) and asked == [2021015]   # asked in the RadioID database
+    assert ctx._talker(ln("C4FM"), dict(src="SV1ABC", srcid=0)) == ("SV1ABC", 0)                  # call-sign networks are untouched

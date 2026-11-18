@@ -117,6 +117,18 @@ YSF::~YSF()
 
 void YSF::process_udp()
 {
+	// Read EVERY datagram that is waiting, not just one: a bridged reflector (e.g. YSF00006 <-> DMR) delivers in bursts, and the socket
+	// notification is not repeated for the datagrams that were already queued (Qt documents this). The rest of a burst then waits for the
+	// next packet to arrive, so the speech stops after a few seconds. (A counter of the longest queue goes to the diagnostics.)
+	uint32_t n = 0;
+	while(m_udp && m_udp->hasPendingDatagrams()){
+		++n; process_one();
+	}
+	if(n > m_st_backlog) m_st_backlog = n;
+}
+
+void YSF::process_one()
+{
 	QByteArray buf;
     QByteArray out;
 	QHostAddress sender;
@@ -219,9 +231,12 @@ void YSF::process_udp()
 
 	if(p_data != nullptr){
 		m_rxwatchdog = 0;
-		m_rx_pkt.restart();
+		if(m_rx_pkt.isValid()){ const uint32_t g = (uint32_t)m_rx_pkt.elapsed(); if(g > m_st_maxgap) m_st_maxgap = g; }
+		m_rx_pkt.restart(); ++m_st_pkts;
 		CYSFFICH fich;
-		if(fich.decode(p_data)){
+		const bool fich_ok = fich.decode(p_data);
+		if(!fich_ok) ++m_st_fichbad;
+		if(fich_ok){
 			m_fi = fich.getFI();
 			m_modeinfo.frame_number = fich.getFN();
 			m_modeinfo.frame_total = fich.getFT();
@@ -229,6 +244,7 @@ void YSF::process_udp()
 			m_modeinfo.type = fich.getDT();
 
 			if(m_fi == YSF_FI_HEADER){
+				++m_st_hdr;
 				m_modeinfo.stream_state = STREAM_NEW;
 				m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
 				if(!m_tx && !m_rxtimer->isActive() ){
@@ -239,6 +255,7 @@ void YSF::process_udp()
 				qDebug() << "New YSF stream from gw" << m_modeinfo.gw;
 			}
 			else if(m_fi == YSF_FI_TERMINATOR){
+				++m_st_term;
 				m_modeinfo.stream_state = STREAM_END;
 				m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
 				qDebug() << "YSF stream ended" << m_modeinfo.gw;
@@ -1474,6 +1491,9 @@ void YSF::process_rx_data()
 		//m_ambedev->clear_queue();
 		qDebug() << "YSF playback stopped: frames played" << m_rx_played << ", gaps (interruptions)" << m_rx_gaps;
 		emit update_log(QString("YSF playback stopped: frames played %1 , gaps (interruptions) %2 , sound-card bytes lost %3").arg(m_rx_played).arg(m_rx_gaps).arg(m_audio->out_dropped_bytes()));
+		emit update_log(QString("YSF receive statistics: packets %1 , headers %2 , terminators %3 , undecodable headers (FICH) %4 , longest wait between packets %5 ms , most datagrams read at once %6 , ended by %7")
+			.arg(m_st_pkts).arg(m_st_hdr).arg(m_st_term).arg(m_st_fichbad).arg(m_st_maxgap).arg(m_st_backlog).arg(m_modeinfo.stream_state == STREAM_LOST ? "timeout" : "terminator"));
+		m_st_pkts = m_st_hdr = m_st_term = m_st_fichbad = m_st_maxgap = m_st_backlog = 0;
 		m_audio->reset_stats();   // also as an event: same on every platform
 		m_rx_played = 0; m_rx_gaps = 0; m_rx_wasplaying = false; m_rx_primed = false;
 		m_modeinfo.stream_state = STREAM_IDLE;

@@ -34,6 +34,21 @@ def _centres() -> dict:
 
 CENTRES = _centres()
 
+
+def _spans() -> dict:
+    """Country name (lower case) -> (width, height) in degrees of its largest outline: how far to zoom in to see the whole country."""
+    out = {}
+    for c in WORLD:
+        best = None
+        for ring in c["rings"]:
+            if not ring: continue
+            xs = [p[0] for p in ring]; ys = [p[1] for p in ring]; w, h = max(xs) - min(xs), max(ys) - min(ys)
+            if best is None or w * h > best[0]: best = (w * h, (w, h))
+        if best: out[c["name"].lower()] = best[1]
+    return out
+
+SPANS = _spans()
+
 # Names of the country table that the bundled outlines write differently, and countries/territories too small to be in the outlines (lon, lat).
 # Without these a station of the United States, Türkiye, Singapore, Malta ... could not be placed at all.
 _ALIAS = {"united states": "united states of america", "türkiye": "turkey", "bosnia & herzegovina": "bosnia and herz.", "congo - kinshasa": "dem. rep. congo",
@@ -85,11 +100,14 @@ class WorldMap(W.QWidget):
     LAT_TOP, LAT_BOTTOM = 84.0, -58.0
     ZMIN, ZMAX = 1.0, 40.0
     country_clicked = Signal(str)
+    station_clicked = Signal(object)          # a single station's dot was clicked (the station dict)
 
     def __init__(self):
         super().__init__(); self.setMinimumHeight(260); self.stations: list[dict] = []; self.setMouseTracking(True)
         self.zoom = 1.0; self.u0 = 0.0; self.v0 = 0.0          # the view: top-left corner as a fraction of the whole map, and the zoom
         self.selected = ""                                      # country (lower case) chosen in the list or by a click
+        self.hover = None                                       # (net, call) of the dot under the pointer: it grows and shows its call sign
+        self.hl = None                                          # (net, call) of the station to point out (chosen in a radio page or in the table)
         self._hits: list = []                                   # circles and dots of the last paint: (x, y, radius, country, [stations])
         self._press = None; self._moved = False
         self.btn = {}
@@ -134,7 +152,9 @@ class WorldMap(W.QWidget):
         """Highlight a country and bring it to the middle of the view (zoomed in when the whole world is shown)."""
         self.selected = (country or "").lower(); ctr = centre_of(self.selected)
         if not ctr: self.update(); return
-        self.zoom = max(self.zoom, 4.0)
+        sp = SPANS.get(self.selected) or SPANS.get(_ALIAS.get(self.selected, ""))
+        fit = min(0.6 / (sp[0] / 360.0), 0.6 / (sp[1] / (self.LAT_TOP - self.LAT_BOTTOM))) if sp else 12.0          # the whole country fills ~60 % of the view
+        self.zoom = min(self.ZMAX, max(2.0, fit))
         u = (ctr[0] + 180.0) / 360.0; v = (self.LAT_TOP - ctr[1]) / (self.LAT_TOP - self.LAT_BOTTOM)
         self.u0 = u - 0.5 / self.zoom; self.v0 = v - 0.5 / self.zoom; self._clamp(); self.update()
 
@@ -158,16 +178,23 @@ class WorldMap(W.QWidget):
                 self.u0 -= dx / (w * self.zoom); self.v0 -= dy / (h * self.zoom); self._clamp(); self._press = (x, y); self.update()
             return
         hit = self.hit_at(x, y)
+        now = (hit[4][0]["net"], hit[4][0]["call"]) if hit and len(hit[4]) == 1 else None
+        if now != self.hover: self.hover = now; self.update()
         self.setCursor(Qt.CursorShape.PointingHandCursor if hit else Qt.CursorShape.OpenHandCursor)
         if hit: W.QToolTip.showText(e.globalPosition().toPoint(), self.tooltip_for(hit), self)
         else: W.QToolTip.hideText()
+
+    def leaveEvent(self, e):
+        if self.hover is not None: self.hover = None; self.update()
+        super().leaveEvent(e)
 
     def mouseReleaseEvent(self, e):
         if e.button() != Qt.MouseButton.LeftButton or self._press is None: return
         moved = self._moved; self._press = None; self._moved = False; self.setCursor(Qt.CursorShape.OpenHandCursor)
         if not moved:
             hit = self.hit_at(e.position().x(), e.position().y())
-            if hit: self.country_clicked.emit(hit[3])
+            if hit and len(hit[4]) == 1 and self.selected: self.station_clicked.emit(hit[4][0])          # an opened country: its stations are separate dots
+            elif hit: self.country_clicked.emit(hit[3])
 
     def mouseDoubleClickEvent(self, e):
         if e.button() == Qt.MouseButton.LeftButton: self.zoom_at(2.0, e.position().x(), e.position().y())
@@ -180,8 +207,17 @@ class WorldMap(W.QWidget):
             if d <= h[2] + 3 and (best is None or d < best[0]): best = (d, h)
         return best[1] if best else None
 
+    SOURCE_TEXT = {"heard": "heard by this program", "online": "online now (HELLAS Zone server)", "directory": "EchoLink directory", "server": "server / reflector list", "allstar": "AllStarLink node list"}
+
     def tooltip_for(self, hit) -> str:
         items = hit[4]; names = {}
+        if len(items) == 1:
+            s = items[0]; bits = [f"<b>{s['call']}</b> · {s['net']}"]
+            if s.get("name"): bits.append(s["name"])
+            bits.append(s.get("country") or "—")
+            if s.get("grid"): bits.append(f"{tr('Grid locator')} {s['grid']}")
+            if s.get("seen"): bits.append(f"{tr('Last seen')} {s['seen']:%H:%M:%S} UTC")
+            return "<br>".join((" · ".join(bits[:1] + [x for x in bits[1:] if x]), f"<i>{tr(self.SOURCE_TEXT.get(s.get('source'), ''))}</i>"))
         for s in items: names[s["net"]] = names.get(s["net"], 0) + 1
         nets = " · ".join(f"{n} {c}" for n, c in sorted(names.items(), key=lambda kv: -kv[1]))
         calls = ", ".join(s["call"] for s in items[:12]) + (f" … +{len(items) - 12}" if len(items) > 12 else "")
@@ -212,6 +248,8 @@ class WorldMap(W.QWidget):
             if not ctr: continue
             x, y = self._xy(*ctr)
             if x < -30 or y < -30 or x > self.width() + 30 or y > self.height() + 30: continue
+            if key == self.selected and len(items) > 1:                       # the chosen country is opened: every station is its own dot
+                self._spread(p, font, key, items, x, y); continue
             r = bubble_radius(len(items)); col = QtGui.QColor(NET_COLOR.get(dominant(items), C["accent"])); fill = QtGui.QColor(col); fill.setAlpha(215)
             p.setPen(QtGui.QPen(QtGui.QColor("#ffffff") if key == self.selected else QtGui.QColor("#0b1222"), 2.2 if key == self.selected else 1.2))
             p.setBrush(fill); p.drawEllipse(QtCore.QPointF(x, y), r, r)
@@ -232,6 +270,35 @@ class WorldMap(W.QWidget):
             if show_calls: p.setPen(QtGui.QColor(C["text"])); p.drawText(QtCore.QPointF(x + 7, y + 4), s["call"])
             self._hits.append((x, y, 5.0, s.get("country") or s["call"], [s]))
         p.end()
+
+
+    @staticmethod
+    def spacing_for(n: int) -> float:
+        """Distance between the dots of an opened country: wide enough to read the call signs when there are few, tight when there are many."""
+        return 46.0 if n <= 12 else 34.0 if n <= 30 else 12.0
+
+    def _spread(self, p, font, key, items, cx, cy):
+        """The stations of the opened country, one dot each, laid out in a sunflower pattern around the country's centre. Only the country is known for
+        them (no grid square), so the pattern is a way to show them separately and is NOT their real place; a faint ring marks the cluster."""
+        items = sorted(items, key=lambda s: (s["net"], s["call"].upper()))
+        pos = []; sp = self.spacing_for(len(items))
+        for i, s in enumerate(items):
+            r = sp * math.sqrt(i + 0.5); a = i * 2.399963229728653          # golden angle: even, never in rows
+            pos.append((cx + r * math.cos(a), cy + r * math.sin(a), s))
+        rad = sp * math.sqrt(len(items) + 0.5) + 10
+        ring = QtGui.QColor(C["muted"]); ring.setAlpha(120); p.setPen(QtGui.QPen(ring, 1.2, Qt.PenStyle.DashLine)); p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawEllipse(QtCore.QPointF(cx, cy), rad, rad)
+        f2 = QtGui.QFont(font); f2.setBold(True); p.setFont(f2); p.setPen(QtGui.QColor(C["text"]))
+        p.drawText(QtCore.QPointF(cx - rad * 0.9, cy - rad - 6), f"{items[0]['country']} · {len(items)}  ({tr('places inside the country are not exact')})"); p.setFont(font)
+        label_all = len(items) <= 30
+        for x, y, s in pos:
+            if x < -20 or y < -20 or x > self.width() + 20 or y > self.height() + 20: continue
+            col = QtGui.QColor(NET_COLOR.get(s["net"], C["accent"])); key = (s["net"], s["call"]); mine = self.hl == key; lit = mine or self.hover == key
+            p.setPen(QtGui.QPen(QtGui.QColor("#ffffff") if lit else QtGui.QColor("#0b1222"), 2.4 if lit else 1)); p.setBrush(col)
+            p.drawEllipse(QtCore.QPointF(x, y), 6.5 if lit else 4.6, 6.5 if lit else 4.6)
+            if label_all or lit:
+                f3 = QtGui.QFont(font); f3.setBold(lit); p.setFont(f3); p.setPen(QtGui.QColor(C["text"])); p.drawText(QtCore.QPointF(x + 9, y + 4), s["call"]); p.setFont(font)
+            self._hits.append((x, y, 5.0, s.get("country") or s["call"], [s]))
 
 
 class MapPage(W.QWidget):
@@ -258,7 +325,7 @@ class MapPage(W.QWidget):
         v.addLayout(body, 1)
         self.net.currentIndexChanged.connect(lambda _: self.refresh())
         self.cty.activated.connect(self._country_chosen)
-        self.map.country_clicked.connect(self.choose_country)
+        self.map.country_clicked.connect(self.choose_country); self.map.station_clicked.connect(self._station_clicked)
         self.table.cellClicked.connect(self._row_clicked)
         self._t = QtCore.QTimer(self); self._t.setInterval(5000); self._t.timeout.connect(self.refresh); self._t.start()
         self._online_t = QtCore.QTimer(self); self._online_t.setInterval(60000); self._online_t.timeout.connect(self._fetch_online); self._online_t.start()
@@ -294,6 +361,12 @@ class MapPage(W.QWidget):
             key = ("EchoLink", s["id"])
             if key in seen: continue
             seen.add(key); out.append(dict(call=s["id"], net="EchoLink", country=s["country"], seen=None, source="directory"))
+        for n in getattr(getattr(self.ctx, "asl_nodes", None), "nodes", []) or []:          # AllStarLink nodes: the call sign tells the country
+            call = (n.get("call") or "").strip()
+            key = ("AllStar", call or str(n.get("node")))
+            country = countries.of_callsign(call) if call else ""
+            if not country or key in seen: continue
+            seen.add(key); out.append(dict(call=call, net="AllStar", country=country, seen=None, source="allstar", name=(n.get("desc") or "").strip()[:60]))
         for e in getattr(getattr(self.ctx, "hosts", None), "entries", []) or []:          # the servers / reflectors of the downloaded worldwide lists, where the list itself gives the country
             if e.get("proto") == "TG" or not e.get("country"): continue
             key = (e["net"], e["id"])
@@ -325,12 +398,22 @@ class MapPage(W.QWidget):
         if not country:
             country = next((e.get("country", "") for e in (getattr(getattr(self.ctx, "hosts", None), "entries", []) or []) if e["net"] == t.net and e["id"] == t.id), "")
         if not country: country = countries.of_callsign(t.id)
+        self.map.hl = (t.net, t.id)
         self.refresh()
         if country: self.choose_country(country)
 
+    def _station_clicked(self, s):
+        """A dot of the opened country was clicked: its row is selected in the table and the dot is pointed out."""
+        self.map.hl = (s["net"], s["call"]); self.map.update()
+        for i in range(self.table.rowCount()):
+            a, b = self.table.item(i, 0), self.table.item(i, 1)
+            if a and b and a.text() == s["call"] and b.text() == s["net"]: self.table.selectRow(i); self.table.scrollToItem(a); break
+
     def _row_clicked(self, row, _col):
-        it = self.table.item(row, 2)
+        a, b, it = self.table.item(row, 0), self.table.item(row, 1), self.table.item(row, 2)
+        if a and b: self.map.hl = (b.text(), a.text())
         if it and it.text(): self.choose_country(it.text())
+        self.map.update()
 
     def refresh(self):
         choice = self.net.currentText()
@@ -354,8 +437,9 @@ class MapPage(W.QWidget):
         ncty = len({s['country'] for s in shown if s.get('country')})
         self.count.setText(f"{len(shown)} stations · {ncty} countries" + (f" · {unplaced} not on the map (country unknown)" if unplaced else ""))
         self.sub.setText("Scroll to zoom · drag to move · double-click zooms in · the buttons at the top right of the map zoom or show the whole world. "
-                         "A circle sits at the centre of a country and its number is how many stations are there (hover it to see who; click it to list them). "
-                         "A dot is a station with a known grid square, at its place. Heard stations stay here for the time the program keeps them.")
+                         "A circle sits at the centre of a country and its number is how many stations are there (hover it to see who). Click it and the country opens: every station is its own dot "
+                         "(hover for details, click to find it in the table). Inside an opened country only the country is known, so the dots are spread out to be seen separately, not at their real places; "
+                         "a dot with a known grid square is at its real place.")
         cnt: dict = {}
         for s in shown: cnt[s["net"]] = cnt.get(s["net"], 0) + 1
         self.legend.setText("&nbsp;&nbsp;".join(f"<span style='color:{NET_COLOR.get(k, C['accent'])};font-size:15px'>●</span> {k} {v}" for k, v in sorted(cnt.items(), key=lambda kv: -kv[1])))

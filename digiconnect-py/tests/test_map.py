@@ -150,3 +150,47 @@ def test_greek_texts_of_the_map_page(monkeypatch):
         assert "zoom" in pg.sub.text() and pg.map.btn["in"].toolTip() == "Μεγέθυνση"
         assert pg.table.horizontalHeaderItem(0).text() == "Διακριτικό"
     finally: i18n.set_language("English")
+
+
+def test_an_opened_country_shows_every_station_as_its_own_dot(monkeypatch):
+    pg = _page(monkeypatch, el=_el(114, "Australia") + _el(3, "Greece"))
+    assert pg.map.selected == ""
+    pg.choose_country("Australia"); pg.map.repaint(); W.QApplication.processEvents()
+    dots = [h for h in pg.map._hits if len(h[4]) == 1]
+    assert len(dots) >= 100 and all(len(h[4]) == 1 for h in dots)                        # each station separate (those inside the view)
+    assert pg.table.rowCount() == 114
+    assert len({h[4][0]["call"] for h in dots}) == len(dots)
+
+
+def test_clicking_a_dot_selects_its_row_and_points_it_out(monkeypatch):
+    pg = _page(monkeypatch, el=_el(12, "Australia"))
+    pg.choose_country("Australia"); pg.map.repaint()
+    h = next(h for h in pg.map._hits if len(h[4]) == 1)
+    _click(pg.map, h[0], h[1])
+    assert pg.map.hl == (h[4][0]["net"], h[4][0]["call"])
+    assert pg.table.item(pg.table.currentRow(), 0).text() == h[4][0]["call"]
+
+
+def test_allstar_nodes_are_on_the_map(monkeypatch):
+    pg = _page(monkeypatch)
+    pg.ctx.asl_nodes = types.SimpleNamespace(nodes=[dict(node="509830", call="SV1CDR", desc="Hellas node", loc="Athens"), dict(node="1999", call="", desc="x", loc="")])
+    pg.refresh()
+    rows = [(pg.table.item(i, 0).text(), pg.table.item(i, 1).text(), pg.table.item(i, 2).text()) for i in range(pg.table.rowCount())]
+    assert ("SV1CDR", "AllStar", "Greece") in rows and len(rows) == 1                 # a node without a call sign has no country: it is not guessed
+
+
+def test_each_network_filter_shows_only_its_own_stations(monkeypatch):
+    pg = _page(monkeypatch, el=_el(5, "Greece"))
+    pg.ctx.asl_nodes = types.SimpleNamespace(nodes=[dict(node="1", call="SV1CDR", desc="", loc="")]); pg.refresh()
+    pg.net.setCurrentText("AllStar"); pg.refresh()
+    assert {pg.table.item(i, 1).text() for i in range(pg.table.rowCount())} == {"AllStar"}
+
+
+def test_touching_a_dot_shows_its_call_sign_even_in_a_crowded_country(monkeypatch):
+    pg = _page(monkeypatch, el=_el(120, "Australia"))
+    pg.choose_country("Australia"); pg.map.repaint()
+    h = next(h for h in pg.map._hits if len(h[4]) == 1)
+    ev = QtGui.QMouseEvent(QtCore.QEvent.Type.MouseMove, QtCore.QPointF(h[0], h[1]), pg.map.mapToGlobal(QtCore.QPointF(h[0], h[1])), Qt.MouseButton.NoButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    W.QApplication.sendEvent(pg.map, ev)
+    assert pg.map.hover == (h[4][0]["net"], h[4][0]["call"])
+    assert h[4][0]["call"] in pg.map.tooltip_for(h)

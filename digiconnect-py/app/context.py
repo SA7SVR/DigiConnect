@@ -525,7 +525,17 @@ class Ctx(QtCore.QObject):
         """(text shown, DMR ID or 0). Other modes send the callsign themselves; DMR sends only the ID (the engine's 'callsign' field is OUR own)."""
         srcid = int(e.get("srcid") or 0)
         src = (e.get("src") or "").strip()
-        if ln.target.net == "DMR" and srcid:
+        net = ln.target.net
+        if net in ("NXDN", "P25") and srcid and (not src or src.isdigit()):
+            # NXDN / P25 send only a number. Our own number is our own call sign; a number of 7+ digits is looked up in the RadioID database, which
+            # issues the same registered IDs (a short number, such as 31, is not a registered ID and is left as it is: nothing is guessed)
+            s = self.store.settings; own = str(s.get("nxdn_id" if net == "NXDN" else "dmr_id") or "").strip()
+            if own.isdigit() and int(own) == srcid and (s.get("callsign") or "").strip(): return s["callsign"].strip().upper(), srcid
+            if srcid >= 1000000:
+                info = self.callbook.cached(srcid)
+                if info is None: self._ask_station(srcid)
+                return (info["call"] if info else (src or str(srcid))), srcid
+        if net == "DMR" and srcid:
             info = self.callbook.cached(srcid)
             if info is None: self._ask_station(srcid)
             return (info["call"] if info else (src or str(srcid))), srcid
