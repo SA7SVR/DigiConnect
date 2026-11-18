@@ -1,8 +1,16 @@
-DigiConnect 2.3.7 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+DigiConnect 2.3.8 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
 ===========================================================================
 
 ΕΛΛΗΝΙΚΑ
 --------
+ΝΕΑ ΣΤΗΝ 2.3.8 — ΔΙΟΡΘΩΣΗ ΤΗΣ ΣΕΛΙΔΑΣ ΧΑΡΤΗΣ
+• ΔΙΟΡΘΩΘΗΚΕ: ο Χάρτης ήταν ακίνητος, χωρίς zoom, και δεν φαινόταν ποιος είναι ποιος. Τώρα: zoom με το ροδάκι, με τα κουμπιά + / − (⟲ = όλος ο κόσμος) και με διπλό κλικ· μετακίνηση με σύρσιμο.
+• Ένας κύκλος ανά χώρα με τον αριθμό των σταθμών της (όχι πια ένα σημείο ανά σταθμό σε σπείρα). Το ποντίκι πάνω σε κύκλο δείχνει χώρα, δίκτυα και διακριτικά· κλικ διαλέγει τη χώρα (zoom + φίλτρο του πίνακα). Νέα λίστα «Χώρα» πάνω από τον χάρτη (π.χ. «Sweden (14)»). Κλικ σε γραμμή του πίνακα διαλέγει τη χώρα της.
+• Σταθμός με γνωστό τετράγωνο (grid) από τον server είναι τελεία στη θέση του με το διακριτικό του. Υπόμνημα δικτύων με αριθμούς κάτω από τον χάρτη.
+• ΔΙΟΡΘΩΘΗΚΕ: οι ΗΠΑ, η Τουρκία και περίπου 100 ακόμη χώρες και νησιά (Σιγκαπούρη, Μάλτα, Μονακό …) δεν ζωγραφίζονταν καθόλου επειδή το όνομά τους δεν ταίριαζε με το περίγραμμα. Μόνο το «European Union» δεν έχει θέση και μετριέται ως «εκτός χάρτη».
+• Ελληνικά για όλα τα κείμενα της σελίδας. Νέα τεστ (tests/test_map.py).
+• Αλλαγή στο πρόγραμμα: αρκεί η αυτόματη ενημέρωση ή ο installer. Ο server δεν άλλαξε σε σχέση με την 2.3.7.
+
 ΝΕΑ ΣΤΗΝ 2.3.7 — ΑΝΤΙΓΡΑΦΑ ΑΣΦΑΛΕΙΑΣ ΤΗΣ ΒΑΣΗΣ ΤΟΥ SERVER
 • ΝΕΟ (πάνελ, σελίδα «Αντίγραφα βάσης»): αυτόματο αντίγραφο ολόκληρης της βάσης (εγκαταστάσεις, άδειες, κωδικοί, πληρωμές, μηνύματα, συνομιλίες, ρυθμίσεις) ΚΑΘΕ ΩΡΑ· κρατιούνται τα τελευταία 10 και το παλαιότερο αντικαθίσταται. Κουμπί «Δημιουργία αντιγράφου τώρα», «Λήψη» κάθε αντιγράφου, «Επαναφορά» με ένα κουμπί (κρατιέται πρώτα αντίγραφο της τρέχουσας κατάστασης, άρα η επαναφορά αναιρείται) και επαναφορά από αρχείο .sqlite του υπολογιστή σου. Προειδοποίηση στην Επισκόπηση όταν δεν υπάρχει πρόσφατο αντίγραφο.
 • Το πρόγραμμα DigiConnect δεν άλλαξε σε σχέση με την 2.3.6· η αλλαγή είναι στον server (ανέβασε ΟΛΑ τα αρχεία του φακέλου digiconnect).
@@ -26,6 +34,14 @@ DigiConnect 2.3.7 — Release notes / Σημειώσεις έκδοσης / Vers
 
 ENGLISH
 -------
+NEW IN 2.3.8 — FIX OF THE MAP PAGE
+• FIXED: the Map was static, could not zoom, and you could not tell who was who. Now: zoom with the wheel, the + / − buttons (⟲ = the whole world) and double-click; move by dragging.
+• One circle per country with its number of stations (no more one point per station in a spiral). Hover a circle for country, networks and call signs; a click chooses the country (zoom + filter of the table). A new "Country" box above the map (e.g. "Sweden (14)"). A click on a table row chooses its country.
+• A station with a known grid square from the server is a dot at its place with its call sign. Legend with numbers per network under the map.
+• FIXED: the United States, Türkiye and about 100 more countries and islands (Singapore, Malta, Monaco …) were not drawn at all because their name did not match the outline. Only "European Union" has no place and is counted as "not on the map".
+• Greek for all texts of the page. New tests (tests/test_map.py).
+• Change in the program: the automatic update or the installer is enough. The server is unchanged from 2.3.7.
+
 NEW IN 2.3.7 — BACKUPS OF THE SERVER DATABASE
 • NEW (panel, page "Database backups"): an automatic copy of the whole database (installations, licences, codes, payments, messages, chats, settings) EVERY HOUR; the last 10 are kept and the oldest is replaced. Button "Create a backup now", "Download" for every copy, one-button "Restore" (a copy of the current state is kept first, so a restore can be undone) and restore from a .sqlite file on your computer. A warning on the Overview when there is no recent copy.
 • The DigiConnect program itself is unchanged from 2.3.6; the change is on the server (upload ALL files of the digiconnect folder).
@@ -49,6 +65,14 @@ NEW IN 2.3.5 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHO
 
 SVENSKA
 -------
+NYTT I 2.3.8 — KARTSIDAN ÄR FIXAD
+• FIXAT: kartan stod stilla, gick inte att zooma och man såg inte vem som var vem. Nu: zooma med mushjulet, med knapparna + / − (⟲ = hela världen) och med dubbelklick; flytta genom att dra.
+• En cirkel per land med antalet stationer (inte längre en punkt per station i en spiral). Håll muspekaren över en cirkel för land, nät och anropssignaler; ett klick väljer landet (zoom + filter av tabellen). Ny ruta "Land" ovanför kartan (t.ex. "Sweden (14)"). Klick på en tabellrad väljer dess land.
+• En station med känd rutkoordinat (grid) från servern är en prick på sin plats med anropssignalen. Teckenförklaring med antal per nät under kartan.
+• FIXAT: USA, Türkiye och ungefär 100 länder och öar till (Singapore, Malta, Monaco …) ritades inte alls eftersom namnet inte stämde med konturen. Bara "European Union" saknar plats och räknas som "inte på kartan".
+• Grekiska för alla sidans texter. Nya tester (tests/test_map.py).
+• Ändring i programmet: den automatiska uppdateringen eller installationsprogrammet räcker. Servern är oförändrad från 2.3.7.
+
 NYTT I 2.3.7 — SÄKERHETSKOPIOR AV SERVERNS DATABAS
 • NYTT (panelen, sidan ”Säkerhetskopior”): en automatisk kopia av hela databasen (installationer, licenser, koder, betalningar, meddelanden, chattar, inställningar) VARJE TIMME; de senaste 10 sparas och den äldsta ersätts. Knapp ”Skapa kopia nu”, ”Ladda ner” för varje kopia, ”Återställ” med en knapp (en kopia av nuläget sparas först, så en återställning kan ångras) och återställning från en .sqlite-fil på din dator. Varning på Översikten när det inte finns någon färsk kopia.
 • Själva DigiConnect-programmet är oförändrat sedan 2.3.6; ändringen finns på servern (ladda upp ALLA filer i mappen digiconnect).

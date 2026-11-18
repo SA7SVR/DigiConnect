@@ -76,6 +76,13 @@ EL: dict[str, str] = {
     "TG {} · Not specified": "TG {} · Μη καθορισμένο", "Idle": "Αδρανές", "All countries": "Όλες οι χώρες", "Default module": "Προεπιλεγμένο module",
     "HELLAS Zone XLX · module B": "HELLAS Zone XLX · module B",
     "From the worldwide server list": "Από την παγκόσμια λίστα διακομιστών",
+    # ---- map page
+    "Zoom in": "Μεγέθυνση", "Zoom out": "Σμίκρυνση", "Show the whole world": "Ολόκληρος ο κόσμος", "Call sign": "Διακριτικό", "Last seen": "Τελευταία φορά",
+    "station": "σταθμός", "stations": "σταθμοί", "Click to list them in the table": "Κλικ για να εμφανιστούν στον πίνακα",
+    "{} stations · {} countries": "{} σταθμοί · {} χώρες",
+    "{} stations · {} countries · {} not on the map (country unknown)": "{} σταθμοί · {} χώρες · {} εκτός χάρτη (άγνωστη χώρα)",
+    "Scroll to zoom · drag to move · double-click zooms in · the buttons at the top right of the map zoom or show the whole world. A circle sits at the centre of a country and its number is how many stations are there (hover it to see who; click it to list them). A dot is a station with a known grid square, at its place. Heard stations stay here for the time the program keeps them.":
+        "Ρόδα ποντικιού για zoom · σύρε για να μετακινήσεις · διπλό κλικ μεγεθύνει · τα κουμπιά πάνω δεξιά στον χάρτη κάνουν zoom ή δείχνουν όλο τον κόσμο. Ο κύκλος βρίσκεται στο κέντρο μιας χώρας και ο αριθμός του είναι πόσοι σταθμοί υπάρχουν εκεί (πέρασε το ποντίκι για να δεις ποιοι· κλικ για να εμφανιστούν στον πίνακα). Η τελεία είναι σταθμός με γνωστό τετράγωνο (grid), στη θέση του. Οι σταθμοί που ακούστηκαν μένουν εδώ όσο τους κρατά το πρόγραμμα.",
     # ---- updates / new modes
     "Update {} is ready. It starts the next time DigiConnect is opened (Updates › Restart now).": "Η ενημέρωση {} είναι έτοιμη. Ξεκινά την επόμενη φορά που θα ανοίξεις το DigiConnect (Ενημερώσεις › Επανεκκίνηση τώρα).",
     "Version {} needs a new full installer (engine change). Download it from the DigiConnect website.": "Η έκδοση {} χρειάζεται νέο πλήρες πρόγραμμα εγκατάστασης (αλλαγή μηχανής). Κατέβασέ το από την ιστοσελίδα του DigiConnect.",

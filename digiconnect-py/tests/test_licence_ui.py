@@ -59,7 +59,10 @@ def test_a_new_message_from_the_owner_lights_the_badge_until_the_window_shows_it
     d0 = LD.ChatDialog(l); d0.body.setPlainText("hello"); d0.send.click(); assert pump(app, lambda: bool(d0._msgs)); d0._t.stop()
     tok = srv.sql("SELECT token FROM dc_chat")[0]["token"]
     srv.sql("INSERT INTO dc_chat(token,t,who,body,read_owner,read_user) VALUES(?,?,'owner','Hi from the owner',1,0)", tok, int(time.time()))
-    wt.poll_chat(); assert pump(app, lambda: wt.unread() == 1)                                            # found by the light background check
+    # found by the light background check. A check that was already running when the message was added cannot see it (poll_chat then returns at
+    # once); on a slow computer that is the usual case, so ask again until a check that started after the message has answered.
+    def _asked(): wt.poll_chat(); return wt.unread() == 1
+    assert pump(app, _asked, secs=60)
     assert srv.sql("SELECT read_user FROM dc_chat WHERE who='owner'")[0]["read_user"] == 0                # the background check does not mark it read
     d = LD.ChatDialog(l, None, wt); assert pump(app, lambda: "Hi from the owner" in d.view.toPlainText()) and pump(app, lambda: wt.unread() == 0)
     assert srv.sql("SELECT read_user FROM dc_chat WHERE who='owner'")[0]["read_user"] == 1
