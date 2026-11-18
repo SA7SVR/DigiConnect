@@ -21,7 +21,7 @@ jobs:
         with: { version: '6.9.3', modules: 'qtmultimedia qtserialport', cache: true }
       - name: Build engine (Release exactly as in the build, plus -g)
         run: |
-          cmake -S engine -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-g -DCMAKE_C_FLAGS=-g -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake -S engine -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-g -fsanitize=address -fno-omit-frame-pointer" -DCMAKE_C_FLAGS="-g -fsanitize=address -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build --parallel
           "$QT_ROOT_DIR/bin/macdeployqt" build/dcengine.app
       - uses: actions/setup-python@v5
@@ -31,9 +31,9 @@ jobs:
         run: |
           rm -f ~/Library/Logs/DiagnosticReports/dcengine* 2>/dev/null
           ENG="$PWD/build/dcengine.app/Contents/MacOS/dcengine"
-          printf '#!/bin/bash\nlldb --batch -o "process handle SIGPIPE -s false" -o run -k "bt" -k "thread backtrace all" -k "register read" -k "quit" -- "%s" "$@" 2>>/tmp/engine.err | tee -a /tmp/lldb.out\nrc=${PIPESTATUS[0]}\necho "ENGINE EXIT CODE $rc ($(date +%%T))" >> /tmp/engine.err\nexit $rc\n' "$ENG" > /tmp/engwrap.sh; chmod +x /tmp/engwrap.sh
+          printf '#!/bin/bash\n"%s" "$@" 2>>/tmp/engine.err\nrc=$?\necho "ENGINE EXIT CODE $rc ($(date +%%T))" >> /tmp/engine.err\nexit $rc\n' "$ENG" > /tmp/engwrap.sh; chmod +x /tmp/engwrap.sh
           python3 engine/tests/check_dstar_ref.py /tmp/engwrap.sh 2>&1 | tail -20
-          echo "---- engine stderr ----"; tail -120 /tmp/engine.err || true; echo "---- lldb output ----"; grep -v "^{" /tmp/lldb.out | tail -150
+          echo "---- engine stderr ----"; tail -200 /tmp/engine.err || true; true
           sleep 8
           python3 - <<'PY'
           import glob, json, os
