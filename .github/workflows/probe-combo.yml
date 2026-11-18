@@ -1,0 +1,19 @@
+name: Probe combo popup (Windows)
+on:
+  push:
+    branches: [ probe-combo ]
+jobs:
+  probe:
+    runs-on: windows-2022
+    defaults: { run: { working-directory: digiconnect-py } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install PySide6 numpy sounddevice certifi
+      - name: Probe (real Windows platform)
+        shell: bash
+        run: python tools/combo_probe.py
+      - name: Probe (offscreen, for comparison)
+        shell: bash
+        run: QT_QPA_PLATFORM=offscreen python tools/combo_probe.py
