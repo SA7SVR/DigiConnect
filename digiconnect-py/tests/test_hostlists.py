@@ -196,3 +196,70 @@ def test_our_server_is_asked_first_for_the_lists_it_keeps_and_the_public_sites_a
     for k in ("DMR", "BMAPI"): assert H.HostLists.candidates(k)[0].startswith(H.OWN)             # DMR (Pi-Star list) and the BrandMeister API list also come from our server first
     assert not H.HostLists.candidates("XLX")[0].startswith(H.OWN)             # the other lists are unchanged
     assert H.HostLists.candidates("YSF", ["http://m/"]) == ["http://m/YSFHosts.txt"]
+
+
+def test_typed_tg_shows_the_real_list_entry_under_a_country_filter(tmp_path):
+    """TG 930 'PanHellenic Chat' has no country prefix: with 'Greece' chosen it used to be hidden and replaced by an invented 'typed number' line.
+    A number that IS in the downloaded list must show the list's own entry (name as the list gives it)."""
+    import os; os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from app.qt import QtWidgets
+    from app.store import Store
+    from app.context import Ctx
+    from app.theme import qss
+    from app.ui.main_window import MainWindow
+    from app import countries
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    (tmp_path / "ui").mkdir(); st = Store(tmp_path / "ui"); st.settings["callsign"] = "SA7SVR"
+    ctx = Ctx(st); app.setStyleSheet(qss(14))
+    rows = H.parse_tg("930;1;PanHellenic Chat;930\n20208;1;YSF202 Greece;20208\n24010;1;Hellas Zone Sweden;24010\n")
+    for e in rows: e["country"] = countries.of_talkgroup(e["id"])
+    ctx.hosts.entries = rows
+    w = MainWindow(ctx); w.show(); app.processEvents(); ctx.hosts_changed.emit(); app.processEvents()
+    ws = w.ws["DMR"]
+    ws.country.setCurrentText("Greece"); ws.search.setText("930"); app.processEvents()
+    texts = [ws.list.item(i).text() for i in range(ws.list.count())]
+    assert any("PanHellenic Chat" in t for t in texts), texts            # the list's own name
+    assert not any("typed number" in t for t in texts), texts            # nothing invented when the list has it
+    ws.search.setText("931"); app.processEvents()                         # not in the list -> still usable as a typed number
+    assert any("typed number" in ws.list.item(i).text() for i in range(ws.list.count()))
+    ws.search.setText("20208"); app.processEvents()                       # under its own country as before
+    assert ws.list.count() == 1 and "YSF202 Greece" in ws.list.item(0).text()
+    w.close()
+
+
+def test_favorites_are_not_hidden_by_a_leftover_country_choice(tmp_path):
+    """C4FM -> My favorites showed '0 entries' although 3 groups were starred: the country box (left on 'Australia') also filtered the favorites.
+    The country box filters the directory only."""
+    import os; os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from app.qt import QtWidgets
+    from app.store import Store
+    from app.context import Ctx
+    from app.theme import qss
+    from app.ui.main_window import MainWindow
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    (tmp_path / "ui").mkdir(); st = Store(tmp_path / "ui"); st.settings["callsign"] = "SA7SVR"
+    ctx = Ctx(st); app.setStyleSheet(qss(14))
+    ctx.hosts.entries = H.parse_ysf(YSF)
+    for e in ctx.hosts.entries: e["country"] = "Greece" if e["name"].startswith("GR") else "Australia"
+    st.toggle_fav("C4FM", ctx.hosts.entries[0]["id"], ctx.hosts.entries[0]["name"])        # a listed one (Greece)
+    st.toggle_fav("C4FM", "99999", "Added by hand")                                          # a manual one (no country at all)
+    w = MainWindow(ctx); w.show(); app.processEvents(); ctx.hosts_changed.emit(); app.processEvents()
+    ws = w.ws["C4FM"]
+    ws.country.setCurrentText("Australia"); ws._mode(True); app.processEvents()
+    ids = {ws.list.item(i).data(0x100)["id"] for i in range(ws.list.count())}
+    assert ids == {ctx.hosts.entries[0]["id"], "99999"}, ids
+    ws._mode(False); app.processEvents()                                                      # the directory is still filtered by the country
+    assert all(ws.list.item(i).data(0x100).get("country") == "Australia" for i in range(ws.list.count()))
+    w.close()
+
+
+def test_dstar_reflector_shown_from_the_dcs_list_gets_its_address_even_when_its_name_starts_with_xlx(tmp_path):
+    """XLXQRZ B stood in the DCS list: the panel showed empty host/port ('Not in the downloaded lists yet') because only the XLX list was asked."""
+    from app.store import Store
+    from app.servers import Servers
+    from app.rules import Target
+    (tmp_path / "ui").mkdir(); st = Store(tmp_path / "ui"); sv = Servers(st)
+    sv.hosts._set(H.parse_dstar("XLXQRZ;xlxqrz.example.gr;30051\nDCS001;dcs001.example.com;30051\n", "DCS") + H.parse_dstar("XLX001;xlx001.example.org;4\n", "XLX"), {}, 0.0)
+    for tid, host in (("XLXQRZ B", "xlxqrz.example.gr"), ("XLXQRZ A", "xlxqrz.example.gr"), ("DCS001 B", "dcs001.example.com"), ("XLX001 A", "xlx001.example.org")):
+        ep, src = sv.info(Target(net="D-Star", id=tid, name=tid)); assert ep and ep["host"] == host and src == "worldwide list", (tid, ep, src)
+    assert sv.info(Target(net="D-Star", id="XLXZZZ A", name="x"))[0] is None          # unknown: still not guessed

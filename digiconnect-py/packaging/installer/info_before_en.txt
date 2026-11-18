@@ -1,4 +1,4 @@
-﻿DigiConnect 2.3.5 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.3.6 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,11 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.3.5)
+What is new in this version (2.3.6)
+  • FIXED: Listen / Connect / PTT are in the page of every network again, and the bar at the bottom stays.
+  • FIXED: My favorites is not hidden by a country choice; D-Star reflectors such as XLXQRZ B find their address.
+  • EchoLink: the station list is read the way SvxLink reads it.
+  New in 2.3.5:
   • FIXED: the installed program stopped at start (missing world-map file in the package: Windows error "world110.json", silent stop on macOS). The Linux package could not find its engine. Every program is now started and every page opened by an automatic test on the BUILT package before it is released.
   • FIXED: the program no longer stops at start with a "dictionary update" error when a microphone has been chosen.
   • FIXED: the second press of PTT could close the transmit engine on some computers (found on macOS Intel); it is repaired.

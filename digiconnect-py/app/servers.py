@@ -69,8 +69,12 @@ class Servers:
         if t.net == "M17": return self.hosts.find("M17", split_dstar(t)[0])
         if t.net == "D-Star":
             ref = split_dstar(t)[0]
-            for proto in ("REF", "XRF", "DCS", "XLX"):
-                if ref.startswith(proto): return self.hosts.find(proto, ref)
+            # the list that matches the name first, then every other list: a reflector named XLXQRZ can stand in the DCS list (that is where it is
+            # shown from), not only in the XLX list
+            first = [p for p in ("REF", "XRF", "DCS", "XLX") if ref.startswith(p)]
+            for proto in first + [p for p in ("DCS", "XLX", "REF", "XRF") if p not in first]:
+                ep = self.hosts.find(proto, ref)
+                if ep: return ep
         return None
 
     def info(self, t: Target) -> tuple[dict | None, str]:

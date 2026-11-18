@@ -201,3 +201,24 @@ def test_essid_is_the_two_digit_suffix_like_pistar_and_selfcare():
     assert hotspot_id(2407219, "22") == 240721922 and hotspot_id(2407219, "00") == 240721900 and hotspot_id(2407219, "0") == 240721900
     assert hotspot_id(2407219, "01") == 240721901 and hotspot_id(2407219, "99") == 240721999 and hotspot_id(2407219, "x") == 2407219
     assert essid_for_engine("") == 0 and essid_for_engine("22") == 23                                       # the engine counts like DroidStar: suffix + 1
+
+
+def test_general_and_selected_settings_are_one_thing(srv):
+    """Panel: 'for everyone' must reach installations that have their own setting (*), and ticking every installation changes the general setting too."""
+    for i in ("inst-1", "inst-2", "inst-3"): lic(srv, i).register(dict(PERSON, mail=f"{i}@example.org"))
+    a = Admin(srv.base)
+    sel(a, ["inst-1", "inst-2"], ["EchoLink"], "on", "-", "-")                                            # two installations have their own setting: open
+    assert "EchoLink" not in pol(srv, "inst-1")["off"] and "EchoLink" in pol(srv, "inst-3")["off"]
+    a.post("modes", "mode_set", mode="EchoLink", state="off")                                             # closed for everyone: really everyone
+    assert all("EchoLink" in pol(srv, i)["off"] for i in ("inst-1", "inst-2", "inst-3"))
+    assert all(not dc_ovr(srv, i) for i in ("inst-1", "inst-2", "inst-3"))                                # the stars are gone
+    sel(a, ["inst-1"], ["DMR"], "off", "-", "-"); a.post("modes", "modes_all", state="on")                # Open ALL also reaches the own settings
+    assert "DMR" not in pol(srv, "inst-1")["off"]
+    sel(a, ["inst-1", "inst-2", "inst-3"], ["M17"], "off", "-", "-")                                      # every installation ticked = the general setting too
+    assert srv.sql("SELECT v FROM dc_kv WHERE k='mode_m17'")[0]["v"] == "off"
+    assert all(not dc_ovr(srv, i) for i in ("inst-1", "inst-2", "inst-3"))
+    sel(a, ["inst-1"], ["M17"], "on", "-", "-")                                                           # one installation only: its own setting, general stays
+    assert "M17" not in pol(srv, "inst-1")["off"] and "M17" in pol(srv, "inst-2")["off"]
+
+
+def dc_ovr(srv, i): return srv.sql(f"SELECT mode_ovr FROM dc_installs WHERE id='{i}'")[0]["mode_ovr"] or ""

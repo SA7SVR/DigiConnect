@@ -109,3 +109,39 @@ def test_engine_voice_against_fake_station():
     script = pathlib.Path(__file__).resolve().parents[1] / "engine" / "tests" / "check_elink.py"
     r = subprocess.run([sys.executable, str(script), ENGINE], capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+REAL = (b"@@@\n6\n"
+        b" \nEchoLink Server v2.6.160\n0\n212.99.197.2\n"                      # a message of the directory: blank call sign, text in the description
+        b"SV1ABC-R\nAthens, Greece [ON] 21:40\n123456\n10.0.0.1\n"
+        b".\nfiller\n0\n0.0.0.0\n"                                           # filler record: skipped, not counted
+        b"SM0XYZ\nStockholm [BUSY] 21:41\n234567\n10.0.0.2\n"
+        b"*ECHOTEST*\nEcho test server\n9999\n10.0.0.3\n"
+        b"W1AW-L\nNewington CT\n345678\n10.0.0.4\n"
+        b"SA7SVR-L\nJonkoping [ON] 08:10\n456789\n10.0.0.5\n"
+        b"+++")
+
+
+def test_list_is_read_the_way_svxlink_reads_it_messages_are_not_stations():
+    st, msgs = echolink.parse_list(REAL)
+    assert [s["call"] for s in st] == ["SV1ABC-R", "SM0XYZ", "*ECHOTEST*", "W1AW-L", "SA7SVR-L"]
+    assert msgs == ["EchoLink Server v2.6.160"]                                       # the 'station' 212.99.197.2 / EchoLink Server v2.6.160 was this
+    assert st[0]["place"] == "Athens, Greece" and st[0]["status"] == "ON" and st[0]["at"] == "21:40" and st[0]["node"] == "123456"
+    assert st[1]["status"] == "BUSY" and st[2]["kind"] == "conference" and st[3]["kind"] == "link" and st[0]["kind"] == "repeater"
+    assert echolink.parse_list(b"garbage") == ([], [])
+
+
+def test_incorrect_password_is_reported_from_the_list_message():
+    bad = b"@@@\n1\n \nINCORRECT PASSWORD\n0\n0.0.0.0\n+++"
+    class Ex:
+        def __call__(self, host, payload, *a, **k): return b"OK" if payload.startswith(b"l") else bad
+    r = echolink.sign_in("SA7SVR-L", "x", "", servers=["h"], exchange=Ex())
+    assert not r["ok"] and "INCORRECT PASSWORD" in r["error"]
+
+
+def test_login_uses_the_same_state_words_as_svxlink():
+    import time
+    t = time.struct_time((2026, 11, 18, 14, 5, 0, 2, 322, 0))
+    assert echolink.build_login("sa7svr-l", "pw", "x", "ONLINE", t) == b"lSA7SVR-L\xac\xacpw\rONLINE3.38(14:05)\rx\r"
+    assert echolink.build_login("sa7svr-l", "pw", "x", "BUSY", t).split(b"\r")[1] == b"BUSY3.40(14:05)"
+    assert echolink.build_login("sa7svr-l", "pw", "x", "OFFLINE", t).split(b"\r")[1] == b"OFF-V3.40"

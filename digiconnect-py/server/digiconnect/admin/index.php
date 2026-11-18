@@ -274,12 +274,14 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
 
   // ---------- modes and policies (page Modes) ----------
   $MN = ['on' => L('Ενεργό', 'On'), 'off' => L('Κλειστό', 'Off'), 'beta' => L('Μόνο δοκιμαστές', 'Testers only')];
+  // "for everyone" and "for selected" are one setting: a general change reaches every installation, so the own settings (*) of single installations for that mode are removed
+  $clearOvr = function (array $modes) { foreach (dc_q("SELECT id, mode_ovr FROM dc_installs WHERE mode_ovr IS NOT NULL AND mode_ovr<>''")->fetchAll() as $r) { $o = dc_mode_ovr($r); $k = $o; foreach ($modes as $m) unset($k[$m]); if ($k !== $o || (!$o && (string)$r['mode_ovr'] !== '')) dc_q('UPDATE dc_installs SET mode_ovr=? WHERE id=?', [$k ? json_encode($k) : '', $r['id']]); } };
   if ($a === 'mode_set') {
     $m = $_POST['mode'] ?? ''; $v = $_POST['state'] ?? '';
-    if (in_array($m, DC_MODES, true) && in_array($v, ['on', 'off', 'beta'], true)) { dc_kv_set(dc_mode_key($m), $v); dc_event('modes', "all|$m → " . $v); flash('ok', "$m: " . $MN[$v] . L(' — για όλους.', ' — for everyone.')); }
+    if (in_array($m, DC_MODES, true) && in_array($v, ['on', 'off', 'beta'], true)) { dc_kv_set(dc_mode_key($m), $v); $clearOvr([$m]); dc_event('modes', "all|$m → " . $v); flash('ok', "$m: " . $MN[$v] . L(' — για όλους.', ' — for everyone.')); }
   }
   if ($a === 'modes_all') {
-    $v = $_POST['state'] ?? ''; if (in_array($v, ['on', 'off'], true)) { foreach (DC_MODES as $m) dc_kv_set(dc_mode_key($m), $v); dc_event('modes', 'all|' . L('όλα τα modes', 'all modes') . ' → ' . $v); flash('ok', L('Όλα τα modes: ', 'All modes: ') . $MN[$v]); }
+    $v = $_POST['state'] ?? ''; if (in_array($v, ['on', 'off'], true)) { foreach (DC_MODES as $m) dc_kv_set(dc_mode_key($m), $v); $clearOvr(DC_MODES); dc_event('modes', 'all|' . L('όλα τα modes', 'all modes') . ' → ' . $v); flash('ok', L('Όλα τα modes: ', 'All modes: ') . $MN[$v]); }
   }
   if ($a === 'modes_note') {
     foreach (['modes_note_el', 'modes_note_en', 'tx_note_el', 'tx_note_en', 'min_msg_el', 'min_msg_en'] as $k) dc_kv_set($k, substr(trim($_POST[$k] ?? ''), 0, 300));
@@ -302,6 +304,9 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
         dc_q('UPDATE dc_installs SET mode_ovr=? WHERE id=?', [$o ? json_encode($o) : '', $id]);
         if ($tx === '1' || $tx === '0' || $tx === 'def') dc_q('UPDATE dc_installs SET tx_ovr=? WHERE id=?', [$tx === 'def' ? '' : $tx, $id]);
         if ($te === '1' || $te === '0') dc_q('UPDATE dc_installs SET tester=? WHERE id=?', [(int)$te, $id]);
+      }
+      if (in_array($act, ['on', 'off'], true) && $ms && $n > 0 && $n === (int)dc_scalar('SELECT COUNT(*) FROM dc_installs')) {   // every installation ticked = the general setting too (the "for everyone" cards show it)
+        foreach ($ms as $m) dc_kv_set(dc_mode_key($m), $act); $clearOvr($ms);
       }
       $what = ($act === 'on' ? L('άνοιγμα ', 'open ') : ($act === 'off' ? L('κλείσιμο ', 'close ') : ($act === 'reset' ? L('γενική ρύθμιση ', 'general setting ') : ''))) . implode(', ', $ms)
         . ($tx !== '' && $tx !== '-' ? ' TX=' . $tx : '') . ($te !== '' && $te !== '-' ? ' tester=' . $te : '');

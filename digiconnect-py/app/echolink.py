@@ -4,8 +4,9 @@ The voice part (RTP/RTCP over UDP 5198/5199, GSM audio) is in the engine (engine
   1. sign in to a directory server over TCP port 5200 with the callsign and the password of the user's own validated EchoLink account;
   2. ask for the station list ('s') and turn it into directory rows (callsign, place, node number, IP address, status), grouped by the country of the call sign;
   3. keep the account 'online' (the station we connect to checks in the directory that the caller is valid), and say 'offline' when the program closes.
-The wire format here follows what other open-source EchoLink clients do; it has NOT been tried against the real directory from the build
-environment (that needs a validated account). That is why every answer is kept and can be shown (Test connection), so a difference can be seen and fixed at once.
+The wire format follows SvxLink's EchoLink directory client (src/echolib/EchoLinkDirectory.cpp, EchoLinkStationData.cpp), the open-source client that
+talks to the real directory every day. It has not been tried from the build environment (that needs the user's validated account and the network), so every
+answer is kept and can be shown (Test connection).
 Nothing is guessed silently: a refusal or an unreadable answer is reported as it came."""
 import re, socket, time
 from . import countries
@@ -21,11 +22,11 @@ STAY_ONLINE_EVERY = 5 * 60              # seconds between two 'online' messages 
 
 
 def build_login(call: str, password: str, location: str = "", state: str = "ONLINE", now: time.struct_time | None = None) -> bytes:
-    """'l' + callsign + 0xAC 0xAC + password + CR + STATE + version(HH:MM) + CR + location + CR   (state: ONLINE, BUSY or OFFLINE)."""
+    """As SvxLink sends it: 'l' + callsign + 0xAC 0xAC + password + CR + 'ONLINE3.38(HH:MM)' | 'BUSY3.40(HH:MM)' | 'OFF-V3.40' + CR + description + CR."""
     now = now or time.localtime()
     head = b"l" + call.strip().upper().encode("latin-1", "replace") + b"\xac\xac" + password.encode("latin-1", "replace")
-    tail = f"\r{state}{VERSION}({now.tm_hour:02d}:{now.tm_min:02d})\r{(location or '').strip()}\r".encode("latin-1", "replace")
-    return head + tail
+    st = "OFF-V3.40" if state == "OFFLINE" else (f"BUSY3.40({now.tm_hour:02d}:{now.tm_min:02d})" if state == "BUSY" else f"ONLINE3.38({now.tm_hour:02d}:{now.tm_min:02d})")
+    return head + f"\r{st}\r{(location or '').strip()}\r".encode("latin-1", "replace")
 
 
 def parse_login_reply(raw: bytes) -> tuple[bool, str]:
@@ -42,21 +43,34 @@ def kind_of(call: str) -> str:
     return "station"
 
 
+def parse_list(raw: bytes) -> tuple[list[dict], list[str]]:
+    """The directory's answer to 's', read exactly as SvxLink reads it: a line '@@@', a line with the number of records, then per record 4 lines
+    (call sign, description with '[ON] hh:mm' or '[BUSY] hh:mm' at the end, node number, IP address), then '+++'.
+    A record whose call sign is blank is a message of the directory (its text is in the description), a record '.' is skipped.
+    Result: (stations, messages). Lines are NOT stripped before they are told apart: the blank call sign of a message record is a line of its own."""
+    lines = raw.decode("latin-1", "replace").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    marks = [i for i, l in enumerate(lines) if l.strip() == "@@@"]
+    if not marks: return [], []
+    i = marks[0] + 1
+    try: count = int(lines[i].strip())
+    except (IndexError, ValueError): return [], []
+    i += 1; out, msgs = [], []
+    while count > 0 and i + 3 < len(lines) + 0 and not lines[i].startswith("+++"):
+        call, data, node, ip = lines[i], lines[i + 1], lines[i + 2].strip(), lines[i + 3].strip(); i += 4
+        if call.strip() == ".": continue                                   # a filler record: not counted
+        count -= 1
+        if call.strip() == "": msgs.append(data.strip()); continue       # a message of the directory
+        call = call.strip(); desc, status, at = data, "", ""
+        k = data.rfind("[")
+        if k >= 0:
+            tail = data[k + 1:]; status = "BUSY" if "BUSY" in tail else ("ON" if "ON" in tail else ""); desc = data[:k]
+            sp = data[k:].find(" "); at = data[k:][sp + 1:sp + 6] if sp >= 0 else ""
+        out.append(dict(call=call, place=desc.rstrip(), node=node if node.isdigit() else "", ip=ip, status="BUSY" if status == "BUSY" else "ON", at=at, kind=kind_of(call)))
+    return out, msgs
+
+
 def parse_stations(raw: bytes) -> list[dict]:
-    """The station list: after the '@@@' line, 4 lines per station - call sign, place (with the status in square brackets), node number, IP address.
-    Tolerant: a count line, blank lines or CR LF are accepted; a record that does not fit is skipped, not guessed."""
-    lines = [l.strip() for l in raw.decode("latin-1", "replace").replace("\r\n", "\n").replace("\r", "\n").split("\n")]
-    if "@@@" in lines: lines = lines[lines.index("@@@") + 1:]
-    lines = [l for l in lines if l != ""] if len(lines) % 4 else lines
-    if lines and lines[0].isdigit() and (len(lines) - 1) % 4 == 0: lines = lines[1:]
-    out = []
-    for i in range(0, len(lines) - 3, 4):
-        call, place, node, ip = lines[i:i + 4]
-        if not re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip) or not call: continue
-        status = "BUSY" if "BUSY" in place.upper() else "ON"
-        loc = re.sub(r"\s*\[[^\]]*\]\s*$", "", place).strip()
-        out.append(dict(call=call, place=loc, node=node if node.isdigit() else "", ip=ip, status=status, kind=kind_of(call)))
-    return out
+    return parse_list(raw)[0]
 
 
 def directory_rows(stations: list[dict]) -> list[dict]:
@@ -85,7 +99,7 @@ def _exchange(host: str, payload: bytes, timeout: float = READ_TIMEOUT, connect_
 def sign_in(call: str, password: str, location: str = "", state: str = "ONLINE", want_list: bool = True, servers: list[str] | None = None, exchange=_exchange) -> dict:
     """Blocking (run it in a worker thread). Result: ok, error (words), server, login_raw, list_raw (the answers as received), stations (parsed)."""
     call = (call or "").strip().upper()
-    res = dict(ok=False, error="", server="", login_raw="", list_raw="", stations=[])
+    res = dict(ok=False, error="", server="", login_raw="", list_raw="", stations=[], messages=[])
     if not re.match(r"^[A-Z0-9/*-]{3,20}$", call): res["error"] = "Enter your callsign (the one of your validated EchoLink account)."; return res
     if not password: res["error"] = "Enter your EchoLink password."; return res
     last = ""
@@ -105,7 +119,9 @@ def sign_in(call: str, password: str, location: str = "", state: str = "ONLINE",
         except Exception as ex:
             res["error"] = f"Signed in, but the station list could not be read ({getattr(ex, 'strerror', None) or ex})."; return res
         res["list_raw"] = lraw[:4000].decode("latin-1", "replace")
-        res["stations"] = parse_stations(lraw)
+        res["stations"], msgs = parse_list(lraw); res["messages"] = msgs
+        bad = next((m for m in msgs if m.upper().startswith("INCORRECT PASSWORD")), "")
+        if bad: res["error"] = "The EchoLink directory did not accept the sign-in: " + bad[:120]; return res
         if not res["stations"]: res["error"] = "Signed in, but the station list was empty or in an unexpected form (Test connection shows what the directory sent)."; return res
         res["ok"] = True; return res
     res["error"] = last or "Cannot reach the EchoLink directory."

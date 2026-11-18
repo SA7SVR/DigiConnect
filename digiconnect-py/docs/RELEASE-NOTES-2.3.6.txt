@@ -1,8 +1,16 @@
-DigiConnect 2.3.5 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+DigiConnect 2.3.6 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
 ===========================================================================
 
 ΕΛΛΗΝΙΚΑ
 --------
+ΝΕΑ ΣΤΗΝ 2.3.6 — ΔΙΟΡΘΩΣΕΙΣ
+• ΔΙΟΡΘΩΘΗΚΕ: Listen / Connect (TX) / PTT ξανά και μέσα στη σελίδα κάθε δικτύου (τα είχα κρύψει όταν μπήκε η σταθερή μπάρα κάτω· η μπάρα κάτω μένει).
+• ΔΙΟΡΘΩΘΗΚΕ: My favorites με επιλεγμένη χώρα έδειχνε 0 — το φίλτρο χώρας ισχύει μόνο στον κατάλογο, όχι στα αγαπημένα.
+• ΔΙΟΡΘΩΘΗΚΕ: ένα TG της λίστας (π.χ. 930 PanHellenic Chat) χωρίς πρόθεμα χώρας κρυβόταν από το φίλτρο χώρας και αντικαθίστατο από γραμμή «typed number»· τώρα δείχνεται όπως το δίνει η λίστα.
+• ΔΙΟΡΘΩΘΗΚΕ: D-Star, π.χ. XLXQRZ B: δεν συμπληρωνόταν διεύθυνση/πόρτα όταν ο reflector είναι στη λίστα DCS αλλά το όνομα αρχίζει από XLX. Τώρα ψάχνει σε όλες τις λίστες. Νέο τεστ: κάθε εγγραφή κάθε λίστας βρίσκει διεύθυνση.
+• ECHOLINK: η λίστα σταθμών διαβάζεται ακριβώς όπως την διαβάζει το SvxLink (@@@, πλήθος, 4 γραμμές ανά σταθμό, +++· τα μηνύματα του directory δεν είναι σταθμοί· «INCORRECT PASSWORD» εμφανίζεται ως έχει) και η σύνδεση στέλνει τις ίδιες λέξεις κατάστασης (ONLINE3.38, BUSY3.40, OFF-V3.40). Δεν έχει δοκιμαστεί με πραγματικό λογαριασμό από το περιβάλλον κατασκευής.
+• Server (πάνελ Modes): το «για όλους» και το «σε επιλεγμένους» είναι πλέον ένα: η αλλαγή «για όλους» ισχύει σε ΟΛΕΣ τις εγκαταστάσεις (σβήνει τις δικές τους ρυθμίσεις *) και αν τσεκάρεις όλες τις εγκαταστάσεις αλλάζει και η γενική ρύθμιση. Ανέβασε ΟΛΑ τα αρχεία του φακέλου digiconnect.
+
 ΝΕΑ ΣΤΗΝ 2.3.5 — ΔΙΟΡΘΩΣΕΙΣ ΣΤΗΝ ΕΚΚΙΝΗΣΗ ΚΑΙ ΣΤΗΝ ΕΚΠΟΜΠΗ + ΜΙΚΡΟΦΩΝΟ, ΧΑΡΤΗΣ, ΗΧΟΓΡΑΦΗΣΕΙΣ, ECHOLINK
 • ΔΙΟΡΘΩΘΗΚΕ: το εγκατεστημένο πρόγραμμα δεν ξεκινούσε (Windows: «No such file … world110.json»· Mac: σταματούσε χωρίς μήνυμα). Το αρχείο του χάρτη δεν μπήκε στο πακέτο. Το πακέτο Linux δεν έβρισκε τη μηχανή. ΝΕΟ τεστ: το ΕΤΟΙΜΟ πρόγραμμα ξεκινά και ανοίγει όλες τις σελίδες σε κάθε σύστημα πριν δοθεί.
 • ΔΙΟΡΘΩΘΗΚΕ: σφάλμα στην εκκίνηση («dictionary update sequence element #0 has length 1») όταν είχε επιλεγεί μικρόφωνο. Η σελίδα Μικρόφωνο έγραφε τις ρυθμίσεις της στο κλειδί που κρατά το όνομα της συσκευής. Τώρα έχουν χωριστό κλειδί (mic_fx)· παλιές ρυθμίσεις μεταφέρονται αυτόματα.
@@ -14,6 +22,14 @@ DigiConnect 2.3.5 — Release notes / Σημειώσεις έκδοσης / Vers
 
 ENGLISH
 -------
+NEW IN 2.3.6 — FIXES
+• FIXED: Listen / Connect (TX) / PTT are in the page of every network again (I had hidden them when the fixed bar at the bottom was added; the bar at the bottom stays).
+• FIXED: My favorites with a country chosen showed 0 — the country box filters the directory only, not the favorites.
+• FIXED: a talkgroup of the list (e.g. 930 PanHellenic Chat) without a country prefix was hidden by the country filter and replaced by a "typed number" line; it is shown as the list gives it.
+• FIXED: D-Star, e.g. XLXQRZ B: no host/port was filled in when the reflector is in the DCS list but its name starts with XLX. All lists are searched now. New test: every entry of every list finds an address.
+• ECHOLINK: the station list is read exactly as SvxLink reads it (@@@, count, 4 lines per station, +++; messages of the directory are not stations; "INCORRECT PASSWORD" is shown as it is) and the sign-in sends the same state words (ONLINE3.38, BUSY3.40, OFF-V3.40). Not tried with a real account from the build environment.
+• Server (panel Modes): "for everyone" and "for selected" are one setting now: a change "for everyone" reaches ALL installations (their own settings * are removed) and ticking all installations also changes the general setting. Upload ALL files of the digiconnect folder.
+
 NEW IN 2.3.5 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHOLINK
 • FIXED: the installed program did not start (Windows: "No such file ... world110.json"; Mac: stopped without a message). The map file was missing from the package. The Linux package could not find its engine. NEW test: the BUILT program is started and every page opened on each system before release.
 • FIXED: start-up error ("dictionary update sequence element #0 has length 1") when a microphone had been chosen. The Microphone page stored its values under the key that holds the device name. They now have their own key (mic_fx); old settings are moved automatically.
@@ -25,6 +41,14 @@ NEW IN 2.3.5 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHO
 
 SVENSKA
 -------
+NYTT I 2.3.6 — RÄTTNINGAR
+• RÄTTAT: Listen / Connect (TX) / PTT finns på varje nätverkssida igen (jag hade gömt dem när det fasta fältet längst ned lades till; fältet längst ned finns kvar).
+• RÄTTAT: Mina favoriter med valt land visade 0 — landsfiltret gäller bara katalogen, inte favoriterna.
+• RÄTTAT: en talkgroup i listan (t.ex. 930 PanHellenic Chat) utan landsprefix göms inte längre av landsfiltret.
+• RÄTTAT: D-Star, t.ex. XLXQRZ B: värd/port fylldes inte i när reflektorn står i DCS-listan men namnet börjar med XLX. Alla listor genomsöks nu.
+• ECHOLINK: stationslistan läses exakt som SvxLink läser den (@@@, antal, 4 rader per station, +++; katalogens meddelanden är inte stationer) och inloggningen skickar samma statusord. Ej prövat med ett riktigt konto från byggmiljön.
+• Server (panelen Modes): "för alla" och "för valda" är nu en och samma inställning. Ladda upp ALLA filer i mappen digiconnect.
+
 NYTT I 2.3.5 — RÄTTNINGAR VID START OCH SÄNDNING + MIKROFON, KARTA, INSPELNINGAR, ECHOLINK
 • RÄTTAT: det installerade programmet startade inte (Windows: "No such file ... world110.json"; Mac: stannade utan meddelande). Kartfilen saknades i paketet. Linux-paketet hittade inte sin motor. NYTT test: det FÄRDIGA programmet startas och alla sidor öppnas på varje system före leverans.
 • RÄTTAT: startfel ("dictionary update sequence element #0 has length 1") när en mikrofon var vald. Mikrofonsidan sparade sina värden under nyckeln som håller enhetens namn. De har nu en egen nyckel (mic_fx); gamla inställningar flyttas automatiskt.

@@ -96,7 +96,6 @@ class Workspace(W.QWidget):
         self.dtmf = button("DTMF", "", "grid"); self.dtmf.setVisible(net in ("AllStar", "EchoLink")); self.dtmf.setToolTip("Send DTMF digits to the connected AllStarLink node or EchoLink station (control codes)")
         mv.addWidget(self.dtmf, 0, Qt.AlignmentFlag.AlignLeft); self.dtmf.clicked.connect(self._dtmf)
         self.tx = TxControls(ctx, on_new_qso); mv.addWidget(self.tx)
-        self.tx.setVisible(False)            # the same controls are in the fixed bar at the bottom of every page (the widget stays, its signals still work)
         mv.addWidget(label("AUDIO", section=True))
         if net == "EchoLink":
             g = W.QGridLayout(); self.el_call = W.QLineEdit(ctx.store.settings.get("echolink_call") or ctx.store.settings.get("callsign", ""))
@@ -311,15 +310,20 @@ class Workspace(W.QWidget):
         manual = [e for e in self.ctx.store.favorites if e["net"] == self.net and not any(x["id"] == e["id"] for x in self.entries)]
         if self.show_favs: src = src + [dict(e, sub=e["id"], activity="Activity unavailable") for e in manual]
         c = self.country.currentText()
-        if c and self.country.currentIndex() > 0: src = [e for e in src if e.get("country") == c]
+        # the country box filters the directory only: "My favorites" always lists every favorite of this network
+        # (manually added favorites carry no country, so a leftover country choice used to hide them all)
+        if c and self.country.currentIndex() > 0 and not self.show_favs: src = [e for e in src if e.get("country") == c]
         if self.net == "D-Star" and self.module.currentIndex() > 0 and not self.show_favs:           # the module box filters the list: only the chosen module of every reflector
             src = [e for e in src if e["id"].endswith(" " + self.module.currentText())]
         if q and not self.show_favs and self.net == "AllStar" and valid_node_text(q) and not any(e["id"] == q for e in src):
             src = [dict(net="AllStar", id=q, name=f"AllStar node {q}", sub=f"Node {q} · typed number", activity="", proto="IAX", country="")] + src
         res = [e for e in src if q in (e["name"] + " " + e["id"] + " " + e["sub"] + " " + e.get("country", "")).lower()] if q else src
         if q and not self.show_favs and self.net in ("DMR", "NXDN", "P25") and valid_dmr_tg(q) and not any(e["id"] == q for e in res):
+            # a talkgroup of the downloaded list with exactly this number is shown as the list gives it - also when the country filter would hide it
+            # (many talkgroups, e.g. 930 PanHellenic Chat, have no country prefix)
+            real = [e for e in self.entries if e["id"] == q]
             # the catalogue never holds every talkgroup: a typed number can always be used
-            res = [dict(net=self.net, id=q, name=f"{self.net} TG {q}", sub=f"TG {q} · typed number", activity="Typed talkgroup number")] + res
+            res = (real if real else [dict(net=self.net, id=q, name=f"{self.net} TG {q}", sub=f"TG {q} · typed number", activity="Typed talkgroup number")]) + res
         return res
 
     def fill(self):
