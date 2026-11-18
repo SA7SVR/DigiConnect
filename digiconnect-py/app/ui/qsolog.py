@@ -30,7 +30,7 @@ class QsoLog(W.QWidget):
         self.table = W.QTableWidget(0, len(COLS)); self.table.setHorizontalHeaderLabels([tr(c[1]) for c in COLS])
         self.table.horizontalHeader().setStretchLastSection(True); self.table.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers); self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(W.QHeaderView.ResizeMode.Stretch); v.addWidget(self.table, 1)
+        self.table.horizontalHeader().setSectionResizeMode(W.QHeaderView.ResizeMode.Stretch); tidy_table(self.table); v.addWidget(self.table, 1)
         self.empty = label("No QSOs logged"); self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter); self.empty.setStyleSheet("font-size:16px;font-weight:700;")
         v.addWidget(self.empty)
         p = hbox(); self.count = label("0 QSO · 0–0", muted=True); self.prev = button("Previous"); self.next = button("Next")
@@ -57,7 +57,7 @@ class QsoLog(W.QWidget):
         self.table.setRowCount(len(chunk))
         for i, r in enumerate(chunk):
             for j, (k, _) in enumerate(COLS):
-                it = W.QTableWidgetItem(str(r.get(k) or "").replace("T", " ")); it.setData(Qt.ItemDataRole.UserRole, r["id"]); self.table.setItem(i, j, it)
+                val = str(r.get(k) or ""); it = W.QTableWidgetItem(val.replace("T", " ", 1) if k == "start_utc" else val); it.setData(Qt.ItemDataRole.UserRole, r["id"]); self.table.setItem(i, j, it)
         self.empty.setVisible(not chunk); self.table.setVisible(bool(chunk))
         a = self.page * PER
         self.count.setText(f"{total} QSO · {a + 1 if total else 0}–{min(total, a + PER)}")

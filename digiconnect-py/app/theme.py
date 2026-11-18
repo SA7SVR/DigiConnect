@@ -146,4 +146,8 @@ QListWidget::item:selected {{ background:{c['sel']}; }}
 QListWidget::item:hover {{ background:{c['hover_row']}; }}
 QTableWidget {{ background:{c['panel']}; border:1px solid {c['border']}; border-radius:12px; gridline-color:{c['sep']}; }}
 QHeaderView::section {{ background:{c['panel2']}; color:{c['muted']}; border:none; padding:10px; }}
+QTableWidget::item {{ padding:4px 10px; }}
+QPushButton#exitBtn {{ background:transparent; border:2px solid #e5484d; color:{c['text']}; font-weight:700; }}
+QPushButton#exitBtn:hover {{ background:#e5484d; color:#ffffff; }}
+QLabel#lhTitle {{ font-weight:800; font-size:17px; border:2px solid {c['border']}; border-radius:10px; padding:8px 12px; }}
 """

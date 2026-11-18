@@ -73,14 +73,18 @@ def parse_stations(raw: bytes) -> list[dict]:
     return parse_list(raw)[0]
 
 
+KIND_ORDER = {"repeater": 0, "link": 1, "station": 2, "conference": 3}
+
+
 def directory_rows(stations: list[dict]) -> list[dict]:
-    """Directory rows for the EchoLink page. Country: from the place when it names one, else from the prefix of the call sign."""
+    """Directory rows for the EchoLink page. Country: from the prefix of the call sign, else from the place text (conference rooms have no usable call sign)."""
     rows = []
     for s in stations:
-        country = countries.guess(s["place"]) or countries.of_callsign(s["call"])
+        country = countries.of_callsign(s["call"]) or countries.guess(s["place"])      # the call sign decides (as EchoLink itself groups): "HELLAS Zone Net" in the place text of SA7SVR-L must not move a Swedish node to Greece
         kind = {"conference": "Conference", "repeater": "Repeater", "link": "Link", "station": "Station"}[s["kind"]]
         sub = " · ".join(x for x in (kind, s["place"], f"Node {s['node']}" if s["node"] else "", "busy" if s["status"] == "BUSY" else "") if x)
         rows.append(dict(net="EchoLink", id=s["call"], name=s["call"], sub=sub, activity="", proto="ELINK", country=country, host=s["ip"], port=VOICE_PORT, kind=s["kind"], status=s["status"]))
+    rows.sort(key=lambda r: (KIND_ORDER[r["kind"]], r["id"].upper()))          # the order of the official EchoLink list: by type (repeaters, links, users, conferences), then by call sign
     return rows
 
 

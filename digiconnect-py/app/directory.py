@@ -1,5 +1,4 @@
-"""Station directories. HELLAS Zone entries and the public DMR talkgroups come first, then everything from the
-worldwide server lists (hostlists.py: YSF, REF/XRF/DCS/XLX). EchoLink loads after sign-in (echolink.py)."""
+"""Station directories: everything comes from the worldwide server lists (hostlists.py: YSF, REF/XRF/DCS/XLX). EchoLink loads after sign-in (echolink.py)."""
 
 def asl_entries(nodes) -> list[dict]:
     """AllStarLink nodes -> directory rows: title = description (or callsign), second line = node · callsign · place."""

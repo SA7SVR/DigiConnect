@@ -110,7 +110,7 @@ class Store:
         if d_to: sql += " AND substr(start_utc,1,10)<=?"; args.append(d_to)
         if country: sql += " AND country LIKE ?"; args.append(f"%{country}%")
         self.db.row_factory = sqlite3.Row
-        rows = [dict(r) for r in self.db.execute(sql + " ORDER BY start_utc DESC", args)]
+        rows = [dict(r) for r in self.db.execute(sql + " ORDER BY replace(start_utc, 'T', ' ') DESC, id DESC", args)]
         self.db.row_factory = None
         return rows
 

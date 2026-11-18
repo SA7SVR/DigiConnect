@@ -6,7 +6,7 @@ The stations come from the program itself: the people heard on the networks (Las
 import json, math
 from pathlib import Path
 from ..qt import QtWidgets as W, QtCore, QtGui, Qt
-from .widgets import label, vbox, hbox
+from .widgets import label, vbox, hbox, tidy_table
 from ..theme import C, NET_COLOR
 from .. import countries
 from ..rules import NETS
@@ -254,7 +254,7 @@ class MapPage(W.QWidget):
         self.table = W.QTableWidget(0, 4); self.table.setHorizontalHeaderLabels([tr(x) for x in ("Call sign", "Network", "Country", "Last seen")])
         self.table.verticalHeader().setVisible(False); self.table.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.horizontalHeader().setStretchLastSection(True); body.addWidget(self.table, 2)
+        self.table.horizontalHeader().setStretchLastSection(True); tidy_table(self.table); body.addWidget(self.table, 2)
         v.addLayout(body, 1)
         self.net.currentIndexChanged.connect(lambda _: self.refresh())
         self.cty.activated.connect(self._country_chosen)
@@ -294,6 +294,11 @@ class MapPage(W.QWidget):
             key = ("EchoLink", s["id"])
             if key in seen: continue
             seen.add(key); out.append(dict(call=s["id"], net="EchoLink", country=s["country"], seen=None, source="directory"))
+        for e in getattr(getattr(self.ctx, "hosts", None), "entries", []) or []:          # the servers / reflectors of the downloaded worldwide lists, where the list itself gives the country
+            if e.get("proto") == "TG" or not e.get("country"): continue
+            key = (e["net"], e["id"])
+            if key in seen: continue
+            seen.add(key); out.append(dict(call=e["id"], net=e["net"], country=e["country"], seen=None, source="server"))
         return out
 
     # ---- choosing a country: the Country box, a click on a circle, or a row of the table ----
@@ -308,6 +313,20 @@ class MapPage(W.QWidget):
         if key: self.map.focus(key)
         else: self.map.reset_view()
         self.refresh()
+
+    def follow_selected(self):
+        """The map follows the station chosen in a radio page: it zooms to that station's country (the country the lists themselves give for it)."""
+        t = getattr(self.ctx, "selected", None)
+        if t is None: return
+        country = ""
+        if t.net == "EchoLink":
+            country = next((x.get("country", "") for x in (getattr(self.ctx, "el_stations", []) or []) if x["id"] == t.id), "")
+        elif t.net in ("DMR", "NXDN", "P25"): country = countries.of_talkgroup(t.id)
+        if not country:
+            country = next((e.get("country", "") for e in (getattr(getattr(self.ctx, "hosts", None), "entries", []) or []) if e["net"] == t.net and e["id"] == t.id), "")
+        if not country: country = countries.of_callsign(t.id)
+        self.refresh()
+        if country: self.choose_country(country)
 
     def _row_clicked(self, row, _col):
         it = self.table.item(row, 2)
@@ -343,6 +362,6 @@ class MapPage(W.QWidget):
         self.table.setHorizontalHeaderLabels([tr(x) for x in ("Call sign", "Network", "Country", "Last seen")])
         self.table.setRowCount(len(shown))
         for i, s in enumerate(shown):
-            seen = s["seen"].strftime("%H:%M:%S") + " UTC" if s.get("seen") else ("online" + (" · " + s["grid"] if s.get("grid") else "") if s["source"] == "online" else ("directory" if s["source"] == "directory" else ""))
+            seen = s["seen"].strftime("%H:%M:%S") + " UTC" if s.get("seen") else ("online" + (" · " + s["grid"] if s.get("grid") else "") if s["source"] == "online" else ("directory" if s["source"] == "directory" else ("server list" if s["source"] == "server" else "")))
             for j, val in enumerate([s["call"], s["net"], s["country"], seen]):
                 self.table.setItem(i, j, W.QTableWidgetItem(val))

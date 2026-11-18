@@ -120,7 +120,9 @@ class SettingsDrawer(W.QFrame):
         for b in (self.bk, self.rs, self.dg): l5.addWidget(b, 0, Qt.AlignmentFlag.AlignLeft)
         l5.addWidget(label("Backup is a ZIP of settings, favorites and the journal. Restoring replaces them.", muted=True)); l5.addStretch()
         for p in (p1, p2, p3, p4, p5):
-            sc = W.QScrollArea(); sc.setWidgetResizable(True); sc.setWidget(p); self.stack.addWidget(sc)
+            for lb in p.findChildren(W.QLabel):
+                if len(lb.text()) > 30: lb.setWordWrap(True)          # a long text that cannot wrap makes the page wider than the drawer: the fields (and their drop-down lists) then run far across the screen
+            sc = W.QScrollArea(); sc.setWidgetResizable(True); sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); sc.setWidget(p); self.stack.addWidget(sc)
         v.addWidget(self.stack, 1)
         foot = hbox(m=(16, 8, 16, 14), s=8); self.save = button("Save", "primary"); cl = button("Close"); foot.addWidget(self.save); foot.addWidget(cl); foot.addStretch(); v.addLayout(foot)
         cl.clicked.connect(self.closed.emit); self.save.clicked.connect(self._save); self.saveprof.clicked.connect(self._saveprof); self.load.clicked.connect(self._load)

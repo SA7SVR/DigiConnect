@@ -1,6 +1,6 @@
 """'Last heard' page: every station received on any network, newest first (live)."""
 from ..qt import QtWidgets as W, Qt
-from .widgets import label, button, panel, vbox, hbox
+from .widgets import label, button, panel, vbox, hbox, tidy_table
 from ..i18n import tr
 
 
@@ -35,7 +35,7 @@ class HeardPage(W.QWidget):
         self.tbl = W.QTableWidget(0, len(self.COLS)); self.tbl.setHorizontalHeaderLabels([tr(c) for c in self.COLS])
         self.tbl.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers); self.tbl.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl.verticalHeader().setVisible(False); self.tbl.horizontalHeader().setStretchLastSection(True); self.tbl.setAlternatingRowColors(False)
-        v.addWidget(self.tbl, 1)
+        tidy_table(self.tbl); v.addWidget(self.tbl, 1)
         self.clear.clicked.connect(self._clear); ctx.changed.connect(self.reload); self.reload()
 
     def retranslate(self): self.tbl.setHorizontalHeaderLabels([tr(c) for c in self.COLS])

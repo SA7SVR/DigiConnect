@@ -90,7 +90,8 @@ class MainWindow(W.QMainWindow):
         self.license_url = ""
         self.lic_btn = button("Licence", "", tip="Licence, activation code and messages from the owner"); self.lic_btn.clicked.connect(self._licence_dialog); th.addWidget(self.lic_btn)
         self.stop_top = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_top.clicked.connect(lambda: self.ctx.stop_all()); self.stop_top.setVisible(False); th.addWidget(self.stop_top)
-        self.theme_btn = button("", ""); th.addWidget(self.theme_btn); self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top); col.addWidget(top)
+        self.theme_btn = button("", ""); th.addWidget(self.theme_btn); self.set_top = button("Settings", "", "gear"); th.addWidget(self.set_top)
+        self.exit_btn = button("Exit", "", "close", tip="Close DigiConnect"); self.exit_btn.setObjectName("exitBtn"); self.exit_btn.clicked.connect(self._exit); th.addWidget(self.exit_btn); col.addWidget(top)
         # head (page title + tabs) – used by workspace pages
         self.head = W.QWidget(); hv = vbox(self.head, m=(24, 14, 24, 8), s=8)
         hr = hbox(); tl = vbox(s=2); self.title = label(""); self.title.setStyleSheet("font-size:26px;font-weight:700;"); tl.addWidget(self.title)
@@ -145,7 +146,7 @@ class MainWindow(W.QMainWindow):
         t = QtCore.QTimer(self); t.timeout.connect(self._clock); t.start(1000)
         QtGui.QShortcut(QtGui.QKeySequence("F4"), self, activated=self._mute_all)
         QtGui.QShortcut(QtGui.QKeySequence("F2"), self, activated=self._f2)
-        self.current = "net:DMR"; self.apply_settings(); self.nav("net:DMR"); self._clock()
+        self._home = "net:DMR"; self.current = "net:DMR"; self.apply_settings(); self.nav("net:DMR"); self._clock()
 
     def _donate(self):
         from .license_dialog import open_donate
@@ -198,14 +199,31 @@ class MainWindow(W.QMainWindow):
         f = W.QWidget(); l = vbox(f, m=(24, top, 24, bottom)); l.addWidget(w); return f
 
     # ---- navigation -------------------------------------------------------
+    TOGGLE = ("mic", "map", "rec", "log", "heard")          # a side-bar button: first press opens the page, second press closes it again (back to where you were)
+
+    def _exit(self):
+        """Closes DigiConnect. While a station is connected it asks first, so one wrong click cannot cut a QSO."""
+        n = len(getattr(self.ctx.engine, "links", {}) or {})
+        if n and W.QMessageBox.question(self, tr("Exit"), tr("DigiConnect is connected ({} link(s)). Exit and disconnect?").format(n)) != W.QMessageBox.StandardButton.Yes: return
+        self.close()
+
     def nav(self, key):
-        if key == "settings": self.open_settings(); return
-        if key == "newqso": self.open_qso(); return
+        if key == "settings":
+            if self.settings.isVisible(): self.settings.hide(); self._sync_chrome()
+            else: self.open_settings()
+            return
+        if key == "newqso":
+            if self.qdrawer.isVisible(): self.qdrawer.hide(); self._sync_chrome()
+            else: self.open_qso()
+            return
+        if key in self.TOGGLE and self.current == key:
+            self.nav(self._home); return
+        if key == "favorites" or key.startswith("net:"): self._home = key          # where the second press of a toggle button goes back to
         if key == "mic": self.current = "mic"; self.pages.setCurrentWidget(self.micp); self._sync_chrome(); return
         if key == "mixer": self._mixer_user = True; self.mixer.setVisible(not self.mixer.isVisible()); self._sync_chrome(); return
         if key in ("analysis",): self.nav("log"); self.log._analysis(); return
         if key == "updates": self.show_updates(); return
-        if key == "map": self.current = "map"; self.mapp.refresh(); self.pages.setCurrentWidget(self.mapp); self._sync_chrome(); return
+        if key == "map": self.current = "map"; self.mapp.follow_selected(); self.pages.setCurrentWidget(self.mapp); self._sync_chrome(); return
         if key == "rec": self.current = "rec"; self.recp.refresh(); self.pages.setCurrentWidget(self.recp); self._sync_chrome(); return
         if key in ("help",):
             self.ctx.toast.emit("Help: see docs/SPEC.md (operating rules) in the source package."); return
@@ -239,7 +257,7 @@ class MainWindow(W.QMainWindow):
         self.h_add.setVisible(k == "favorites")
         self.tabs["favorites"].setText(f"My favorites   {len(self.ctx.store.favorites)}")
         for key, b in self.rail_btn.items():
-            b.setChecked((key == "favorites" and k == "favorites") or (key == "log" and k == "log") or (key == "mixer" and self.mixer.isVisible()))
+            b.setChecked((key == "favorites" and k == "favorites") or (key in self.TOGGLE and key == k) or (key == "mixer" and self.mixer.isVisible()))
         # one fixed control bar on every page: Listen / PTT / limit stay in the same place at the bottom
         self.dock.setVisible(True); self.dock.parentWidget().setVisible(True)
         self.h_nq.setVisible(ws or k == 'favorites'); self.h_set.setVisible(ws)
@@ -302,7 +320,7 @@ class MainWindow(W.QMainWindow):
 
     def _clock(self):
         from datetime import timezone; u = datetime.now(timezone.utc); l = datetime.now()
-        self.clock.setText(f"<b style='font-size:16px'>{u:%H:%M:%S}</b> <span style='color:{C['muted']}'>UTC</span><br><span style='color:{C['muted']}'>{l:%I:%M:%S %p}</span>")
+        self.clock.setText(f"<b style='font-size:16px'>{u:%H:%M:%S}</b> <span style='color:{C['muted']}'>UTC</span> &nbsp;·&nbsp; <span style='color:{C['muted']}'>{l:%I:%M:%S %p}</span>")      # UTC and local time on ONE line, the call sign next to them
 
     def _mute_all(self):
         r = self.ctx.rules; m = not all(r.net_muted.values())

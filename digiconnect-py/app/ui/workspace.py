@@ -1,5 +1,5 @@
 """Radio workspace page for one network: directory | selected station | last heard."""
-from ..qt import QtWidgets as W, QtCore, Qt
+from ..qt import QtWidgets as W, QtCore, QtGui, Qt
 from ..rules import Target, valid_dmr_tg, id_label
 from .. import i18n
 from ..i18n import tr
@@ -118,20 +118,24 @@ class Workspace(W.QWidget):
         self.hint.setWordWrap(True); mv.addWidget(self.hint); mv.addStretch()
         # --- right: last heard
         right = panel(); rv = vbox(right, m=(16, 16, 16, 12), s=10)
-        rv.addWidget(label("Last station heard")); rv.itemAt(0).widget().setStyleSheet("font-weight:700;font-size:14px;")
+        self.lh_title = label("Last station heard"); self.lh_title.setAlignment(Qt.AlignmentFlag.AlignCenter); self.lh_title.setObjectName("lhTitle")
+        rv.addWidget(self.lh_title)                                                 # look: QLabel#lhTitle in the theme (follows light/dark)
         # "now talking" block on top: who is on the air on this network, and a bar while they talk
-        self.now_box = W.QFrame(); self.now_box.setObjectName("nowTalking"); nb = vbox(self.now_box, m=(10, 10, 10, 10), s=4)
-        self.now_head = label("NOW TALKING", section=True); nb.addWidget(self.now_head)
-        self.now_call = label("Nobody is talking right now."); self.now_call.setStyleSheet("font-size:20px;font-weight:700;"); self.now_call.setWordWrap(True); nb.addWidget(self.now_call)
-        self.now_info = label("", muted=True); self.now_info.setWordWrap(True); nb.addWidget(self.now_info)
+        self.now_box = W.QFrame(); self.now_box.setObjectName("nowTalking"); nb = vbox(self.now_box, m=(10, 6, 10, 6), s=2)
+        nrow = hbox(s=12)                                                           # "NOW TALKING" and who is talking: on ONE line
+        self.now_head = label("NOW TALKING", section=True); nrow.addWidget(self.now_head, 0)
+        self.now_call = label("Nobody is talking right now."); self.now_call.setStyleSheet(f"font-size:14px;font-weight:400;color:{C['muted']};"); self.now_call.setWordWrap(False); nrow.addWidget(self.now_call, 0)
+        self.now_info = label("", muted=True); self.now_info.setWordWrap(False); self.now_info.setSizePolicy(W.QSizePolicy.Policy.Ignored, W.QSizePolicy.Policy.Preferred); self.now_info.setVisible(False); nrow.addWidget(self.now_info, 1)     # who it is (ID, name, country) stays on the same line, never below
+        nrow.addStretch(1)
+        nb.addLayout(nrow)
         self.now_bar = W.QProgressBar(); self.now_bar.setRange(0, 0); self.now_bar.setTextVisible(False); self.now_bar.setFixedHeight(6); self.now_bar.setVisible(False); nb.addWidget(self.now_bar)
-        rv.addWidget(self.now_box); rv.addSpacing(6)
+        rv.addWidget(self.now_box)
         # last heard: its own table, so the talk time is not folded under the callsign
         rv.addWidget(label("LAST HEARD", section=True))
         self.lh_tbl = W.QTableWidget(0, 5); self.lh_tbl.setHorizontalHeaderLabels([tr(c) for c in ("Callsign", id_label(net), "Country", "UTC", "Talk")])
         self.lh_tbl.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers); self.lh_tbl.verticalHeader().setVisible(False)
         self.lh_tbl.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows); self.lh_tbl.setMinimumHeight(160)
-        rv.addWidget(self.lh_tbl, 1)
+        tidy_table(self.lh_tbl); rv.addWidget(self.lh_tbl, 1)
         if net == "AllStar":
             rv.addSpacing(8); rv.addWidget(label("CONNECTED TO THIS NODE", section=True))
             self.asl_head = label("Connect to a node to see who is connected to it.", muted=True); self.asl_head.setWordWrap(True); rv.addWidget(self.asl_head)
@@ -144,8 +148,8 @@ class Workspace(W.QWidget):
             self.el_msgs = label("", muted=True); self.el_msgs.setWordWrap(True); rv.addWidget(self.el_msgs)
             ctx.el_changed.connect(self._el_nodes_show); ctx.changed.connect(self._el_nodes_show)
         rv.addStretch()
-        left.setMinimumWidth(300); mid.setMinimumWidth(350); right.setMinimumWidth(240); self._right = right
-        root.addWidget(left, 5); root.addWidget(mid, 5); root.addWidget(right, 4)
+        left.setMinimumWidth(300); mid.setMinimumWidth(350); right.setMinimumWidth(380); self._right = right
+        root.addWidget(left, 4); root.addWidget(mid, 4); root.addWidget(right, 6)
         # wiring
         self.search.textChanged.connect(lambda: (setattr(self, "page", 0), self.fill())); self.country.currentIndexChanged.connect(lambda: self.fill())
         self.prev.clicked.connect(lambda: self._page(-1)); self.next.clicked.connect(lambda: self._page(1))
@@ -211,9 +215,6 @@ class Workspace(W.QWidget):
         names = sorted({e.get("country", "") for e in self.entries if e.get("country")})
         self.country.blockSignals(True); self.country.clear(); self.country.addItems([tr("All countries")] + names); i18n.combo_item(self.country, 0, "All countries")
         if cur in names: self.country.setCurrentText(cur)
-        elif self.net == "EchoLink" and names and not getattr(self, "_el_country_set", False):          # EchoLink: the list opens on the user's own country (then it stays as the user picked it)
-            own = countries.of_callsign(self.ctx.store.settings.get("echolink_call") or self.ctx.store.settings.get("callsign") or "")
-            if own in names: self.country.setCurrentText(own); self._el_country_set = True
         self.country.blockSignals(False); self.fill()
 
     def _asl_links_show(self):
@@ -333,7 +334,9 @@ class Workspace(W.QWidget):
         self.list.blockSignals(True); self.list.clear()
         for e in chunk:
             it = W.QListWidgetItem(); it.setData(Qt.ItemDataRole.UserRole, e)
-            it.setText(f"{'★ ' if self.ctx.store.is_fav(e['net'], e['id']) else '☆ '}{tr(e['name'])}\n   {tr(e['sub'])}" + (f"\n   {tr(e['activity'])}" if e.get("activity") else "")); self.list.addItem(it)
+            it.setText(f"{'★ ' if self.ctx.store.is_fav(e['net'], e['id']) else '☆ '}{tr(e['name'])}\n   {tr(e['sub'])}" + (f"\n   {tr(e['activity'])}" if e.get("activity") else ""))
+            if e.get("status") == "BUSY": it.setForeground(QtGui.QColor(C["accent"]))          # EchoLink shows a busy station (in a QSO) in blue
+            self.list.addItem(it)
         self.list.blockSignals(False)
         src = "BrandMeister" if self.net == "DMR" else self.net
         self.count.setText(f"{src} · {total} entries"); a = self.page * PAGE
@@ -390,16 +393,16 @@ class Workspace(W.QWidget):
         live = [v for (n, _), v in self.ctx.talking.items() if n == self.net]
         if live:
             v = live[0]; info = self.ctx.station_info(v.get("srcid") or 0) or {}
-            self.now_call.setText(v.get("src") or "?")
+            self.now_call.setText(v.get("src") or "?"); self.now_call.setStyleSheet("font-size:17px;font-weight:700;")
             bits = [f"{tr(id_label(self.net))} {v['srcid']}"] if v.get("srcid") else []
             site = ", ".join(x for x in (info.get("name"), info.get("city"), info.get("country")) if x)
             if site: bits.append(site)
-            self.now_info.setText(" · ".join(bits)); self.now_bar.setVisible(True)
+            self.now_info.setText(" · ".join(bits)); self.now_info.setVisible(bool(bits)); self.now_bar.setVisible(True)
             self.now_head.setText("NOW TALKING ●")
             col = NET_COLOR.get(self.net, C["muted"]) if isinstance(NET_COLOR, dict) else C["muted"]
             self.now_box.setStyleSheet(f"#nowTalking {{ border:2px solid {col}; border-radius:8px; }}")
         else:
-            self.now_call.setText("Nobody is talking right now."); self.now_info.setText("")
+            self.now_call.setText("Nobody is talking right now."); self.now_call.setStyleSheet(f"font-size:14px;font-weight:400;color:{C['muted']};"); self.now_info.setText(""); self.now_info.setVisible(False)
             self.now_bar.setVisible(False); self.now_head.setText("NOW TALKING")
             self.now_box.setStyleSheet("")
 
@@ -409,11 +412,13 @@ class Workspace(W.QWidget):
         self.lh_tbl.setRowCount(len(rows))
         for r, h in enumerate(rows):
             info = self.ctx.station_info(h.get("srcid") or 0) if h.get("srcid") else None
-            vals = [h["src"] + (" (you)" if h.get("me") else ""), str(h.get("srcid") or "—"), (info or {}).get("country") or "—",
+            country = (info or {}).get("country") or countries.of_callsign(h.get("src") or "") or "—"          # callbook answer first; else the country of the call sign's prefix (never guessed from anything else)
+            vals = [h["src"] + (" (you)" if h.get("me") else ""), str(h.get("srcid") or "—"), country,
                     f"{h['ts']:%H:%M:%S}", duration(h)]
             for c, val in enumerate(vals): self.lh_tbl.setItem(r, c, W.QTableWidgetItem(val))
         hd = self.lh_tbl.horizontalHeader(); hd.setStretchLastSection(False)
-        hd.setSectionResizeMode(W.QHeaderView.ResizeMode.Stretch)             # the six columns share the width: nothing is cut off
+        R = W.QHeaderView.ResizeMode                                           # Callsign / ID / UTC / Talk are as wide as their text, Country takes the rest: nothing is cut off
+        for c, m in enumerate((R.ResizeToContents, R.ResizeToContents, R.Stretch, R.ResizeToContents, R.ResizeToContents)): hd.setSectionResizeMode(c, m)
         self.lh_tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
     def refresh(self):
@@ -427,4 +432,4 @@ class Workspace(W.QWidget):
         self.addfav.setText("★  Remove favorite" if mine and self.ctx.store.is_fav(t.net, t.id) else "☆  Add favorite")
         self._srv_show(t if mine else None); self._tx_show()
         self._show_now()
-        self._fill_heard(list(self.ctx.last_heard))          # every network, newest first (a station heard on C4FM also shows on the DMR page)
+        self._fill_heard([h for h in self.ctx.last_heard if h.get("net") == self.net])          # only this network's own stations, newest first (each mode keeps its own Last heard)

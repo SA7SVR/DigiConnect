@@ -90,8 +90,9 @@ def test_page_lists_by_country_and_shows_who_is_connected(tmp_path, fake):
     ctx._on_el_done(echolink.sign_in("SV1ABC", "secret", servers=["127.0.0.1"]) | dict(state="ONLINE", silent=False))
     assert ctx.el_signed_in and len(ctx.el_stations) == 4 and ctx.servers.resolve(Target("EchoLink", "SM0XYZ")) == {"host": "10.0.0.2", "port": 5198}
     names = [ws.country.itemText(i) for i in range(ws.country.count())]
-    assert {"Greece", "Sweden", "United States"} <= set(names) and ws.country.currentText() == "Greece"      # opens on the user's own country
-    assert [e["name"] for e in ws.visible_entries()] == ["SV1ABC-R"]
+    assert {"Greece", "Sweden", "United States"} <= set(names) and ws.country.currentText() == "All countries"      # the list opens as the directory gives it: no country (not even the user's own) comes first
+    assert len(ws.visible_entries()) == 4
+    ws.country.setCurrentText("Greece"); assert [e["name"] for e in ws.visible_entries()] == ["SV1ABC-R"]
     ws.country.setCurrentText("Sweden"); assert [e["name"] for e in ws.visible_entries()] == ["SM0XYZ"]
     # connected to a station: its message lists who is there
     t = Target("EchoLink", "SM0XYZ", "SM0XYZ"); ctx.select(t); ctx.rules.listen(t) if hasattr(ctx.rules, "listen") else None
@@ -145,3 +146,16 @@ def test_login_uses_the_same_state_words_as_svxlink():
     assert echolink.build_login("sa7svr-l", "pw", "x", "ONLINE", t) == b"lSA7SVR-L\xac\xacpw\rONLINE3.38(14:05)\rx\r"
     assert echolink.build_login("sa7svr-l", "pw", "x", "BUSY", t).split(b"\r")[1] == b"BUSY3.40(14:05)"
     assert echolink.build_login("sa7svr-l", "pw", "x", "OFFLINE", t).split(b"\r")[1] == b"OFF-V3.40"
+
+
+def test_country_comes_from_the_call_sign_not_from_words_in_the_description():
+    """SA7SVR-L says "HELLAS Zone Net" in its text but it is a Swedish call sign: it belongs to Sweden (as EchoLink itself groups)."""
+    rows = echolink.directory_rows([dict(call="SA7SVR-L", place="HELLAS Zone Net [0/100]", node="590703", ip="1.2.3.4", status="ON", at="20:18", kind="link"),
+                                    dict(call="*HAMNET*", place="Conference in Greece", node="1", ip="1.2.3.5", status="ON", at="", kind="conference")])
+    by = {r["name"]: r["country"] for r in rows}
+    assert by["SA7SVR-L"] == "Sweden" and by["*HAMNET*"] == "Greece"
+
+
+def test_list_is_in_the_order_of_the_official_client_type_then_call_sign():
+    st = [dict(call=c, place="", node="1", ip="1.1.1.1", status="ON", at="", kind=echolink.kind_of(c)) for c in ("*CONF*", "SM6VBT", "SA7SVR-L", "SM7HZK-R", "SA0BUX-L", "SK2AZ-L", "SA1AAA-R")]
+    assert [r["id"] for r in echolink.directory_rows(st)] == ["SA1AAA-R", "SM7HZK-R", "SA0BUX-L", "SA7SVR-L", "SK2AZ-L", "SM6VBT", "*CONF*"]

@@ -102,3 +102,9 @@ class LevelBar(W.QWidget):
         if self.v > 0:
             p.setBrush(QtGui.QColor(C["red"] if self.v > 0.9 else C["amber"] if self.v > 0.7 else C["green"]))
             p.drawRoundedRect(QtCore.QRectF(r.x(), r.y(), r.width() * self.v, r.height()), r.height() / 2, r.height() / 2)
+
+
+def tidy_table(tbl):
+    """The column titles sit exactly above their data: both are left-aligned with the same side padding (Qt centres the titles by default)."""
+    hd = tbl.horizontalHeader(); hd.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    return tbl
