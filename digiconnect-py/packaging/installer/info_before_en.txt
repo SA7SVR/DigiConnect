@@ -1,4 +1,4 @@
-﻿DigiConnect 2.3.3 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.3.4 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,17 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.3.3)
+What is new in this version (2.3.4)
+  • FIXED: the program no longer stops at start with a "dictionary update" error when a microphone has been chosen.
+  • FIXED: the second press of PTT could close the transmit engine on some computers (found on macOS Intel); it is repaired.
+  • NEW: Microphone page: input gain, bass / mid / treble, high-pass filter, noise gate, compressor and output level with a live waveform; the other station hears each change.
+  • NEW: Map page: stations heard on the networks and stations online now, placed on a world map.
+  • NEW: Recordings page and "Record" button: the received audio is saved as WAV files in the recordings folder.
+  • NEW: EchoLink: sign in with your own EchoLink account, station list by country, who is connected, listen and talk.
+    It has been tested only against a simulated station: please try it with your account and tell us what you see.
+  • A mode can be switched on or off from its network tab (right click).
+  • One fixed control bar at the bottom of every page (Listen, Connect, Record, Hold PTT, Latch PTT, Stop all).
+  New in 2.3.3:
   • Listening shows the station that talks (callsign, name, country) in the tile and in a side panel; DTMF keypad; D-Star modules A-Z; one conversation with the owner.
   • The C4FM, P25, NXDN and M17 lists come from the HELLAS Zone server, which downloads them from the official RefCheck.Radio: the same names, addresses and ports for everybody.
   • The owner of the server can open or close modes (DMR, D-STAR, C4FM, NXDN, P25, M17, AllStar) for everyone or for selected

@@ -1,0 +1,32 @@
+DigiConnect 2.3.4 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+===========================================================================
+
+ΕΛΛΗΝΙΚΑ
+--------
+ΝΕΑ ΣΤΗΝ 2.3.4 — ΔΙΟΡΘΩΣΕΙΣ ΣΤΗΝ ΕΚΚΙΝΗΣΗ ΚΑΙ ΣΤΗΝ ΕΚΠΟΜΠΗ + ΜΙΚΡΟΦΩΝΟ, ΧΑΡΤΗΣ, ΗΧΟΓΡΑΦΗΣΕΙΣ, ECHOLINK
+• ΔΙΟΡΘΩΘΗΚΕ: σφάλμα στην εκκίνηση («dictionary update sequence element #0 has length 1») όταν είχε επιλεγεί μικρόφωνο. Η σελίδα Μικρόφωνο έγραφε τις ρυθμίσεις της στο κλειδί που κρατά το όνομα της συσκευής. Τώρα έχουν χωριστό κλειδί (mic_fx)· παλιές ρυθμίσεις μεταφέρονται αυτόματα.
+• ΔΙΟΡΘΩΘΗΚΕ: το δεύτερο πάτημα PTT έκλεινε τη μηχανή (βρέθηκε και επιβεβαιώθηκε σε macOS Intel με AddressSanitizer)· ο δείκτης της συσκευής καταγραφής διαγραφόταν από το Qt.
+• Νέα τεστ: κάθε σελίδα ανοίγει με ρυθμίσεις πραγματικού χρήστη· η σελίδα Μικρόφωνο δεν αγγίζει τα ονόματα συσκευών.
+• ΝΕΟ: Μικρόφωνο (ενίσχυση, μπάσα/μεσαία/πρίμα, φίλτρο υψηλών, noise gate, συμπιεστής, στάθμη εξόδου, limiter), Χάρτης, Ηχογραφήσεις και κουμπί Record, EchoLink (δοκιμασμένο μόνο με προσομοιωμένο σταθμό), ενεργοποίηση/απενεργοποίηση mode από την καρτέλα, σταθερή μπάρα ελέγχου.
+• Server: ανέβασε ΟΛΑ τα αρχεία του φακέλου digiconnect (νέο online.php για τη σελίδα Χάρτης).
+• Ο κώδικας της μηχανής άλλαξε: χρειάζεται ο πλήρης installer (η αυτόματη ενημέρωση δεν αντικαθιστά τη μηχανή).
+
+ENGLISH
+-------
+NEW IN 2.3.4 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHOLINK
+• FIXED: start-up error ("dictionary update sequence element #0 has length 1") when a microphone had been chosen. The Microphone page stored its values under the key that holds the device name. They now have their own key (mic_fx); old settings are moved automatically.
+• FIXED: the second press of PTT closed the engine (found and confirmed on macOS Intel with AddressSanitizer); the capture-device pointer was deleted by Qt.
+• New tests: every page opens with the settings of a real user; the Microphone page never touches the device names.
+• NEW: Microphone (gain, bass/mid/treble, high-pass, noise gate, compressor, output level, limiter), Map, Recordings and the Record button, EchoLink (tested only against a simulated station), switching a mode on or off from its tab, one fixed control bar.
+• Server: upload ALL files of the digiconnect folder (new online.php for the Map page).
+• The engine code changed: use the full installer (the automatic update cannot replace the engine).
+
+SVENSKA
+-------
+NYTT I 2.3.4 — RÄTTNINGAR VID START OCH SÄNDNING + MIKROFON, KARTA, INSPELNINGAR, ECHOLINK
+• RÄTTAT: startfel ("dictionary update sequence element #0 has length 1") när en mikrofon var vald. Mikrofonsidan sparade sina värden under nyckeln som håller enhetens namn. De har nu en egen nyckel (mic_fx); gamla inställningar flyttas automatiskt.
+• RÄTTAT: andra trycket på PTT stängde motorn (hittat och bekräftat på macOS Intel med AddressSanitizer); pekaren till inspelningsenheten raderades av Qt.
+• Nya tester: varje sida öppnas med en riktig användares inställningar; Mikrofonsidan rör aldrig enhetsnamnen.
+• NYTT: Mikrofon (förstärkning, bas/mellan/diskant, högpass, brusspärr, kompressor, utnivå, limiter), Karta, Inspelningar och Record-knappen, EchoLink (testad endast mot en simulerad station), att slå på/av ett läge från dess flik, ett fast kontrollfält.
+• Server: ladda upp ALLA filer i mappen digiconnect (ny online.php för kartsidan).
+• Motorkoden har ändrats: använd det fullständiga installationsprogrammet (automatisk uppdatering kan inte ersätta motorn).
