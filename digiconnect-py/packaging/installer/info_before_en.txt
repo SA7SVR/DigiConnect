@@ -1,4 +1,4 @@
-﻿DigiConnect 2.3.6 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.3.7 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,9 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.3.6)
+What is new in this version (2.3.7)
+  • NEW (server panel): automatic backup of the server database every hour (last 10 kept), with download and one-button restore.
+  New in 2.3.6:
   • FIXED: Listen / Connect / PTT are in the page of every network again, and the bar at the bottom stays.
   • FIXED: My favorites is not hidden by a country choice; D-Star reflectors such as XLXQRZ B find their address.
   • EchoLink: the station list is read the way SvxLink reads it.

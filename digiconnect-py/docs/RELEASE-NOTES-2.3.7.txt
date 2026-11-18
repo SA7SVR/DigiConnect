@@ -1,8 +1,12 @@
-DigiConnect 2.3.6 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+DigiConnect 2.3.7 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
 ===========================================================================
 
 ΕΛΛΗΝΙΚΑ
 --------
+ΝΕΑ ΣΤΗΝ 2.3.7 — ΑΝΤΙΓΡΑΦΑ ΑΣΦΑΛΕΙΑΣ ΤΗΣ ΒΑΣΗΣ ΤΟΥ SERVER
+• ΝΕΟ (πάνελ, σελίδα «Αντίγραφα βάσης»): αυτόματο αντίγραφο ολόκληρης της βάσης (εγκαταστάσεις, άδειες, κωδικοί, πληρωμές, μηνύματα, συνομιλίες, ρυθμίσεις) ΚΑΘΕ ΩΡΑ· κρατιούνται τα τελευταία 10 και το παλαιότερο αντικαθίσταται. Κουμπί «Δημιουργία αντιγράφου τώρα», «Λήψη» κάθε αντιγράφου, «Επαναφορά» με ένα κουμπί (κρατιέται πρώτα αντίγραφο της τρέχουσας κατάστασης, άρα η επαναφορά αναιρείται) και επαναφορά από αρχείο .sqlite του υπολογιστή σου. Προειδοποίηση στην Επισκόπηση όταν δεν υπάρχει πρόσφατο αντίγραφο.
+• Το πρόγραμμα DigiConnect δεν άλλαξε σε σχέση με την 2.3.6· η αλλαγή είναι στον server (ανέβασε ΟΛΑ τα αρχεία του φακέλου digiconnect).
+
 ΝΕΑ ΣΤΗΝ 2.3.6 — ΔΙΟΡΘΩΣΕΙΣ
 • ΔΙΟΡΘΩΘΗΚΕ: Listen / Connect (TX) / PTT ξανά και μέσα στη σελίδα κάθε δικτύου (τα είχα κρύψει όταν μπήκε η σταθερή μπάρα κάτω· η μπάρα κάτω μένει).
 • ΔΙΟΡΘΩΘΗΚΕ: My favorites με επιλεγμένη χώρα έδειχνε 0 — το φίλτρο χώρας ισχύει μόνο στον κατάλογο, όχι στα αγαπημένα.
@@ -22,6 +26,10 @@ DigiConnect 2.3.6 — Release notes / Σημειώσεις έκδοσης / Vers
 
 ENGLISH
 -------
+NEW IN 2.3.7 — BACKUPS OF THE SERVER DATABASE
+• NEW (panel, page "Database backups"): an automatic copy of the whole database (installations, licences, codes, payments, messages, chats, settings) EVERY HOUR; the last 10 are kept and the oldest is replaced. Button "Create a backup now", "Download" for every copy, one-button "Restore" (a copy of the current state is kept first, so a restore can be undone) and restore from a .sqlite file on your computer. A warning on the Overview when there is no recent copy.
+• The DigiConnect program itself is unchanged from 2.3.6; the change is on the server (upload ALL files of the digiconnect folder).
+
 NEW IN 2.3.6 — FIXES
 • FIXED: Listen / Connect (TX) / PTT are in the page of every network again (I had hidden them when the fixed bar at the bottom was added; the bar at the bottom stays).
 • FIXED: My favorites with a country chosen showed 0 — the country box filters the directory only, not the favorites.
@@ -41,6 +49,10 @@ NEW IN 2.3.5 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHO
 
 SVENSKA
 -------
+NYTT I 2.3.7 — SÄKERHETSKOPIOR AV SERVERNS DATABAS
+• NYTT (panelen, sidan ”Säkerhetskopior”): en automatisk kopia av hela databasen (installationer, licenser, koder, betalningar, meddelanden, chattar, inställningar) VARJE TIMME; de senaste 10 sparas och den äldsta ersätts. Knapp ”Skapa kopia nu”, ”Ladda ner” för varje kopia, ”Återställ” med en knapp (en kopia av nuläget sparas först, så en återställning kan ångras) och återställning från en .sqlite-fil på din dator. Varning på Översikten när det inte finns någon färsk kopia.
+• Själva DigiConnect-programmet är oförändrat sedan 2.3.6; ändringen finns på servern (ladda upp ALLA filer i mappen digiconnect).
+
 NYTT I 2.3.6 — RÄTTNINGAR
 • RÄTTAT: Listen / Connect (TX) / PTT finns på varje nätverkssida igen (jag hade gömt dem när det fasta fältet längst ned lades till; fältet längst ned finns kvar).
 • RÄTTAT: Mina favoriter med valt land visade 0 — landsfiltret gäller bara katalogen, inte favoriterna.

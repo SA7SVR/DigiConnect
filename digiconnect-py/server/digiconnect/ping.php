@@ -3,6 +3,7 @@
 // GET: id, v, os, arch, call, grid, eq, rx, tx, ptt  ->  {"ok":true}
 // Only updates the row of an installation that already exists or creates it as demo; stores no audio, no passwords.
 require __DIR__ . '/lib.php';
+dc_backup_tick();   // 2.3.7: the hourly copy of the database, made after this answer has been sent
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 

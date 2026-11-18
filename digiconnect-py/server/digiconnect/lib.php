@@ -2,7 +2,7 @@
 // DigiConnect server — shared library. Self-contained (own SQLite DB), so it never touches HAM Digi data.
 // (c) 2026 SA7SVR (Panagiotis Tsekouras).
 declare(strict_types=1);
-const DC_SERVER_VERSION = '2.3.6';   // server package number (panel footer); same number as the program in the package
+const DC_SERVER_VERSION = '2.3.7';   // server package number (panel footer); same number as the program in the package
 if (session_status() === PHP_SESSION_NONE) @session_start();
 
 function dc_cfg(): array {
@@ -104,6 +104,124 @@ function dc_dt($t): string { return $t ? gmdate('Y-m-d H:i', (int)$t) . ' UTC' :
 function dc_h($s): string { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 function dc_csrf(): string { if (empty($_SESSION['dc_csrf'])) $_SESSION['dc_csrf'] = bin2hex(random_bytes(16)); return $_SESSION['dc_csrf']; }
 function dc_csrf_ok(): bool { return isset($_POST['csrf']) && hash_equals($_SESSION['dc_csrf'] ?? '', $_POST['csrf']); }
+
+// ---------- backups of the database (2.3.7) ----------
+// A consistent copy of the whole database (installations, licences, codes, payments, messages, chats, settings) is made automatically every
+// DC_BACKUP_EVERY seconds by whichever request comes first (a program's heartbeat or the panel). The newest DC_BACKUP_KEEP_AUTO automatic copies are
+// kept and the oldest is replaced; copies made by hand or before a restore are kept separately. They live in data/backups/ (closed to the web) and
+// are listed in the panel, page "Backups", where every copy can be downloaded or restored. Pictures sent in the chats are files, not database: not part of it.
+const DC_BACKUP_EVERY = 3600;     // 1 hour
+const DC_BACKUP_KEEP_AUTO = 10;   // automatic copies kept
+const DC_BACKUP_KEEP_OTHER = 10;  // manual copies and copies made before a restore
+const DC_BACKUP_RE = '/^digiconnect-(\d{8})-(\d{6})-([a-z]+(?:-[a-z]+)*)-[a-f0-9]{12}\.sqlite$/';
+const DC_RESTORE_KEEP_KV = ['remember', 'backup_last', 'backup_last_file', 'backup_err', 'backup_claim'];   // the panel login and the backup bookkeeping stay as they are now
+function dc_backup_dir(): string {
+  $d = dirname(dc_cfg()['db']) . '/backups';
+  if (!is_dir($d)) @mkdir($d, 0775, true);
+  if (is_dir($d) && !is_file($d . '/.htaccess')) @file_put_contents($d . '/.htaccess', "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order deny,allow\n  Deny from all\n</IfModule>\n");
+  if (is_dir($d) && !is_file($d . '/index.html')) @file_put_contents($d . '/index.html', '');
+  return $d;
+}
+// newest first: [file, path, size, t (UTC seconds, from the name), why]
+function dc_backup_list(): array {
+  $o = [];
+  foreach ((array)glob(dc_backup_dir() . '/digiconnect-*.sqlite') as $f) {
+    if (!preg_match(DC_BACKUP_RE, basename($f), $m)) continue;
+    $d = $m[1]; $t = $m[2];
+    $o[] = ['file' => basename($f), 'path' => $f, 'size' => (int)@filesize($f), 'why' => $m[3],
+      't' => gmmktime((int)substr($t, 0, 2), (int)substr($t, 2, 2), (int)substr($t, 4, 2), (int)substr($d, 4, 2), (int)substr($d, 6, 2), (int)substr($d, 0, 4))];
+  }
+  usort($o, function ($a, $b) { return $b['t'] <=> $a['t'] ?: strcmp($b['file'], $a['file']); });
+  return $o;
+}
+// opens the copy on its own and checks that it is a healthy database that really holds the installations; returns their number
+function dc_backup_verify(string $file): int {
+  if (!is_file($file) || filesize($file) < 4096) throw new Exception('Το αντίγραφο είναι κενό / the copy is empty');
+  $b = new PDO('sqlite:' . $file); $b->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+  try {
+    $ok = (string)$b->query('PRAGMA quick_check')->fetchColumn();
+    $n = (int)$b->query('SELECT COUNT(*) FROM dc_installs')->fetchColumn();
+  } catch (Throwable $e) { $b = null; throw new Exception('Το αρχείο δεν είναι αντίγραφο του DigiConnect / the file is not a DigiConnect backup'); }
+  $b = null;
+  if ($ok !== 'ok') throw new Exception('Το αντίγραφο δεν πέρασε τον έλεγχο / the copy failed the integrity check: ' . substr($ok, 0, 80));
+  if ((int)dc_one('SELECT COUNT(*) c FROM dc_installs')['c'] > 0 && $n === 0) throw new Exception('Το αντίγραφο βγήκε χωρίς εγκαταστάσεις / the copy came out without installations');
+  return $n;
+}
+// makes one copy; returns its file name. $minGap: if a copy younger than that many seconds exists, it is reused
+function dc_backup_make(string $why = 'auto', int $minGap = 0): string {
+  $why = preg_replace('/[^a-z-]/', '', strtolower($why)); if ($why === '' || $why[0] === '-') $why = 'manual';
+  $dir = dc_backup_dir();
+  if (!is_dir($dir) || !is_writable($dir)) throw new Exception('Ο φάκελος data/backups δεν είναι εγγράψιμος / data/backups is not writable: ' . $dir);
+  if ($minGap > 0) { $l = dc_backup_list(); if ($l && time() - $l[0]['t'] < $minGap) return $l[0]['file']; }
+  $name = 'digiconnect-' . gmdate('Ymd-His') . '-' . $why . '-' . bin2hex(random_bytes(6)) . '.sqlite';
+  $tmp = $dir . '/.tmp-' . $name; $fin = $dir . '/' . $name;
+  @unlink($tmp);
+  $pdo = dc_db();
+  try { $pdo->exec("VACUUM INTO '" . str_replace("'", "''", $tmp) . "'"); }           // SQLite 3.27+: a consistent snapshot, safe while others write
+  catch (Throwable $e) {                                                                // older SQLite: fold the WAL into the file, then copy it
+    @unlink($tmp);
+    try { $pdo->exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch (Throwable $e2) { }
+    if (!@copy(dc_cfg()['db'], $tmp)) throw new Exception('Δεν έγινε το αντίγραφο / the copy could not be made: ' . $e->getMessage());
+  }
+  try { dc_backup_verify($tmp); } catch (Throwable $e) { @unlink($tmp); throw $e; }
+  if (!@rename($tmp, $fin)) { @unlink($tmp); throw new Exception('Δεν αποθηκεύτηκε το αντίγραφο / the copy could not be saved'); }
+  dc_kv_set('backup_last', time()); dc_kv_set('backup_last_file', $name); dc_kv_set('backup_err', '');
+  dc_backup_prune();
+  return $name;
+}
+// ---------- restoring a backup ----------
+// The live database is NOT replaced as a file (no file permissions, no open connections, no -wal/-shm files): every table is emptied and refilled
+// from the copy inside ONE transaction, so either everything is restored or nothing is. A copy of the current state is made first ("pre-restore" in
+// the list), so a restore can itself be undone. The panel login and the backup bookkeeping stay as they are now.
+function dc_backup_restore(string $path): array {
+  $n = dc_backup_verify($path);                                       // healthy, and not empty when the live database is not
+  $pre = dc_backup_make('pre-restore');                               // if this fails, nothing is restored
+  $pdo = dc_db(); $q = function ($id) { return '"' . str_replace('"', '""', $id) . '"'; };
+  $cols = function ($schema, $t) use ($pdo) { $o = []; foreach ($pdo->query('PRAGMA ' . $schema . '.table_info("' . str_replace('"', '""', $t) . '")')->fetchAll() as $c) $o[] = $c['name']; return $o; };
+  $tables = function ($schema) use ($pdo) { $o = []; foreach ($pdo->query("SELECT name FROM $schema.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")->fetchAll() as $r) $o[] = $r['name']; return $o; };
+  $pdo->exec("ATTACH DATABASE '" . str_replace("'", "''", $path) . "' AS bk");
+  try {
+    $live = $tables('main'); $bk = $tables('bk');
+    $keep = []; foreach (DC_RESTORE_KEEP_KV as $k) { $r = dc_one('SELECT v FROM main.dc_kv WHERE k=?', [$k]); if ($r) $keep[$k] = $r['v']; }
+    $pdo->exec('BEGIN IMMEDIATE');
+    foreach ($live as $t) {
+      $pdo->exec('DELETE FROM main.' . $q($t));                       // a table the copy does not have (made later): empty, as it was then
+      if (!in_array($t, $bk, true)) continue;
+      $common = array_values(array_intersect($cols('main', $t), $cols('bk', $t)));   // columns added after the copy was made get their default
+      if (!$common) continue;
+      $l = implode(',', array_map($q, $common));
+      $pdo->exec('INSERT INTO main.' . $q($t) . " ($l) SELECT $l FROM bk." . $q($t));
+    }
+    foreach ($keep as $k => $v) { $st = $pdo->prepare('INSERT OR REPLACE INTO main.dc_kv(k,v) VALUES(?,?)'); $st->execute([$k, $v]); }
+    $pdo->exec('COMMIT');
+  } catch (Throwable $e) {
+    try { $pdo->exec('ROLLBACK'); } catch (Throwable $e2) { }
+    try { $pdo->exec('DETACH DATABASE bk'); } catch (Throwable $e2) { }
+    throw $e;
+  }
+  try { $pdo->exec('DETACH DATABASE bk'); } catch (Throwable $e) { }
+  return ['pre' => $pre, 'installs' => (int)dc_one('SELECT COUNT(*) c FROM dc_installs')['c']];
+}
+function dc_backup_prune(): void {
+  $auto = 0; $other = 0;
+  foreach (dc_backup_list() as $b) { if ($b['why'] === 'auto' ? ++$auto > DC_BACKUP_KEEP_AUTO : ++$other > DC_BACKUP_KEEP_OTHER) @unlink($b['path']); }
+  foreach ((array)glob(dc_backup_dir() . '/.tmp-*') as $f) if (time() - (int)@filemtime($f) > 3600) @unlink($f);
+}
+// called by every heartbeat and every panel page: when the automatic copy is due, ONE request makes it AFTER its answer has been sent; never breaks the request
+function dc_backup_tick(): void {
+  static $done = false; if ($done) return; $done = true;
+  register_shutdown_function(function () {
+    try {
+      if (function_exists('fastcgi_finish_request')) @fastcgi_finish_request();
+      if (time() - (int)dc_kv('backup_last', 0) < DC_BACKUP_EVERY) return;
+      dc_q("INSERT OR IGNORE INTO dc_kv(k,v) VALUES('backup_claim','0')");
+      if (dc_q("UPDATE dc_kv SET v=? WHERE k='backup_claim' AND CAST(v AS INTEGER) < ?", [(string)time(), time() - 600])->rowCount() < 1) return;
+      dc_backup_make('auto');
+    } catch (Throwable $e) {
+      try { dc_kv_set('backup_err', gmdate('Y-m-d H:i') . ' UTC ' . substr($e->getMessage(), 0, 200)); } catch (Throwable $e2) { }
+    }
+  });
+}
 
 // active release for new update checks (honours rollout by a stable hash of the install id)
 function dc_active_release(?string $installId = null): ?array {

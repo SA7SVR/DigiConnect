@@ -384,6 +384,30 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     flash('ok', !empty($_POST['remove']) ? L('Οι επισκέψεις σου μετριούνται ξανά.', 'Your own visits are counted again.') : L('Οι δικές σου επισκέψεις από αυτή την IP δεν θα μετριούνται.', 'Your own visits from this IP are no longer counted.'));
   }
 
+  // ---- backups of the database (2.3.7) ----
+  if ($a === 'backup_now' || $a === 'backup_restore' || $a === 'backup_restore_upload') {
+    $_POST['p'] = 'backups';
+    try {
+      if ($a === 'backup_now') { $n = dc_backup_make('manual'); dc_event('backup', 'manual ' . $n); flash('ok', L('Δημιουργήθηκε αντίγραφο: ', 'Backup created: ') . $n); }
+      else {
+        if (($_POST['confirm'] ?? '') !== 'RESTORE') throw new Exception(L('Η επαναφορά δεν επιβεβαιώθηκε.', 'The restore was not confirmed.'));
+        if ($a === 'backup_restore') {
+          $f = basename((string)($_POST['file'] ?? '')); $fp = dc_backup_dir() . '/' . $f;
+          if (!preg_match(DC_BACKUP_RE, $f) || !is_file($fp)) throw new Exception(L('Δεν βρέθηκε το αντίγραφο.', 'The backup was not found.'));
+          $r = dc_backup_restore($fp); $src = $f;
+        } else {
+          if (empty($_FILES['bkfile']['name'])) throw new Exception(L('Διάλεξε το αρχείο αντιγράφου από τον υπολογιστή σου.', 'Choose the backup file from your computer.'));
+          if ($_FILES['bkfile']['error'] !== UPLOAD_ERR_OK) throw new Exception(L('Το ανέβασμα απέτυχε', 'Upload failed') . ' (code ' . (int)$_FILES['bkfile']['error'] . ' — ' . L('έλεγξε upload_max_filesize / post_max_size', 'check upload_max_filesize / post_max_size') . ')');
+          $fh = @fopen($_FILES['bkfile']['tmp_name'], 'rb'); $head = $fh ? (string)fread($fh, 16) : ''; if ($fh) fclose($fh);
+          if ($head !== "SQLite format 3\0") throw new Exception(L('Το αρχείο δεν είναι αντίγραφο της βάσης (SQLite).', 'The file is not a database backup (SQLite).'));
+          $r = dc_backup_restore($_FILES['bkfile']['tmp_name']); $src = 'uploaded ' . preg_replace('/[^A-Za-z0-9._-]/', '_', basename($_FILES['bkfile']['name']));
+        }
+        dc_event('restore', $src . ' → ' . $r['installs'] . ' installs · safety copy ' . $r['pre']);
+        flash('ok', L('Έγινε επαναφορά από το αντίγραφο:', 'Restored from the backup:') . ' ' . $src . ' · ' . $r['installs'] . ' ' . L('εγκαταστάσεις', 'installations') . ' · ' . L('Η προηγούμενη κατάσταση κρατήθηκε ως αντίγραφο:', 'The previous state was kept as the backup:') . ' ' . $r['pre']);
+      }
+    } catch (Throwable $e) { flash('bad', $e->getMessage()); }
+  }
+
   if (!$flash) $flash = ['ok', 'OK'];
   $_SESSION['dc_flash'] = $flash;
   header('Location: ?p=' . ($_POST['p'] ?? 'dashboard')); exit;
@@ -395,10 +419,18 @@ $p = $_GET['p'] ?? 'dashboard';
 $PAGES = ['dashboard' => L('Επισκόπηση','Overview','Översikt'), 'stats' => L('Στατιστικά','Statistics','Statistik'), 'releases' => L('Εκδόσεις','Releases','Versioner'),
   'installs' => L('Εγκαταστάσεις','Installations','Installationer'), 'demos' => L('Demo','Demo','Demo'), 'downloads' => L('Λήψεις / Εγγραφές','Downloads / Sign-ups','Nedladdningar'),
   'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'modes' => L('Modes / Πολιτικές','Modes / Policies','Lägen / Regler'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Ανακοινώσεις','Announcements','Meddelanden till alla'), 'inbox' => L('Αναφορές','Reports','Rapporter'), 'chat' => L('Συνομιλίες','Chats','Chattar'),
-  'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
+  'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'backups' => L('Αντίγραφα βάσης','Database backups','Säkerhetskopior'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
 if (!isset($PAGES[$p])) $p = 'dashboard';
 
 if (!$auth) { login_page($login_err ?? ''); exit; }
+if ($auth && $p === 'backups' && isset($_GET['dl'])) {
+  $f = basename((string)$_GET['dl']); $fp = dc_backup_dir() . '/' . $f;
+  if (!preg_match(DC_BACKUP_RE, $f) || !is_file($fp)) { http_response_code(404); header('Content-Type: text/plain; charset=utf-8'); exit('not found'); }
+  dc_event('backup_download', $f);
+  header('Content-Type: application/octet-stream'); header('Content-Length: ' . filesize($fp)); header('Content-Disposition: attachment; filename="' . $f . '"'); header('Cache-Control: no-store');
+  readfile($fp); exit;
+}
+if ($auth) dc_backup_tick();
 if ($auth && $p === 'stats' && ($_GET['export'] ?? '') === 'csv') {
   $R0 = (int)($_GET['r'] ?? 30); $R = in_array($R0, [1, 7, 30, 90, 365], true) ? $R0 : 30;
   header('Content-Type: text/csv; charset=utf-8'); header('Content-Disposition: attachment; filename="digiconnect-visits-' . gmdate('Ymd') . '.csv"');
@@ -434,6 +466,7 @@ $icons = [
  'chat' => 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12zM8 11h8M8 14h5',
  'demos' => 'M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
  'activity' => 'M3 12h4l3 7 4-14 3 7h4',
+ 'backups' => 'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
  'settings' => 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z'];
 $seenA = (int)dc_kv('alerts_seen', 0); $phA = implode(',', array_fill(0, count(DC_ALERTS), '?'));
 $BADGE = ['dashboard' => [(int)dc_one("SELECT COUNT(*) c FROM dc_events WHERE kind IN ($phA) AND t>?", array_merge(DC_ALERTS, [$seenA]))['c'], 'o'],
@@ -468,6 +501,7 @@ $SUB = ['stats' => L('Νέες εγκαταστάσεις και λήψεις α
   'inbox' => L('Αναφορές διαγνωστικών και μηνύματα από τη φόρμα του site· οι συζητήσεις με χρήστες είναι στις Συνομιλίες.','Diagnostics reports and messages from the website form; conversations with users are in Chats.'),
   'chat' => L('Ζωντανές συνομιλίες από τη σελίδα του DigiConnect.','Live chats from the DigiConnect website.'),
   'activity' => L('Όλα όσα έγιναν, με τη σειρά.','Everything that happened, in order.'),
+  'backups' => L('Αυτόματα αντίγραφα ολόκληρης της βάσης κάθε ώρα — λήψη και επαναφορά με ένα κουμπί.','Automatic copies of the whole database every hour — download and restore with one button.'),
   'settings' => L('Ενημερώσεις, έλεγχος άδειας και συντήρηση.','Updates, licence gate and maintenance.')];
 echo '<header class="ph"><div><h1>' . h($PAGES[$p]) . '</h1><p class="muted">' . h($SUB[$p] ?? '') . '</p></div><div class="strip">'
   . '<span class="st ' . ($paused ? 'bad' : ($act ? 'ok' : '')) . '"><i></i>' . ($paused ? L('σε παύση','paused') : ($act ? 'v' . h($act['version']) . ' ' . L('ενεργή','active') : L('καμία έκδοση','no release'))) . '</span>'
@@ -477,6 +511,8 @@ echo '<header class="ph"><div><h1>' . h($PAGES[$p]) . '</h1><p class="muted">' .
 
 /* ===================== DASHBOARD ===================== */
 if ($p === 'dashboard') {
+  $bkLast = (int)dc_kv('backup_last', 0); $bkErr = (string)dc_kv('backup_err', '');
+  if (!$bkLast || time() - $bkLast > 6 * 3600 || $bkErr !== '') echo '<section class="card" style="border-color:var(--bad,#d9534f)"><h2>⚠ ' . L('Αντίγραφο ασφαλείας της βάσης','Database backup') . '</h2><div>' . ($bkErr !== '' ? h($bkErr) . '<br>' : '') . L('Δεν υπάρχει πρόσφατο αντίγραφο (πάνω από 6 ώρες).','There is no recent backup (more than 6 hours).') . ' <a href="?p=backups">' . L('Αντίγραφα →','Backups →') . '</a></div></section>';
   $total = (int)dc_one('SELECT COUNT(*) c FROM dc_installs')['c'];
   $demo  = (int)dc_one("SELECT COUNT(*) c FROM dc_installs WHERE state='demo'")['c'];
   $full  = (int)dc_one("SELECT COUNT(*) c FROM dc_installs WHERE state='full'")['c'];
@@ -1353,6 +1389,37 @@ HTMLCHAT;
 }
 
 /* ===================== ACTIVITY ===================== */
+elseif ($p === 'backups') {
+  $list = dc_backup_list(); $last = (int)dc_kv('backup_last', 0); $err = (string)dc_kv('backup_err', ''); $liveN = (int)dc_one('SELECT COUNT(*) c FROM dc_installs')['c'];
+  $stale = !$last || time() - $last > 6 * 3600 || $err !== '';
+  $kp = function ($label, $val, $sub, $cls = '') { return "<div class='kpi $cls'><span>$label</span><b>$val</b><small>$sub</small></div>"; };
+  $bytes = function ($n) { return $n >= 1048576 ? round($n / 1048576, 1) . ' MB' : max(1, round($n / 1024)) . ' KB'; };
+  echo '<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">'
+    . $kp(L('Τελευταίο αντίγραφο','Last backup'), $last ? h(ago($last)) : '—', $last ? h(dc_dt($last)) : L('δεν έχει γίνει ακόμη','none yet'), $stale ? 'r' : 'g')
+    . $kp(L('Αντίγραφα που κρατιούνται','Backups kept'), count($list), L('αυτόματα κάθε ώρα, τα τελευταία ' . DC_BACKUP_KEEP_AUTO,'automatic every hour, the last ' . DC_BACKUP_KEEP_AUTO))
+    . $kp(L('Εγκαταστάσεις στη βάση','Installations in the database'), $liveN, L('αυτή τη στιγμή','right now')) . '</div>';
+  if ($err !== '') echo '<div class="flash bad">⚠ ' . L('Το τελευταίο αντίγραφο απέτυχε: ','The last backup failed: ') . h($err) . '</div>';
+  echo '<section class="card"><h2>' . L('Αντίγραφα ασφαλείας της βάσης','Database backups') . '</h2><p class="muted">'
+    . L('Κάθε αντίγραφο είναι ολόκληρη η βάση: εγκαταστάσεις, άδειες, κωδικοί, πληρωμές, μηνύματα, συνομιλίες, ρυθμίσεις (όχι οι φωτογραφίες των συνομιλιών). Γίνεται αυτόματα κάθε ώρα· κρατιούνται τα τελευταία ' . DC_BACKUP_KEEP_AUTO . ' και το παλαιότερο αντικαθίσταται — δηλαδή η ιστορία φτάνει περίπου ' . DC_BACKUP_KEEP_AUTO . ' ώρες πίσω. Κατέβασε κάθε τόσο ένα στον υπολογιστή σου.',
+        'Every backup is the whole database: installations, licences, codes, payments, messages, chats, settings (not the photos of the chats). It is made automatically every hour; the last ' . DC_BACKUP_KEEP_AUTO . ' are kept and the oldest is replaced — so the history goes back about ' . DC_BACKUP_KEEP_AUTO . ' hours. Download one to your computer from time to time.')
+    . '</p><form method="post" class="form">' . csrf() . '<input type="hidden" name="a" value="backup_now"><input type="hidden" name="p" value="backups"><button class="btn pri">' . L('Δημιουργία αντιγράφου τώρα','Create a backup now') . '</button></form></section>';
+  $why = ['auto' => L('αυτόματο','automatic'), 'manual' => L('χειροκίνητο','manual'), 'pre-restore' => L('πριν επαναφορά','before a restore')];
+  echo '<section class="card"><h2>' . L('Διαθέσιμα αντίγραφα','Available backups') . ' <small>(' . count($list) . ')</small></h2>';
+  if (!$list) echo '<div class="muted">' . L('Κανένα ακόμη — το πρώτο γίνεται με την επόμενη σύνδεση χρήστη ή πατώντας το κουμπί.','None yet — the first is made when the next user connects, or press the button.') . '</div>';
+  else {
+    echo '<div class="tw"><table class="tbl"><tr><th>' . L('Ημερομηνία','Date') . '</th><th>' . L('Είδος','Kind') . '</th><th>' . L('Μέγεθος','Size') . '</th><th>' . L('Αρχείο','File') . '</th><th></th><th></th></tr>';
+    foreach ($list as $b) echo '<tr><td>' . h(dc_dt($b['t'])) . '</td><td>' . h($why[$b['why']] ?? $b['why']) . '</td><td>' . h($bytes($b['size'])) . '</td><td class="mono"><small>' . h($b['file']) . '</small></td>'
+      . '<td><a class="btn sm" href="?p=backups&amp;dl=' . urlencode($b['file']) . '">' . L('Λήψη','Download') . '</a></td>'
+      . '<td><form method="post" class="form" onsubmit="return confirm(\'' . h(L('ΕΠΑΝΑΦΟΡΑ ολόκληρης της βάσης από αυτό το αντίγραφο; Ό,τι έγινε μετά από αυτό χάνεται. Πριν γίνει, κρατιέται αντίγραφο της τρέχουσας κατάστασης. Συνέχεια;','RESTORE the whole database from this backup? Everything that happened after it is lost. A copy of the current state is kept first. Continue?')) . '\')">'
+      . csrf() . '<input type="hidden" name="a" value="backup_restore"><input type="hidden" name="p" value="backups"><input type="hidden" name="confirm" value="RESTORE"><input type="hidden" name="file" value="' . h($b['file']) . '"><button class="btn sm">' . L('Επαναφορά','Restore') . '</button></form></td></tr>';
+    echo '</table></div>';
+  }
+  echo '</section>';
+  echo '<section class="card"><h2>' . L('Επαναφορά από αρχείο του υπολογιστή σου','Restore from a file on your computer') . '</h2><p class="muted">'
+    . L('Διάλεξε ένα αντίγραφο που είχες κατεβάσει (.sqlite). Η τρέχουσα βάση κρατιέται πρώτα ως αντίγραφο «πριν επαναφορά» και ο κωδικός του πάνελ μένει ο ίδιος.','Choose a backup you downloaded earlier (.sqlite). The current database is first kept as a "before a restore" backup and the panel login stays as it is.')
+    . '</p><form method="post" class="form" enctype="multipart/form-data" onsubmit="return confirm(\'' . h(L('ΕΠΑΝΑΦΟΡΑ ολόκληρης της βάσης από το αρχείο που διάλεξες; Ό,τι έγινε μετά από αυτό το αντίγραφο χάνεται (κρατιέται αντίγραφο της τρέχουσας κατάστασης).','RESTORE the whole database from the file you chose? Everything that happened after that backup is lost (a copy of the current state is kept).')) . '\')">'
+    . csrf() . '<input type="hidden" name="a" value="backup_restore_upload"><input type="hidden" name="p" value="backups"><input type="hidden" name="confirm" value="RESTORE"><input type="file" name="bkfile" accept=".sqlite,.db" required> <button class="btn">' . L('Επαναφορά από αυτό το αρχείο','Restore from this file') . '</button></form></section>';
+}
 elseif ($p === 'activity') {
   $ev = dc_q("SELECT * FROM dc_events ORDER BY t DESC LIMIT 300")->fetchAll();
   echo '<section class="card"><h2>' . L('Δραστηριότητα','Activity') . ' <small>(' . count($ev) . ')</small></h2>' . activity_rows($ev) . '</section>';

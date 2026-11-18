@@ -2,6 +2,7 @@
 // DigiConnect — update manifest + install ping. The shell calls this on its check interval.
 // GET/POST: id, v (version), os, arch, shell  ->  JSON {state, update, version, pkg, sha256, size, checkEvery, notes}
 require __DIR__ . '/lib.php';
+dc_backup_tick();   // 2.3.7: the hourly copy of the database, made after this answer has been sent
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
