@@ -61,6 +61,16 @@ jobs:
           Write-Host "Installer version $ver"
           & $iscc "/DAppVer=$ver" packaging\DigiConnect.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)" }
+      - name: Test the INSTALLED program (runs Setup.exe silently into C:\Program Files\DigiConnect like on a user's computer, then starts the installed program)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "installer_out\DigiConnect-Setup.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Setup.exe exit code $($p.ExitCode)" }
+          $exe = "C:\Program Files\DigiConnect\DigiConnect.exe"
+          if (!(Test-Path $exe)) { throw "installed program not found: $exe" }
+          if (!(Test-Path "C:\Program Files\DigiConnect\_internal\app\data\world110.json")) { throw "world110.json is not in the installed program" }
+          bash tools/selftest_built.sh "/c/Program Files/DigiConnect/DigiConnect.exe"
+          if ($LASTEXITCODE -ne 0) { throw "installed program self-test failed" }
       - uses: actions/upload-artifact@v4
         with: { name: DigiConnect-Windows-Setup, path: digiconnect-py/installer_out/DigiConnect-Setup.exe }
       - uses: actions/upload-artifact@v4
