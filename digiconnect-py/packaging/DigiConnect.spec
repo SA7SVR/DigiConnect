@@ -3,7 +3,7 @@ import os, sys
 ICON = os.path.abspath(os.path.join(SPECPATH, '..', 'assets', 'DigiConnect.ico'))      # absolute: independent of the folder PyInstaller is started from
 assert os.path.isfile(ICON), ICON
 block_cipher = None
-a = Analysis(['../run.py'], pathex=['..'], datas=[('../assets', 'assets'), ('../LICENSES', 'LICENSES')],
+a = Analysis(['../run.py'], pathex=['..'], datas=[('../assets', 'assets'), ('../LICENSES', 'LICENSES'), ('../app/data', 'app/data')],
              hiddenimports=['sounddevice', 'numpy', 'certifi', 'bootstrap', 'xml.etree.ElementTree', 'sqlite3', 'csv', 'zipfile', 'gzip', 'base64', 'hashlib', 'ssl', 'http.server', 'http.client', 'email', 'html', 'difflib', 'decimal', 'statistics', 'zoneinfo', 'uuid', 'platform', 'shutil', 'tempfile', 'struct', 'math', 'random', 'secrets', 'textwrap', 'unicodedata', 'ipaddress', 'socket', 'collections', 'itertools', 'functools', 'dataclasses', 'enum', 'typing'], excludes=['PyQt6', 'tkinter'])
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='DigiConnect', console=False, icon=ICON if sys.platform == 'win32' else None)

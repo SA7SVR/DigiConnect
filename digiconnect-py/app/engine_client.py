@@ -17,7 +17,7 @@ def find_engine() -> str | None:
     if os.environ.get("DC_ENGINE"): cands.append(Path(os.environ["DC_ENGINE"]))
     base = Path(getattr(sys, "_MEIPASS", "")) if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
     exed = Path(sys.executable).parent
-    for d in (base, base / "engine", base / "bin", exed, exed / "engine", exed.parent / "Resources", exed.parent / "Resources" / "engine"):
+    for d in (base, base / "engine", base / "engine" / "bin", base / "bin", exed, exed / "engine", exed / "engine" / "bin", exed.parent / "Resources", exed.parent / "Resources" / "engine"):   # Linux package: engine/bin/dcengine
         cands.append(d / exe)
         cands.append(d / "dcengine.app" / "Contents" / "MacOS" / "dcengine")   # macOS bundle
     for c in cands:

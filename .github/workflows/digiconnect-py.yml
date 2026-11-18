@@ -49,6 +49,9 @@ jobs:
           echo "pytest finished OK"; which python || echo "python NOT on PATH"
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
+      - name: Test the BUILT program (starts it with an empty profile, opens every page, finds the engine)
+        shell: bash
+        run: bash tools/selftest_built.sh "$PWD/dist/DigiConnect/DigiConnect.exe"
       - name: Installer
         shell: pwsh
         run: |
@@ -105,6 +108,10 @@ jobs:
           tar -C dist -czf DigiConnect-Linux-x86_64.tar.gz DigiConnect
           VER=$(python -c "import re;print(re.search(r'\"([0-9.]+)\"', open('app/version.py').read()).group(1))")
           python tools/build_dcpkg.py "$VER" --out update_pkg
+      - name: Test the BUILT program (starts it with an empty profile, opens every page, finds the engine)
+        run: |
+          unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR
+          bash tools/selftest_built.sh "$PWD/dist/DigiConnect/DigiConnect"
       - uses: actions/upload-artifact@v4
         with: { name: DigiConnect-Linux, path: digiconnect-py/DigiConnect-Linux-x86_64.tar.gz }
       - uses: actions/upload-artifact@v4
@@ -177,6 +184,10 @@ jobs:
           codesign --force --deep --sign - dist/DigiConnect.app || true
           lipo -archs dist/DigiConnect.app/Contents/MacOS/DigiConnect || file dist/DigiConnect.app/Contents/MacOS/*
           hdiutil create -volname DigiConnect -srcfolder dist/DigiConnect.app -ov -format UDZO DigiConnect-macOS-${{ matrix.arch }}.dmg
+      - name: Test the BUILT program (starts it with an empty profile, opens every page, finds the engine)
+        run: |
+          unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR
+          bash tools/selftest_built.sh "$PWD/dist/DigiConnect.app/Contents/MacOS/DigiConnect"
       - uses: actions/upload-artifact@v4
         with: { name: "DigiConnect-macOS-${{ matrix.arch }}", path: "digiconnect-py/DigiConnect-macOS-${{ matrix.arch }}.dmg" }
 
