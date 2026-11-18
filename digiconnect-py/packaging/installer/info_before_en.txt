@@ -1,4 +1,4 @@
-﻿DigiConnect 2.3.8 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.3.9 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,9 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.3.8)
+What is new in this version (2.3.9)
+  • FIXED: C4FM/YSF — listening on a reflector that is linked to another network (e.g. YSF00006): a transmission is no longer cut into pieces when its packets arrive unevenly (the program declared the signal lost after 0.4 s without a packet; it now waits 1.5 s), and the next transmission is heard normally. The engine changed: use the full installer.
+  New in 2.3.8:
   • FIXED: the Map page: it zooms (wheel, + / − buttons, double-click) and moves (drag); one circle per country with the number of stations, hover shows who, click lists them; a station with a grid square is a dot with its call sign; United States, Türkiye and ~100 more countries and islands were not drawn at all and are now.
   • FIXED: the Last heard column on the NXDN page says "NXDN ID" (it said "DMR ID").
   • FIXED: the DTMF keypad can be dragged anywhere in the window.

@@ -1,8 +1,13 @@
-DigiConnect 2.3.8 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+DigiConnect 2.3.9 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
 ===========================================================================
 
 ΕΛΛΗΝΙΚΑ
 --------
+ΝΕΑ ΣΤΗΝ 2.3.9 — ΑΚΡΟΑΣΗ C4FM/YSF ΣΕ REFLECTOR ΜΕ ΓΕΦΥΡΑ (π.χ. YSF00006)
+• ΔΙΟΡΘΩΘΗΚΕ: στον YSF00006 (και σε άλλους reflectors που είναι δεμένοι με άλλο δίκτυο, π.χ. DMR) ο ήχος κοβόταν μετά από λίγα δευτερόλεπτα και η επόμενη εκπομπή δεν ακουγόταν. Αιτία (από το αρχείο διαγνωστικών): η εκπομπή έρχεται από τη γέφυρα με παύσεις στα πακέτα· το πρόγραμμα έκρινε «χάθηκε το σήμα» μόλις περνούσαν ~0,4 δευτ. χωρίς πακέτο και έκοβε την εκπομπή σε κομμάτια των 10–55 πλαισίων. Τώρα το όριο είναι 1,5 δευτ. πραγματικού χρόνου· μια παύση στη μέση της ομιλίας δεν κόβει πια την εκπομπή, και αν δεν έρθει ποτέ τερματικό πλαίσιο η εκπομπή κλείνει μετά από 1,5 δευτ.
+• Νέο τεστ: tests/test_engine_stall.py (engine/tests/check_ysf_stall.py): εκπομπή με παύση 0,6 / 0,9 / 1,2 δευτ. παίζει ως ΜΙΑ ολόκληρη εκπομπή και η δεύτερη εκπομπή ακούγεται. Πριν τη διόρθωση η ίδια εκπομπή έσπαγε σε 2 κομμάτια.
+• Αλλαγή στη μηχανή: χρειάζεται ο πλήρης installer (η αυτόματη ενημέρωση δεν αντικαθιστά τη μηχανή). Ο server δεν άλλαξε σε σχέση με την 2.3.7.
+
 ΝΕΑ ΣΤΗΝ 2.3.8 — ΔΙΟΡΘΩΣΗ ΤΗΣ ΣΕΛΙΔΑΣ ΧΑΡΤΗΣ
 • ΔΙΟΡΘΩΘΗΚΕ: ο Χάρτης ήταν ακίνητος, χωρίς zoom, και δεν φαινόταν ποιος είναι ποιος. Τώρα: zoom με το ροδάκι, με τα κουμπιά + / − (⟲ = όλος ο κόσμος) και με διπλό κλικ· μετακίνηση με σύρσιμο.
 • Ένας κύκλος ανά χώρα με τον αριθμό των σταθμών της (όχι πια ένα σημείο ανά σταθμό σε σπείρα). Το ποντίκι πάνω σε κύκλο δείχνει χώρα, δίκτυα και διακριτικά· κλικ διαλέγει τη χώρα (zoom + φίλτρο του πίνακα). Νέα λίστα «Χώρα» πάνω από τον χάρτη (π.χ. «Sweden (14)»). Κλικ σε γραμμή του πίνακα διαλέγει τη χώρα της.
@@ -36,6 +41,11 @@ DigiConnect 2.3.8 — Release notes / Σημειώσεις έκδοσης / Vers
 
 ENGLISH
 -------
+NEW IN 2.3.9 — C4FM/YSF LISTENING ON A BRIDGED REFLECTOR (e.g. YSF00006)
+• FIXED: on YSF00006 (and other reflectors linked to another network, e.g. DMR) the sound stopped after a few seconds and the next transmission was not heard. Cause (from the diagnostics file): the bridge delivers the transmission with pauses between packets; the program declared "signal lost" as soon as ~0.4 s passed without a packet and cut the transmission into pieces of 10–55 frames. The limit is now 1.5 s of real time; a pause in the middle of speech no longer cuts the transmission, and if no end frame ever arrives the transmission is closed after 1.5 s.
+• New test: tests/test_engine_stall.py (engine/tests/check_ysf_stall.py): a transmission with a 0.6 / 0.9 / 1.2 s pause is played as ONE whole transmission and the second transmission is heard. Before the fix the same transmission broke into 2 pieces.
+• The engine changed: use the full installer (the automatic update cannot replace the engine). The server is unchanged from 2.3.7.
+
 NEW IN 2.3.8 — FIX OF THE MAP PAGE
 • FIXED: the Map was static, could not zoom, and you could not tell who was who. Now: zoom with the wheel, the + / − buttons (⟲ = the whole world) and double-click; move by dragging.
 • One circle per country with its number of stations (no more one point per station in a spiral). Hover a circle for country, networks and call signs; a click chooses the country (zoom + filter of the table). A new "Country" box above the map (e.g. "Sweden (14)"). A click on a table row chooses its country.
@@ -69,6 +79,11 @@ NEW IN 2.3.5 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHO
 
 SVENSKA
 -------
+NYTT I 2.3.9 — C4FM/YSF-LYSSNING PÅ EN BRYGGAD REFLEKTOR (t.ex. YSF00006)
+• FIXAT: på YSF00006 (och andra reflektorer som är länkade till ett annat nät, t.ex. DMR) tystnade ljudet efter några sekunder och nästa sändning hördes inte. Orsak (från diagnostikfilen): bryggan levererar sändningen med pauser mellan paketen; programmet förklarade "signal förlorad" så fort ~0,4 s gått utan paket och skar sändningen i bitar om 10–55 ramar. Gränsen är nu 1,5 s verklig tid; en paus mitt i talet klipper inte längre sändningen, och om ingen slutram kommer stängs sändningen efter 1,5 s.
+• Nytt test: tests/test_engine_stall.py (engine/tests/check_ysf_stall.py): en sändning med 0,6 / 0,9 / 1,2 s paus spelas som EN hel sändning och den andra sändningen hörs. Före rättningen delades samma sändning i 2 bitar.
+• Motorn har ändrats: använd hela installationsprogrammet (den automatiska uppdateringen kan inte ersätta motorn). Servern är oförändrad från 2.3.7.
+
 NYTT I 2.3.8 — KARTSIDAN ÄR FIXAD
 • FIXAT: kartan stod stilla, gick inte att zooma och man såg inte vem som var vem. Nu: zooma med mushjulet, med knapparna + / − (⟲ = hela världen) och med dubbelklick; flytta genom att dra.
 • En cirkel per land med antalet stationer (inte längre en punkt per station i en spiral). Håll muspekaren över en cirkel för land, nät och anropssignaler; ett klick väljer landet (zoom + filter av tabellen). Ny ruta "Land" ovanför kartan (t.ex. "Sweden (14)"). Klick på en tabellrad väljer dess land.

@@ -219,6 +219,7 @@ void YSF::process_udp()
 
 	if(p_data != nullptr){
 		m_rxwatchdog = 0;
+		m_rx_pkt.restart();
 		CYSFFICH fich;
 		if(fich.decode(p_data)){
 			m_fi = fich.getFI();
@@ -1383,7 +1384,7 @@ void YSF::process_rx_data()
 	uint8_t imbe[11];
 	static uint8_t cnt = 0;
 
-	if(m_rxwatchdog++ > 20){
+	if(m_rx_pkt.isValid() && m_rx_pkt.elapsed() > YSF_RX_TIMEOUT_MS && m_modeinfo.stream_state != STREAM_LOST && m_modeinfo.stream_state != STREAM_END){
 		qDebug() << "YSF RX stream timeout ";
 		m_modeinfo.stream_state = STREAM_LOST;
 		m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
@@ -1466,6 +1467,7 @@ void YSF::process_rx_data()
 		m_rxtimer->stop();
 		m_audio->stop_playback();
 		m_rxwatchdog = 0;
+		m_rx_pkt.invalidate();
 		m_modeinfo.streamid = 0;
 		m_rxcodecq.clear();
 		m_rximbecodecq.clear();

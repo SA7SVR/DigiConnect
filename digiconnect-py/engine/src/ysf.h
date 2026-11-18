@@ -31,6 +31,7 @@ const uint8_t YSF_SYNC_OK = 0x01U;
 
 const uint32_t  YSF_CALLSIGN_LENGTH   = 10U;
 
+const int YSF_RX_TIMEOUT_MS = 1500;       // stream is declared lost only after 1.5 s without any packet (a DMR-bridged reflector delivers in uneven bursts; 420 ms cut such streams into pieces)
 const int YSF_RX_PRIME_FRAMES = 15;      // jitter buffer: 15 frames = 300 ms of speech collected before playing (a packet may then be up to ~200 ms late without a gap)
 
 const uint8_t YSF_FI_HEADER         = 0x00U;
@@ -112,6 +113,7 @@ private:
 	uint32_t m_rx_played = 0, m_rx_gaps = 0;      // statistics of the current received stream (diagnostics)
 	bool m_rx_wasplaying = false;
 	bool m_rx_primed = false;                     // jitter buffer filled, playout running
+	QElapsedTimer m_rx_pkt;                       // time since the last received voice packet (stream watchdog)
 	QElapsedTimer m_playclock; int64_t m_rx_due = 0;   // playout clock: one frame per 20 ms
 };
 
