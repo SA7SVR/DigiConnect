@@ -14,6 +14,8 @@ class DtmfPad(W.QFrame):
 
     def __init__(self, ctx, parent=None):
         super().__init__(parent); self.setObjectName("dtmfpad"); self.ctx = ctx; self.seq = ""; self.setFixedWidth(250)
+        self.moved = False; self._grab = None                  # moved: the user put the keypad somewhere; it stays there when it is opened again
+        self.setCursor(Qt.CursorShape.SizeAllCursor); self.setToolTip("Drag to move")
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setStyleSheet(f"QFrame#dtmfpad{{background:{C['panel']};border:1px solid {C['green']};border-radius:16px;}}")
         v = vbox(self, m=(12, 10, 12, 10), s=6)
@@ -74,5 +76,30 @@ class DtmfPad(W.QFrame):
         elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter): self._send()
         elif e.key() == Qt.Key.Key_Escape: self.close_pad()
         else: super().keyPressEvent(e)
+
+    # ---- the keypad can be dragged anywhere in the window: press on the frame, the title or any empty place and move (the keys keep their own click) ----
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._grab = self._in_window(e) - self.pos(); e.accept()
+        else: super().mousePressEvent(e)
+
+    def mouseMoveEvent(self, e):
+        if self._grab is not None and (e.buttons() & Qt.MouseButton.LeftButton):
+            self.place(self._in_window(e) - self._grab); self.moved = True; e.accept()
+        else: super().mouseMoveEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        self._grab = None; super().mouseReleaseEvent(e)
+
+    def _in_window(self, e):
+        """The mouse position in the coordinates of the window the keypad sits in."""
+        g = e.globalPosition().toPoint(); par = self.parentWidget()
+        return par.mapFromGlobal(g) if par is not None else g
+
+    def place(self, p):
+        """Move the keypad to p (top-left, in the window), never outside the window."""
+        par = self.parentWidget()
+        if par is not None: p = QtCore.QPoint(max(0, min(p.x(), par.width() - self.width())), max(0, min(p.y(), par.height() - self.height())))
+        self.move(p)
 
     def close_pad(self): self.hide(); self.closed.emit()

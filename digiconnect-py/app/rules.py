@@ -217,6 +217,12 @@ class SessionRules:
 
 
 # ---- validators -----------------------------------------------------------
+def id_label(net: str) -> str:
+    """Name of the number a network sends for the station that is talking: a DMR ID, an NXDN ID; P25 sends a 24-bit radio (source) number, which is simply
+    called Radio ID (as in Settings). The other networks send call signs, not numbers."""
+    return {"DMR": "DMR ID", "NXDN": "NXDN ID", "P25": "Radio ID"}.get(net, "ID")
+
+
 def valid_dmr_tg(s: str) -> bool:
     return s.isascii() and s.isdigit() and 1 <= int(s) <= 16777215 and len(s) <= 8
 

@@ -8,6 +8,8 @@ What it is
 
 What is new in this version (2.3.8)
   • FIXED: the Map page: it zooms (wheel, + / − buttons, double-click) and moves (drag); one circle per country with the number of stations, hover shows who, click lists them; a station with a grid square is a dot with its call sign; United States, Türkiye and ~100 more countries and islands were not drawn at all and are now.
+  • FIXED: the Last heard column on the NXDN page says "NXDN ID" (it said "DMR ID").
+  • FIXED: the DTMF keypad can be dragged anywhere in the window.
   • NEW (server panel): automatic backup of the server database every hour (last 10 kept), with download and one-button restore.
   New in 2.3.6:
   • FIXED: Listen / Connect / PTT are in the page of every network again, and the bar at the bottom stays.

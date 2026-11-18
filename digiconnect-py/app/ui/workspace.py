@@ -1,6 +1,6 @@
 """Radio workspace page for one network: directory | selected station | last heard."""
 from ..qt import QtWidgets as W, QtCore, Qt
-from ..rules import Target, valid_dmr_tg
+from ..rules import Target, valid_dmr_tg, id_label
 from .. import i18n
 from ..i18n import tr
 from ..theme import NET_COLOR, C
@@ -128,7 +128,7 @@ class Workspace(W.QWidget):
         rv.addWidget(self.now_box); rv.addSpacing(6)
         # last heard: its own table, so the talk time is not folded under the callsign
         rv.addWidget(label("LAST HEARD", section=True))
-        self.lh_tbl = W.QTableWidget(0, 5); self.lh_tbl.setHorizontalHeaderLabels([tr(c) for c in ("Callsign", "DMR ID", "Country", "UTC", "Talk")])
+        self.lh_tbl = W.QTableWidget(0, 5); self.lh_tbl.setHorizontalHeaderLabels([tr(c) for c in ("Callsign", id_label(net), "Country", "UTC", "Talk")])
         self.lh_tbl.setEditTriggers(W.QAbstractItemView.EditTrigger.NoEditTriggers); self.lh_tbl.verticalHeader().setVisible(False)
         self.lh_tbl.setSelectionBehavior(W.QAbstractItemView.SelectionBehavior.SelectRows); self.lh_tbl.setMinimumHeight(160)
         rv.addWidget(self.lh_tbl, 1)
@@ -391,7 +391,7 @@ class Workspace(W.QWidget):
         if live:
             v = live[0]; info = self.ctx.station_info(v.get("srcid") or 0) or {}
             self.now_call.setText(v.get("src") or "?")
-            bits = [f"DMR ID {v['srcid']}"] if v.get("srcid") else []
+            bits = [f"{tr(id_label(self.net))} {v['srcid']}"] if v.get("srcid") else []
             site = ", ".join(x for x in (info.get("name"), info.get("city"), info.get("country")) if x)
             if site: bits.append(site)
             self.now_info.setText(" · ".join(bits)); self.now_bar.setVisible(True)

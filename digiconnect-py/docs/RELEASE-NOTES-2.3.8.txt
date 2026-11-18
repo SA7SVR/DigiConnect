@@ -9,6 +9,8 @@ DigiConnect 2.3.8 — Release notes / Σημειώσεις έκδοσης / Vers
 • Σταθμός με γνωστό τετράγωνο (grid) από τον server είναι τελεία στη θέση του με το διακριτικό του. Υπόμνημα δικτύων με αριθμούς κάτω από τον χάρτη.
 • ΔΙΟΡΘΩΘΗΚΕ: οι ΗΠΑ, η Τουρκία και περίπου 100 ακόμη χώρες και νησιά (Σιγκαπούρη, Μάλτα, Μονακό …) δεν ζωγραφίζονταν καθόλου επειδή το όνομά τους δεν ταίριαζε με το περίγραμμα. Μόνο το «European Union» δεν έχει θέση και μετριέται ως «εκτός χάρτη».
 • Ελληνικά για όλα τα κείμενα της σελίδας. Νέα τεστ (tests/test_map.py).
+• ΔΙΟΡΘΩΘΗΚΕ: στη σελίδα NXDN η στήλη του Last heard έγραφε «DMR ID» ενώ το νούμερο είναι NXDN ID· τώρα γράφει «NXDN ID» (στο P25 «Radio ID», στο DMR «DMR ID», στα δίκτυα που στέλνουν διακριτικό απλώς «ID»). Το ίδιο στο «NOW TALKING» και στην κάρτα του σταθμού. Τεστ: tests/test_id_labels.py.
+• ΔΙΟΡΘΩΘΗΚΕ: το πληκτρολόγιο DTMF έμενε καρφωμένο· τώρα σέρνεται όπου θέλεις μέσα στο παράθυρο (πιάνεις τον τίτλο ή οποιοδήποτε κενό σημείο, δεν βγαίνει έξω από το παράθυρο) και ανοίγει ξανά εκεί που το άφησες. Τεστ: tests/test_dtmf_move.py.
 • Αλλαγή στο πρόγραμμα: αρκεί η αυτόματη ενημέρωση ή ο installer. Ο server δεν άλλαξε σε σχέση με την 2.3.7.
 
 ΝΕΑ ΣΤΗΝ 2.3.7 — ΑΝΤΙΓΡΑΦΑ ΑΣΦΑΛΕΙΑΣ ΤΗΣ ΒΑΣΗΣ ΤΟΥ SERVER
@@ -40,6 +42,8 @@ NEW IN 2.3.8 — FIX OF THE MAP PAGE
 • A station with a known grid square from the server is a dot at its place with its call sign. Legend with numbers per network under the map.
 • FIXED: the United States, Türkiye and about 100 more countries and islands (Singapore, Malta, Monaco …) were not drawn at all because their name did not match the outline. Only "European Union" has no place and is counted as "not on the map".
 • Greek for all texts of the page. New tests (tests/test_map.py).
+• FIXED: on the NXDN page the Last heard column said "DMR ID" though the number is an NXDN ID; it now says "NXDN ID" (P25: "Radio ID", DMR: "DMR ID", networks that send a call sign: just "ID"). Same in NOW TALKING and the station card. Tests: tests/test_id_labels.py.
+• FIXED: the DTMF keypad was stuck where it opened; it can now be dragged anywhere in the window (grab the title or any empty place; it never leaves the window) and opens again where you left it. Tests: tests/test_dtmf_move.py.
 • Change in the program: the automatic update or the installer is enough. The server is unchanged from 2.3.7.
 
 NEW IN 2.3.7 — BACKUPS OF THE SERVER DATABASE
@@ -71,6 +75,8 @@ NYTT I 2.3.8 — KARTSIDAN ÄR FIXAD
 • En station med känd rutkoordinat (grid) från servern är en prick på sin plats med anropssignalen. Teckenförklaring med antal per nät under kartan.
 • FIXAT: USA, Türkiye och ungefär 100 länder och öar till (Singapore, Malta, Monaco …) ritades inte alls eftersom namnet inte stämde med konturen. Bara "European Union" saknar plats och räknas som "inte på kartan".
 • Grekiska för alla sidans texter. Nya tester (tests/test_map.py).
+• FIXAT: på NXDN-sidan stod "DMR ID" i kolumnen Last heard fast numret är ett NXDN-ID; nu står "NXDN ID" (P25: "Radio ID", DMR: "DMR ID", nät som skickar anropssignal: bara "ID"). Samma i NOW TALKING och stationskortet. Tester: tests/test_id_labels.py.
+• FIXAT: DTMF-knappsatsen satt fast där den öppnades; nu kan den dras var som helst i fönstret (ta tag i titeln eller en tom plats; den lämnar aldrig fönstret) och öppnas igen där du lämnade den. Tester: tests/test_dtmf_move.py.
 • Ändring i programmet: den automatiska uppdateringen eller installationsprogrammet räcker. Servern är oförändrad från 2.3.7.
 
 NYTT I 2.3.7 — SÄKERHETSKOPIOR AV SERVERNS DATABAS

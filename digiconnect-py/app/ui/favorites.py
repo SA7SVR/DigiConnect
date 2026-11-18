@@ -1,6 +1,6 @@
 """My favorites: card grid with filters, listening mode, display options, DTMF, colour legend."""
 from ..qt import QtWidgets as W, QtCore, Qt, Signal
-from ..rules import Target, ListenMode, CardState, valid_favorite_name, valid_dtmf
+from ..rules import Target, ListenMode, CardState, valid_favorite_name, valid_dtmf, id_label
 from ..theme import NET_COLOR, C
 from ..i18n import tr
 from .widgets import *
@@ -106,7 +106,7 @@ class StationPanel(W.QFrame):
             rows.append((tr("You"), f"{me or '—'} · " + (tr("listening and transmitting") if tx else tr("listening"))))
             calls = self.ctx.el_nodes.get(t.id.upper(), {}).get("calls", [])
             if calls: self.also.setText(tr("Also connected here") + f" ({len(calls)}): <b>" + ", ".join(calls[:6]) + "</b>" + (f" … +{len(calls) - 6}" if len(calls) > 6 else ""))
-        if st.get("srcid"): rows.append((tr("DMR ID") if t.net == "DMR" else "ID", str(st["srcid"])))
+        if st.get("srcid"): rows.append((tr(id_label(t.net)), str(st["srcid"])))
         if st.get("country"): rows.append((tr("Country"), st["country"]))
         place = ", ".join(x for x in (st.get("city"), st.get("state")) if x)
         if place: rows.append((tr("City"), place))
@@ -192,7 +192,9 @@ class Favorites(W.QWidget):
         self.dtmf.setChecked(True); self.pad.refresh(); self.pad.adjustSize()
         top = self.window(); pos = self.dtmf.mapTo(top, QtCore.QPoint(0, self.dtmf.height() + 6))      # over the whole window, so it is never cut off by the page
         self.pad.setParent(top); self.pad.adjustSize()
-        self.pad.move(max(0, min(pos.x() - 40, top.width() - self.pad.width() - 8)), max(0, min(pos.y(), top.height() - self.pad.height() - 8))); self.pad.show(); self.pad.raise_(); self.pad.setFocus()
+        if self.pad.moved: self.pad.place(self.pad.pos())                     # the user has put it somewhere: it opens there again
+        else: self.pad.move(max(0, min(pos.x() - 40, top.width() - self.pad.width() - 8)), max(0, min(pos.y(), top.height() - self.pad.height() - 8)))
+        self.pad.show(); self.pad.raise_(); self.pad.setFocus()
 
     def _rename(self, fav):
         txt, ok = W.QInputDialog.getText(self, tr("Rename favorite"), tr("Display name (1–80 characters):"), text=fav["name"])

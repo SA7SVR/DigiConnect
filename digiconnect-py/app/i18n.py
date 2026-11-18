@@ -77,6 +77,7 @@ EL: dict[str, str] = {
     "HELLAS Zone XLX · module B": "HELLAS Zone XLX · module B",
     "From the worldwide server list": "Από την παγκόσμια λίστα διακομιστών",
     # ---- map page
+    "Radio ID": "Radio ID", "ID": "ID", "Drag to move": "Σύρε για να μετακινηθεί",
     "Zoom in": "Μεγέθυνση", "Zoom out": "Σμίκρυνση", "Show the whole world": "Ολόκληρος ο κόσμος", "Call sign": "Διακριτικό", "Last seen": "Τελευταία φορά",
     "station": "σταθμός", "stations": "σταθμοί", "Click to list them in the table": "Κλικ για να εμφανιστούν στον πίνακα",
     "{} stations · {} countries": "{} σταθμοί · {} χώρες",
