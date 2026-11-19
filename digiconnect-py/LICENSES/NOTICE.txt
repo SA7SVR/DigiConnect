@@ -12,3 +12,10 @@ The user interface (app/) is original DigiConnect / HELLAS Zone code distributed
 GPL-3.0-or-later terms so that the combined work complies with the licence.
 
 Qt and PySide6 are used under the LGPL-3.0.
+
+EchoLink® is a registered trademark of Synergenics, LLC. DigiConnect is an independent program: it is not
+made, endorsed or supported by Synergenics, LLC and contains no code of the official EchoLink program.
+It talks to the EchoLink directory and to EchoLink stations with the same public network protocol as other
+EchoLink-compatible programs. The directory request format follows the one used by the open-source SvxLink
+client (https://github.com/sm0svx/svxlink, GPL-2.0-or-later). An EchoLink account validated at echolink.org is needed.
+AllStarLink is a trademark of its owners; DigiConnect is not affiliated with AllStarLink Inc.

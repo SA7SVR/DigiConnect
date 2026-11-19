@@ -7,7 +7,11 @@ DigiConnect 2.4.0 — Release notes / Σημειώσεις έκδοσης / Vers
 • ΝΕΟ: η αυτόματη αναβάθμιση φέρνει πια και νέα μηχανή (το κομμάτι C++ με τα πρωτόκολλα και τον ήχο), χωρίς νέο πρόγραμμα εγκατάστασης. Η μηχανή κατεβαίνει πρώτα, ελέγχεται (μέγεθος, SHA-256 από την υπογεγραμμένη προσφορά του server, υπογραφή στο Mac, πραγματική εκκίνηση) και μόνο μετά ενεργοποιείται ο νέος κώδικας. Αν η νέα μηχανή δεν ξεκινήσει, το πρόγραμμα γυρίζει μόνο του σε αυτήν του Setup.
 • ΝΕΟ (server): Εκδόσεις › «Πακέτα μηχανής»: ανεβάζεις τα .dceng μόνο όταν η έκδοση χρειάζεται νέα μηχανή· το panel δείχνει ✓/✗ ανά σύστημα πριν ενεργοποιήσεις την έκδοση.
 • ΝΕΟ (ιστοσελίδα): στη λήψη εξηγείται βήμα-βήμα η εγκατάσταση σε Windows, Mac και Linux και η προειδοποίηση της πρώτης εκκίνησης (EL/EN/SV/IT).
-• Η μηχανή δεν άλλαξε σε αυτή την έκδοση (είναι της 2.3.12). Ο κανόνας για τις επόμενες: όποτε αλλάζει το engine/, ανεβαίνει το ENGINE_VERSION και φτιάχνονται πακέτα μηχανής — ένα τεστ το επιβάλλει.
+• ΝΕΟ EchoLink: ο σταθμός περιμένει να απαντήσει 30 δευτερόλεπτα (όσο και το επίσημο πρόγραμμα· πριν 15). Όταν απαντήσει, δίπλα στο Last heard γράφει «Συνδέθηκε με <σήμα · όνομα>» όπως τα έστειλε ο ίδιος ο σταθμός, είτε έχει λίστα χρηστών είτε όχι. Ακούγεται ήχος σύνδεσης (ανερχόμενος) και αποσύνδεσης (κατερχόμενος) μόνο όταν η σύνδεση έγινε πραγματικά· κλείνει από τις Ρυθμίσεις › Ήχος. Με τη σύνδεση το «Σταμάτα την ακρόαση» είναι έτοιμο αμέσως (η Σύνδεση ακούει και αυτή).
+• ΝΕΟ AllStarLink: η μηχανή αναγνωρίζει πια πραγματικά πότε μιλάει κάποιος (από τα πακέτα φωνής IAX): εμφανίζεται «Μιλάει τώρα» και γεμίζει το Last heard. Το IAX δεν στέλνει σήμα στα πακέτα φωνής, γι' αυτό γράφει «Node <αριθμός>»· τα πακέτα κειμένου του node καταγράφονται στα Διαγνωστικά για να δούμε αν στέλνει ποιος μιλάει. Τον ήχο σύνδεσης τον λέει ο ίδιος ο node με τη φωνή του.
+• ΝΕΟ: κουμπί «VoIP» (απενεργοποιημένο) δίπλα στα δίκτυα, για μελλοντικό τηλέφωνο SIP προς τον VoIP server της HELLAS Zone. Δεν κάνει τίποτα σε αυτή την έκδοση.
+• ΔΙΟΡΘΩΣΗ (server): στο email ευχαριστίας και στην ειδοποίηση πληρωμής για extra έλειπε το όνομα του extra (λάθος στο PHP με εισαγωγικά «$key»). Διορθώθηκε και ελέγχεται από τεστ.
+• Η μηχανή άλλαξε (ENGINE_VERSION 2.4.0): όσοι έχουν 2.3.x την παίρνουν με την αυτόματη αναβάθμιση, αλλά το πρώτο πλήρες πρόγραμμα εγκατάστασης πρέπει να είναι αυτό της 2.4.0.
 
 ENGLISH
 -------
@@ -15,7 +19,11 @@ NEW IN 2.4.0 — THE ENGINE IS UPDATED AUTOMATICALLY TOO, INSTALL INSTRUCTIONS
 • NEW: automatic updates now also bring a new protocol engine (the C++ part with the protocols and the audio) without a new installer. The engine is downloaded first and checked (size, SHA-256 from the server's signed offer, signature on macOS, a real test start); only then the new code is switched on. If the new engine does not start, the program goes back to the one of the installer by itself.
 • NEW (server): Releases › "Engine packages": upload the .dceng files only when a release needs a new engine; the panel shows ✓/✗ per system before you make the release active.
 • NEW (website): the download section explains the installation on Windows, Mac and Linux step by step, and the warning of the first start (EL/EN/SV/IT).
-• The engine itself did not change in this release (it is the one of 2.3.12). Rule for later releases: whenever engine/ changes, ENGINE_VERSION is raised and engine packages are built — a test enforces it.
+• NEW EchoLink: the program now waits 30 seconds for the station to answer (like the official program; it was 15). When it answers, the header next to Last heard says "Connected to <callsign · name>" exactly as the station sent them, with or without a user list. A rising Connected tone and a falling Disconnected tone are played only when a connection really happened; they can be switched off in Settings > Audio. After connecting, "Stop listening" is ready at once (Connect also listens).
+• NEW AllStarLink: the engine now really detects when somebody is talking (from the IAX voice packets): "Now talking" is shown and Last heard is filled. IAX voice packets carry no callsign, so it shows "Node <number>"; the text packets of the node are written to Diagnostics so we can see whether it sends who is talking. The connect announcement is the node's own voice.
+• NEW: a "VoIP" button (switched off) next to the networks, reserved for a later SIP phone for the HELLAS Zone VoIP server. It does nothing in this release.
+• FIX (server): the thank-you email and the payment alert for an extra lacked the extra's name (a PHP bug with the quotes «$key»). Fixed and covered by a test.
+• The engine changed (ENGINE_VERSION 2.4.0): programs on 2.3.x get it through the automatic update, but the first full installer must be the one of 2.4.0.
 
 SVENSKA
 -------
@@ -23,7 +31,11 @@ NYTT I 2.4.0 — MOTORN UPPDATERAS OCKSÅ AUTOMATISKT, INSTALLATIONSANVISNING
 • NYTT: de automatiska uppdateringarna kan nu även ge en ny protokollmotor (C++-delen med protokollen och ljudet) utan ny installationsfil. Motorn laddas ner först och kontrolleras (storlek, SHA-256 från serverns signerade erbjudande, signatur på macOS, en riktig teststart); först därefter slås den nya koden på. Startar den nya motorn inte går programmet själv tillbaka till installationens motor.
 • NYTT (server): Utgåvor › "Motorpaket": ladda upp .dceng-filerna bara när en utgåva behöver en ny motor; panelen visar ✓/✗ per system innan du aktiverar utgåvan.
 • NYTT (webbplats): nedladdningsavsnittet förklarar installationen på Windows, Mac och Linux steg för steg, och varningen vid första start (EL/EN/SV/IT).
-• Själva motorn ändrades inte i denna utgåva (det är 2.3.12:s). Regel framöver: när engine/ ändras höjs ENGINE_VERSION och motorpaket byggs — ett test kräver det.
+• NYTT EchoLink: programmet väntar nu 30 sekunder på att stationen svarar (som det officiella programmet; förut 15). När den svarar står det bredvid Last heard "Ansluten till <anropssignal · namn>" precis som stationen skickade dem, med eller utan lista över användare. En stigande anslutningston och en fallande frånkopplingston spelas bara när en anslutning verkligen skedde; de kan stängas av i Inställningar > Ljud. Efter anslutning är "Sluta lyssna" klart direkt (Anslut lyssnar också).
+• NYTT AllStarLink: motorn upptäcker nu på riktigt när någon pratar (från IAX-röstpaketen): "Pratar nu" visas och Last heard fylls. IAX-röstpaket har ingen anropssignal, därför visas "Node <nummer>"; nodens textpaket skrivs i Diagnostik så vi ser om den skickar vem som pratar. Anslutningsmeddelandet är nodens egen röst.
+• NYTT: en knapp "VoIP" (avstängd) bredvid näten, reserverad för en senare SIP-telefon mot HELLAS Zones VoIP-server. Den gör inget i denna utgåva.
+• RÄTTNING (server): tack-mejlet och betalningslarmet för en extra saknade extrans namn (ett PHP-fel med citattecknen «$key»). Rättat och täckt av ett test.
+• Motorn ändrades (ENGINE_VERSION 2.4.0): program på 2.3.x får den via den automatiska uppdateringen, men den första fullständiga installationsfilen måste vara 2.4.0:s.
 
 ITALIANO
 --------
@@ -31,4 +43,8 @@ NOVITÀ DELLA 2.4.0 — ANCHE IL MOTORE SI AGGIORNA IN AUTOMATICO, ISTRUZIONI DI
 • NUOVO: gli aggiornamenti automatici portano ora anche un nuovo motore dei protocolli (la parte C++ con i protocolli e l'audio) senza un nuovo installer. Il motore viene scaricato per primo e controllato (dimensione, SHA-256 dall'offerta firmata del server, firma su macOS, un vero avvio di prova); solo dopo si attiva il nuovo codice. Se il nuovo motore non parte, il programma torna da solo a quello dell'installer.
 • NUOVO (server): Versioni › «Pacchetti motore»: carica i .dceng solo quando una versione richiede un nuovo motore; il pannello mostra ✓/✗ per sistema prima di attivare la versione.
 • NUOVO (sito): la sezione download spiega passo per passo l'installazione su Windows, Mac e Linux e l'avviso del primo avvio (EL/EN/SV/IT).
-• Il motore non è cambiato in questa versione (è quello della 2.3.12). Regola per le prossime: ogni volta che engine/ cambia si alza ENGINE_VERSION e si costruiscono i pacchetti motore — un test lo impone.
+• NUOVO EchoLink: il programma ora aspetta 30 secondi che la stazione risponda (come il programma ufficiale; prima 15). Quando risponde, accanto a Last heard compare "Connesso a <nominativo · nome>" esattamente come li ha inviati la stazione, con o senza elenco utenti. Un suono ascendente di connessione e uno discendente di disconnessione sono riprodotti solo quando una connessione è avvenuta davvero; si disattivano in Impostazioni > Audio. Dopo la connessione "Smetti di ascoltare" è subito pronto (Connetti ascolta anche).
+• NUOVO AllStarLink: il motore ora rileva davvero quando qualcuno parla (dai pacchetti voce IAX): compare "Sta parlando" e si riempie Last heard. I pacchetti voce IAX non portano il nominativo, quindi mostra "Node <numero>"; i pacchetti di testo del nodo vanno nella Diagnostica per vedere se invia chi parla. L'annuncio di connessione è la voce del nodo stesso.
+• NUOVO: un pulsante "VoIP" (disattivato) accanto alle reti, riservato a un futuro telefono SIP verso il server VoIP di HELLAS Zone. In questa versione non fa nulla.
+• CORREZIONE (server): l'email di ringraziamento e l'avviso di pagamento per un extra non avevano il nome dell'extra (un errore PHP con le virgolette «$key»). Corretto e coperto da un test.
+• Il motore è cambiato (ENGINE_VERSION 2.4.0): i programmi 2.3.x lo ricevono con l'aggiornamento automatico, ma il primo installer completo deve essere quello della 2.4.0.
