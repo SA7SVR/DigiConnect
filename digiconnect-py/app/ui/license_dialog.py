@@ -62,6 +62,24 @@ class RegistrationDialog(W.QDialog):
         self.store.save_settings(); self.answer = m; self.accept()
 
 
+def block_text(v) -> str:
+    """The text of the 'cannot continue' window. When the demo (or a timed licence) has ended it also says what to do to go on, like HAM Digi does:
+    what happened (translated), the steps for the offer the owner chose in the server panel, then the owner's own message from the panel (as written)."""
+    paras = (v.msg or "").split("\n\n"); head, owner = paras[0], "\n\n".join(paras[1:]).strip()
+    ended = {"Your demo period has ended.": "Your demo period has ended.", "Your licence has ended.": "Your licence has ended."}
+    key = next((k for k in ended if head.startswith(k[:-1])), "")
+    if not key or v.kind != "blocked": return tr(v.msg)
+    i = v.info or {}; offer = i.get("offer", "donate"); no = (i.get("no") or "").strip()
+    out = [tr(key)]
+    if offer in ("donate", "buy"):
+        out.append(tr("To continue using DigiConnect, make a donation with the “Donate” button below." if offer == "donate" else "To continue using DigiConnect, buy a licence with the “Buy a licence” button below."))
+        if no: out.append(tr("In the payment note write your installation number " + no + " and use the e-mail you registered with — the activation is then usually automatic."))   # translated by pattern: the number is the {} part
+        out.append(tr("If you already have an activation code, press “Activation code…”."))
+    else: out.append(tr("To continue using DigiConnect, contact the owner or enter an activation code if you have one."))
+    if owner: out.append(owner)
+    return "\n\n".join(out)
+
+
 class BlockDialog(W.QDialog):
     """Shown when the program may not continue: locked, demo ended, or the server is needed but cannot be reached. Retry / Donate / Quit."""
     def __init__(self, verdict, check, parent=None):
@@ -69,8 +87,8 @@ class BlockDialog(W.QDialog):
         self.setWindowTitle("DigiConnect"); self.setModal(True); self.setMinimumWidth(480)
         v = vbox(self, m=(24, 20, 24, 20), s=10)
         t = label(tr("DigiConnect cannot continue") if verdict.kind == "offline" else tr("Waiting for approval") if verdict.state == "pending" else tr("DigiConnect is not active")); t.setStyleSheet("font-size:20px;font-weight:700;"); v.addWidget(t)
-        self.msg = label(tr(verdict.msg)); self.msg.setWordWrap(True); v.addWidget(self.msg)
-        row = hbox(); self.quit = button(tr("Quit")); self.donate = button("♥ " + tr("Donate")); self.code = button(tr("Activation code…")); self.contact = button(tr("Contact the owner…")); self.retry = button(tr("Try again"), "primary")
+        self.msg = label(block_text(verdict)); self.msg.setWordWrap(True); v.addWidget(self.msg)
+        row = hbox(); self.quit = button(tr("Quit")); self.donate = button(lic_mod.with_amount("♥ " + tr("Donate"), verdict.info)); self.code = button(tr("Activation code…")); self.contact = button(tr("Contact the owner…")); self.retry = button(tr("Try again"), "primary")
         for b in (self.quit, self.donate, self.code, self.contact): row.addWidget(b)
         row.addStretch(); row.addWidget(self.retry); v.addLayout(row)
         self.donate.setVisible((verdict.info or {}).get("offer", "donate") != "none" and verdict.state != "pending"); self.code.setVisible(verdict.kind != "offline"); self.contact.setVisible(verdict.kind != "offline")
@@ -262,7 +280,7 @@ class LicenceDialog(W.QDialog):
         if err: lines.append(f"{tr('Server answer')}: ✗ {err} — " + tr("the settings from the server are not applied"))
         pol = i.get("pol") or {}
         if pol: lines.append(f"{tr('Closed modes')}: {', '.join(pol.get('off') or []) or '—'}" + ("" if pol.get("tx", 1) else " · " + tr("listen only")))
-        self.status.setText("\n".join(lines)); self.donate.setVisible(i.get("offer", "donate") != "none")
+        self.status.setText("\n".join(lines)); self.donate.setVisible(i.get("offer", "donate") != "none"); self.donate.setText(lic_mod.with_amount("♥ " + tr("Donate"), i))
 
     def refresh(self):
         self._got.emit([])                                           # the owner's words are in the conversation window now; this list shows the announcements

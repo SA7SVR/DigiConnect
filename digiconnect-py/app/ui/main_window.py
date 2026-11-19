@@ -5,6 +5,7 @@ from ..i18n import tr
 from ..theme import C, qss
 from ..rules import NETS
 from ..context import Ctx
+from ..license import with_amount as lic_with_amount
 from .widgets import *
 from .icons import icon, dot
 from ..theme import NET_COLOR
@@ -176,7 +177,7 @@ class MainWindow(W.QMainWindow):
         else: txt = tr(txt)
         self.chip_lic.setText(txt); self.chip_lic.setProperty("tone", tone if v.allowed else "red"); repolish(self.chip_lic)
         offer = (v.info or {}).get("offer", "donate"); self.donate_btn.setVisible(offer != "none")
-        self.donate_btn.setText("♥ Buy a licence" if offer == "buy" else "♥ Donate")
+        self.donate_btn.setText(lic_with_amount("♥ Buy a licence" if offer == "buy" else "♥ Donate", v.info))
         self.demo_lbl.setVisible(v.allowed and v.state == "demo"); self.demo_lbl.setText(tr("Demo") + " · " + tr(v.left) if v.left else tr("Demo"))
         if v.allowed or getattr(self, "_blocking", False): return
         self._blocking = True

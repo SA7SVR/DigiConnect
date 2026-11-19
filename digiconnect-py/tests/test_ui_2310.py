@@ -91,3 +91,49 @@ def test_nxdn_p25_numbers_become_call_signs_only_where_that_is_certain(tmp_path)
     assert ctx._talker(ln("NXDN"), dict(src="44", srcid=44)) == ("44", 44) and asked == []       # a short number is nobody's registered ID: left alone, nothing asked
     assert ctx._talker(ln("P25"), dict(src="2021015", srcid=2021015)) == ("2021015", 2021015) and asked == [2021015]   # asked in the RadioID database
     assert ctx._talker(ln("C4FM"), dict(src="SV1ABC", srcid=0)) == ("SV1ABC", 0)                  # call-sign networks are untouched
+
+
+def test_donate_button_shows_the_amount_from_the_server(tmp_path):
+    from app import license as L, i18n
+    w = _win(tmp_path)
+    mk = lambda **i: L.Verdict("ok", "demo", "7 days", "", "https://x.example", i)
+    w._license_changed(mk(offer="donate", amount="5 €")); assert w.donate_btn.text() == "♥ Donate · 5 €" and not w.donate_btn.isHidden()
+    w._license_changed(mk(offer="buy", amount="12 €")); assert w.donate_btn.text() == "♥ Buy a licence · 12 €"
+    w._license_changed(mk(offer="donate", amount="")); assert w.donate_btn.text() == "♥ Donate"            # empty amount = as before
+    w._license_changed(mk(offer="donate")); assert w.donate_btn.text() == "♥ Donate"
+    w._license_changed(mk(offer="none", amount="5 €")); assert w.donate_btn.isHidden()
+    assert L.with_amount("♥ Donate", {"amount": "5 & 6"}) == "♥ Donate · 5 && 6"                      # '&' would otherwise become a Qt shortcut
+    i18n.set_language("Ελληνικά")
+    try:
+        w._license_changed(mk(offer="donate", amount="5 €")); assert w.donate_btn.text() == "♥ Δωρεά · 5 €"
+        w._license_changed(mk(offer="buy", amount="5 €")); assert w.donate_btn.text() == "♥ Αγορά άδειας · 5 €"
+    finally: i18n.set_language("English")
+
+
+def test_when_the_demo_has_ended_the_window_says_what_to_do_to_continue(tmp_path):
+    from app import license as L, i18n
+    from app.ui.license_dialog import block_text
+    mk = lambda msg, **i: L.Verdict("blocked", "locked", "", msg, "https://x.example", i)
+    end = "Your demo period has ended. Contact SA7SVR to activate."
+    t = block_text(mk(end + "\n\nThanks for trying it!", offer="donate", amount="5 €", no="DC-0042"))
+    assert t.startswith("Your demo period has ended.") and "make a donation" in t and "DC-0042" in t and "Activation code" in t and t.endswith("Thanks for trying it!")
+    assert "Contact SA7SVR to activate" not in t
+    assert "buy a licence" in block_text(mk(end, offer="buy", no="DC-1"))
+    n = block_text(mk(end, offer="none")); assert "donation" not in n and "contact the owner" in n
+    assert "Your licence has ended." in block_text(mk("Your licence has ended. Contact SA7SVR."))
+    assert block_text(mk("This installation needs activation. Contact SA7SVR.", offer="donate")) == "This installation needs activation. Contact SA7SVR."   # a lock by the owner: unchanged
+    i18n.set_language("Ελληνικά")
+    try:
+        g = block_text(mk(end + "\n\nΕυχαριστώ!", offer="donate", no="DC-0042"))
+        assert g.startswith("Η περίοδος demo έληξε.") and "κάνε μια δωρεά" in g and "DC-0042" in g and "Κωδικός ενεργοποίησης" in g and g.endswith("Ευχαριστώ!")
+        assert "Your" not in g and "installation number" not in g
+    finally: i18n.set_language("English")
+
+
+def test_block_dialog_shows_that_text_and_the_amount(tmp_path):
+    from app import license as L
+    from app.ui.license_dialog import BlockDialog
+    W.QApplication.instance() or W.QApplication([])
+    v = L.Verdict("blocked", "locked", "", "Your demo period has ended. Contact SA7SVR to activate.", "https://x.example", dict(offer="donate", amount="5 €", no="DC-7"))
+    d = BlockDialog(v, lambda: v)
+    assert "make a donation" in d.msg.text() and d.donate.text() == "♥ Donate · 5 €" and not d.donate.isHidden()

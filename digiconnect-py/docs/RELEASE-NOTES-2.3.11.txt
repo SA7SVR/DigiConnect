@@ -1,8 +1,11 @@
-DigiConnect 2.3.10 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
+DigiConnect 2.3.11 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar
 ===========================================================================
 
 ΕΛΛΗΝΙΚΑ
 --------
+ΝΕΑ ΣΤΗΝ 2.3.11 — ΠΟΣΟ ΣΤΟ ΚΟΥΜΠΙ ΔΩΡΕΑΣ
+• ΔΙΟΡΘΩΘΗΚΕ: το κουμπί «Donate» / «Αγορά» δείχνει το ποσό που ορίζεις στο panel του server (π.χ. «♥ Donate · 5 €»), στην πάνω μπάρα, στο παράθυρο «Άδεια» και στο παράθυρο που εμφανίζεται όταν το πρόγραμμα δεν μπορεί να συνεχίσει. Κενό ποσό = όπως πριν.
+
 ΝΕΑ ΣΤΗΝ 2.3.10 — ΧΑΡΤΗΣ ΜΕ ΞΕΧΩΡΙΣΤΟΥΣ ΣΤΑΘΜΟΥΣ, ΔΙΟΡΘΩΣΕΙΣ ΕΜΦΑΝΙΣΗΣ, ECHOLINK
 • ΝΕΟ (Χάρτης): κλικ σε κύκλο χώρας → η χώρα ανοίγει και ΚΑΘΕ σταθμός είναι ξεχωριστή τελεία· με το ποντίκι (ή αγγίζοντάς την) φαίνεται το διακριτικό και οι λεπτομέρειες· κλικ στην τελεία → ο σταθμός επιλέγεται στον πίνακα. Μέσα σε ανοιγμένη χώρα είναι γνωστή μόνο η χώρα, γι' αυτό οι τελείες απλώνονται για να φαίνονται ξεχωριστά και ΔΕΝ είναι οι πραγματικές θέσεις (το γράφει ο χάρτης). Σταθμός με γνωστό grid είναι στην πραγματική του θέση.
 • Χάρτης: μπήκαν και οι κόμβοι AllStarLink· ο χάρτης ακολουθεί τον σταθμό που επιλέγεις σε σελίδα δικτύου (zoom στη χώρα και τονισμένη τελεία).
@@ -54,6 +57,9 @@ DigiConnect 2.3.10 — Release notes / Σημειώσεις έκδοσης / Ver
 
 ENGLISH
 -------
+NEW IN 2.3.11 — AMOUNT ON THE DONATE BUTTON
+• FIXED: the “Donate” / “Buy” button shows the amount you set in the server panel (e.g. “♥ Donate · 5 €”), in the top bar, in the Licence window and in the window shown when the program cannot continue. Empty amount = as before.
+
 NEW IN 2.3.10 — MAP WITH SEPARATE STATIONS, DISPLAY FIXES, ECHOLINK
 • NEW (Map): click a country circle → the country opens and EVERY station is its own dot; hover (or touch) a dot to see its call sign and details; click it to select the station in the table. Inside an opened country only the country is known, so the dots are spread out to be seen separately and are NOT their real places (the map says so). A station with a known grid square is at its real place.
 • Map: AllStarLink nodes are on the map too; the map follows the station you choose in a network page (zooms to its country, dot pointed out).
@@ -105,6 +111,9 @@ NEW IN 2.3.5 — START-UP AND TRANSMIT FIXES + MICROPHONE, MAP, RECORDINGS, ECHO
 
 SVENSKA
 -------
+NYTT I 2.3.11 — BELOPP PÅ DONATIONSKNAPPEN
+• FIXAT: knappen “Donate” / “Köp” visar beloppet du anger i serverpanelen (t.ex. “♥ Donate · 5 €”), i toppraden, i licensfönstret och i fönstret när programmet inte kan fortsätta. Tomt belopp = som förut.
+
 NYTT I 2.3.10 — KARTA MED SEPARATA STATIONER, VISNINGSFIXAR, ECHOLINK
 • NYTT (Karta): klicka på ett lands cirkel → landet öppnas och VARJE station är en egen prick; håll pekaren över (eller rör) en prick för anropssignal och detaljer; klicka för att markera stationen i tabellen. I ett öppnat land är bara landet känt, så prickarna sprids ut för att synas var för sig och är INTE de verkliga platserna (kartan säger det). En station med känd lokator ligger på sin verkliga plats.
 • Karta: AllStarLink-noder finns också på kartan; kartan följer stationen du väljer på en nätverkssida (zoomar till landet, pricken markeras).

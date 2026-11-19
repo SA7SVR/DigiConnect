@@ -34,6 +34,12 @@ class Verdict:
     def __repr__(self): return f"Verdict({self.kind}, {self.state!r}, {self.left!r}, {self.msg!r})"
 
 
+def with_amount(label: str, info: dict | None) -> str:
+    """The Donate / Buy button text, plus the amount the owner set in the server panel (e.g. '♥ Donate · 5 €'). '&' is doubled so Qt does not read it as a shortcut."""
+    a = str((info or {}).get("amount") or "").strip()[:30].replace("&", "&&")
+    return f"{label} · {a}" if a else label
+
+
 def validate(d: dict) -> list[str]:
     """The fields (name, call, dmr_id, mail) that are not acceptable; empty list = fine."""
     bad = []
