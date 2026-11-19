@@ -138,7 +138,7 @@ class MainWindow(W.QMainWindow):
         fh.addStretch()
         self.foot_l = label("Engine: " + self.ctx.engine.name); fh.addWidget(self.foot_l)
         self.lang = label(self.ctx.store.settings["language"]); fh.addWidget(self.lang); outer.addWidget(foot)
-        self.toast = Toast(root); self.ctx.toast.connect(self.toast.show_msg)
+        self.toast = Toast(root); self.ctx.toast.connect(self.toast.show_msg); self.ctx.extra_needed.connect(lambda n: self.nav("net:" + n))
         # wiring
         self.mixer.hide_requested.connect(lambda: self.mixer.setVisible(False)); self.h_nq.clicked.connect(self.open_qso); self.h_set.clicked.connect(lambda: self.open_settings())
         self.set_top.clicked.connect(lambda: self.open_settings()); self.theme_btn.clicked.connect(self.toggle_theme); self.settings.closed.connect(self._close_drawers); self.qdrawer.closed.connect(self._close_drawers)
@@ -252,7 +252,7 @@ class MainWindow(W.QMainWindow):
             if t != "favorites":
                 closed = t in self.ctx.policy.off              # closed by the owner's server (EchoLink too)
                 off = t in self.ctx.policy.user_off
-                b.setText(t + " · " + tr("closed") if closed else (t + " · " + tr("off") if off else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
+                b.setText(t + " · " + tr("extra" if self.ctx.policy.paid_info(t) else "closed") if closed else (t + " · " + tr("off") if off else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
                 if bool(b.property("closed")) != closed: b.setProperty("closed", closed); repolish(b)
         self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else "Choose a station, then Listen. Connect transmission separately to participate.")
         self.h_add.setVisible(k == "favorites")

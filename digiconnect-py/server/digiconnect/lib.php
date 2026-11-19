@@ -2,7 +2,7 @@
 // DigiConnect server — shared library. Self-contained (own SQLite DB), so it never touches HAM Digi data.
 // (c) 2026 SA7SVR (Panagiotis Tsekouras).
 declare(strict_types=1);
-const DC_SERVER_VERSION = '2.3.11';   // server package number (panel footer); same number as the program in the package
+const DC_SERVER_VERSION = '2.3.12';   // server package number (panel footer); same number as the program in the package
 if (session_status() === PHP_SESSION_NONE) @session_start();
 
 function dc_cfg(): array {
@@ -75,7 +75,7 @@ function dc_db(): PDO {
   ");
   // additive migration: presence columns (what the station reports with ping.php)
   $have = array_column($pdo->query('PRAGMA table_info(dc_installs)')->fetchAll(), 'name');
-  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT', 'mode_ovr' => 'TEXT', 'tester' => 'INT DEFAULT 0', 'tx_ovr' => 'TEXT'] as $c => $t)
+  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT', 'mode_ovr' => 'TEXT', 'tester' => 'INT DEFAULT 0', 'tx_ovr' => 'TEXT', 'extras' => 'TEXT'] as $c => $t)
     if (!in_array($c, $have, true)) $pdo->exec("ALTER TABLE dc_installs ADD COLUMN $c $t");
   // messages to the users as in HAM Digi: Greek + English title and text, link, end date, to everyone or to one installation (target = installation id)
   $mc = array_column($pdo->query('PRAGMA table_info(dc_messages)')->fetchAll(), 'name');
@@ -325,7 +325,7 @@ function dc_inst_no($id): string { $n = (int)(dc_one('SELECT rowid n FROM dc_ins
 function dc_no_filter(string $q): ?int { return preg_match('/^\s*(?:DC-?)?0*(\d{1,6})\s*$/i', $q, $m) ? (int)$m[1] : null; }
 
 // ---- e-mail + alerts (same as HAM Digi): this server sends no e-mail unless "mail_on" is switched on ----
-const DC_ALERTS = ['reinstall_id', 'clone', 'reg_pending', 'pay_unmatched', 'pay_refund', 'pay_auto', 'code_reuse'];
+const DC_ALERTS = ['reinstall_id', 'clone', 'reg_pending', 'pay_unmatched', 'pay_refund', 'pay_auto', 'pay_extra', 'code_reuse'];
 function dc_base_url(): string {
   $s = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') ? 'https' : 'http';
   $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
@@ -375,6 +375,31 @@ function dc_pay_match(array $p): array {
   }
   return [null, ''];
 }
+// which extra a payment is for: only an installation that already has its licence can be paying for an extra. The extra's name in the PayPal item / note (one only),
+// else the amount that belongs to exactly one open extra. Anything unclear returns '' and the payment waits in the panel (Payments) for you.
+function dc_pay_extra_for(array $p, string $iid, float $amount): string {
+  $in = dc_one('SELECT * FROM dc_installs WHERE id=?', [$iid]); if (!$in || !in_array(dc_lic_effective($in)[0], ['full', 'free'], true)) return '';
+  $open = dc_extras_open($in); if (!$open) return '';
+  $text = strtolower(implode(' ', array_map(fn($k) => (string)($p[$k] ?? ''), ['item_name', 'item_number', 'memo', 'custom'])));
+  $by = []; foreach ($open as $k) if (preg_match('/(?<![a-z0-9])' . preg_quote(strtolower($k), '/') . '(?![a-z0-9])/', $text)) $by[] = $k;
+  if (count($by) === 1) { $need = dc_amount_num(dc_extra_cfg($by[0])['amount']); return ($need > 0 && $amount + 0.005 < $need) ? '' : $by[0]; }
+  if (count($by) > 1) return '';
+  $am = []; foreach ($open as $k) { $need = dc_amount_num(dc_extra_cfg($k)['amount']); if ($need > 0 && abs($need - $amount) < 0.005) $am[] = $k; }
+  return count($am) === 1 ? $am[0] : '';
+}
+// unlock one extra for a payment (no new licence code): the extra on the installation, the payment marked as used, an e-mail to the payer
+function dc_pay_extra_grant(int $payId, string $installId, string $key, string $by): void {
+  $p = dc_one('SELECT * FROM dc_payments WHERE id=?', [$payId]); if (!$p) throw new Exception('payment');
+  $r = dc_one('SELECT * FROM dc_installs WHERE id=?', [$installId]); if (!$r) throw new Exception('Δεν βρέθηκε η εγκατάσταση / installation not found');
+  if (!in_array($key, dc_items(), true)) throw new Exception('extra');
+  dc_extra_give($installId, $key, $by);
+  dc_q('UPDATE dc_payments SET install=?, code=?, matched_by=?, note=? WHERE id=?', [$installId, '', $by, 'extra: ' . $key, $payId]);
+  if (!$r['mail'] && $p['payer_email']) dc_q('UPDATE dc_installs SET mail=? WHERE id=?', [strtolower($p['payer_email']), $installId]);
+  $no = dc_inst_no($installId); $to = $p['payer_email'] ?: $r['mail'];
+  $el = "Ευχαριστώ πολύ για τη στήριξη του DigiConnect!\n\nΤο extra «$key» ξεκλειδώθηκε για το πρόγραμμά σου ($no). Το πρόγραμμα το βλέπει μόνο του την επόμενη φορά που συνδέεται στο διαδίκτυο.\n\n73 de SA7SVR";
+  $en = "Thank you very much for supporting DigiConnect!\n\nThe extra “$key” is now unlocked for your program ($no). The program sees it by itself the next time it connects to the internet.\n\n73 de SA7SVR";
+  if ($to) dc_mail($to, 'DigiConnect — extra ' . $key . ' ' . $no, ($r['lang'] ?? '') === 'en' ? $en : $el . "\n\n— — —\n\n" . $en);
+}
 function dc_new_code(): string { $raw = strtoupper(bin2hex(random_bytes(6))); return 'HZD-' . substr($raw, 0, 4) . '-' . substr($raw, 4, 4) . '-' . substr($raw, 8, 4); }
 // give the full licence for a payment: a new code (kept as proof), the licence on the installation, an e-mail to the payer
 function dc_pay_activate(int $payId, string $installId, string $by): string {
@@ -420,7 +445,13 @@ function dc_ipn_process(array $p, string $raw, array $S): string {
   $pr = dc_one('SELECT * FROM dc_payments WHERE id=?', [$pid]);
   if ($status === 'Completed' && !$pr['install'] && $pr['status'] === 'Completed') {
     list($iid, $how) = dc_pay_match($p);
-    if ($iid && $S['auto'] && $amount >= $S['min']) {
+    $ex = $iid ? dc_pay_extra_for($p, $iid, $amount) : '';
+    $inFull = $iid && ($row = dc_one('SELECT * FROM dc_installs WHERE id=?', [$iid])) && in_array(dc_lic_effective($row)[0], ['full', 'free'], true);
+    $extraWaiting = $inFull && dc_extras_open($row);          // already licensed and an extra is for sale: a payment we cannot tell apart is NOT a new licence
+    if ($iid && $S['auto'] && $ex !== '') {
+      dc_pay_extra_grant($pid, $iid, $ex, 'auto: ' . $how);
+      dc_alert('pay_extra', "$iid|$txn|$amount $cur|$ex", "Νέα πληρωμή $amount $cur από $name — ξεκλειδώθηκε αυτόματα το extra «$ex» στην " . dc_inst_no($iid) . ".\nNew payment $amount $cur from $name — the extra “$ex” was unlocked automatically on " . dc_inst_no($iid) . '.');
+    } elseif ($iid && $S['auto'] && !$extraWaiting && $amount >= $S['min']) {
       $code = dc_pay_activate($pid, $iid, 'auto: ' . $how);
       dc_alert('pay_auto', "$iid|$txn|$amount $cur|$code", "Νέα πληρωμή $amount $cur από $name — ενεργοποιήθηκε αυτόματα " . dc_inst_no($iid) . " (κωδικός $code).\nNew payment $amount $cur from $name — " . dc_inst_no($iid) . " activated automatically (code $code).");
     } else dc_alert('pay_unmatched', "$txn|$amount $cur|$name|" . ($iid ?: ''), "Νέα πληρωμή $amount $cur από $name (" . ($p['payer_email'] ?? '') . ")" . ($iid ? ' — πιθανή εγκατάσταση ' . dc_inst_no($iid) : ' — δεν βρέθηκε εγκατάσταση') . ". Ενεργοποίησέ την στο panel › Πληρωμές.\nNew payment $amount $cur from $name. Activate it in the panel › Payments.\n\n" . dc_base_url() . 'admin/?p=payments');
@@ -607,6 +638,7 @@ function dc_inherit_hw(string $id): ?string {
   dc_q('UPDATE dc_installs SET state=?, demo_until=?, enabled=?, note=?, lic_by=?, lic_set=?, owner=COALESCE(NULLIF(owner,\'\'),?), lic_code=?, lic_since=?, lic_major=? WHERE id=?',
     [$p['state'], $p['demo_until'], $p['enabled'], $p['note'], 'reinstall ' . dc_inst_no($p['id']), time(), $p['owner'], $p['lic_code'], $p['lic_since'], $p['lic_major'] ?? null, $id]);
   if ($p['state'] === 'full' && (string)$p['lic_code'] !== '') dc_q('UPDATE dc_codes SET last_install=? WHERE code=?', [$id, $p['lic_code']]);
+  if ($p['state'] === 'full' && (string)($p['extras'] ?? '') !== '') dc_q('UPDATE dc_installs SET extras=? WHERE id=?', [$p['extras'], $id]);      // the unlocked extras go with the licence
   if ($p['state'] === 'full') {
     $who = trim(dc_inst_no($id) . ' ' . ($r['call'] ?? ''));
     dc_alert('reinstall_id', "$id|{$p['id']}|" . dc_inst_no($p['id']) . "|full|" . ($r['call'] ?? ''),
@@ -648,21 +680,51 @@ function dc_rev(string $id): string {
 // Set in the panel (page Modes), resolved here per installation, and sent inside the SIGNED answer (field "pol").
 // =============================================================================================================================
 const DC_MODES = ['DMR', 'D-Star', 'C4FM', 'NXDN', 'P25', 'M17', 'AllStar', 'EchoLink'];
+// Things that can be opened, closed or sold as an extra: the radio modes and, below, the program's other features.
+// To make a NEW program feature switchable (and able to ask for an extra donation) add ONE line here: key => [Greek name, English name]; the program asks the policy for that key.
+const DC_FEATURES = [];
+function dc_items(): array { return array_merge(DC_MODES, array_keys(DC_FEATURES)); }
+function dc_item_name(string $k): string { return $k . (isset(DC_FEATURES[$k]) ? ' — ' . DC_FEATURES[$k][0] . ' / ' . DC_FEATURES[$k][1] : ''); }
 function dc_mode_key(string $m): string { return 'mode_' . strtolower(preg_replace('/[^A-Za-z0-9]/', '', $m)); }
-function dc_mode_global(string $m): string { $v = dc_kv(dc_mode_key($m), $m === 'EchoLink' ? 'off' : 'on'); return in_array($v, ['on', 'off', 'beta'], true) ? $v : 'on'; }
-function dc_mode_ovr(array $in): array { $o = json_decode((string)($in['mode_ovr'] ?? ''), true); return is_array($o) ? array_filter($o, fn($v, $k) => in_array($k, DC_MODES, true) && in_array($v, ['on', 'off'], true), ARRAY_FILTER_USE_BOTH) : []; }
+function dc_mode_global(string $m): string { $v = dc_kv(dc_mode_key($m), $m === 'EchoLink' ? 'off' : 'on'); return in_array($v, ['on', 'off', 'beta', 'paid'], true) ? $v : 'on'; }
+function dc_mode_ovr(array $in): array { $o = json_decode((string)($in['mode_ovr'] ?? ''), true); return is_array($o) ? array_filter($o, fn($v, $k) => in_array($k, dc_items(), true) && in_array($v, ['on', 'off'], true), ARRAY_FILTER_USE_BOTH) : []; }
 // what one installation gets for one mode: its own setting first, else the general one (beta = only for testers)
 function dc_mode_for(array $in, string $m): string {
   $o = dc_mode_ovr($in); if (isset($o[$m])) return $o[$m];
-  $g = dc_mode_global($m); return $g === 'beta' ? (!empty($in['tester']) ? 'on' : 'off') : $g;
+  $g = dc_mode_global($m);
+  if ($g === 'paid') return in_array($m, dc_extras_of($in), true) ? 'on' : 'paid';          // an extra: open only for installations that have it (payment or panel)
+  return $g === 'beta' ? (!empty($in['tester']) ? 'on' : 'off') : $g;
 }
+// ---- extras: what one installation has unlocked (JSON list in dc_installs.extras) and what each extra asks for (panel: Modes > Extras)
+function dc_extras_of(array $in): array { $e = json_decode((string)($in['extras'] ?? ''), true); return is_array($e) ? array_values(array_filter($e, fn($k) => is_string($k) && in_array($k, dc_items(), true))) : []; }
+function dc_extras_set(string $id, array $keys): void { $keys = array_values(array_unique($keys)); dc_q('UPDATE dc_installs SET extras=? WHERE id=?', [$keys ? json_encode($keys) : '', $id]); }
+function dc_extra_give(string $id, string $key, string $by): void {
+  $r = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]); if (!$r || !in_array($key, dc_items(), true)) return;
+  $e = dc_extras_of($r); if (!in_array($key, $e, true)) { $e[] = $key; dc_extras_set($id, $e); }
+  dc_event('extra', "$id|$key|+|$by");
+}
+function dc_extra_take(string $id, string $key, string $by): void {
+  $r = dc_one('SELECT * FROM dc_installs WHERE id=?', [$id]); if (!$r) return;
+  dc_extras_set($id, array_values(array_diff(dc_extras_of($r), [$key]))); dc_event('extra', "$id|$key|-|$by");
+}
+function dc_extra_dbkey(string $k): string { return 'extra_' . strtolower(preg_replace('/[^A-Za-z0-9]/', '', $k)); }
+function dc_extra_cfg(string $k): array {
+  $d = json_decode((string)dc_kv(dc_extra_dbkey($k), ''), true); $d = is_array($d) ? $d : []; $one = fn($v) => trim(preg_replace('/\s*\R\s*/', ' ', (string)$v));
+  $l = trim((string)($d['link'] ?? ''));
+  return ['offer' => (($d['offer'] ?? '') === 'buy') ? 'buy' : 'donate', 'amount' => substr(trim((string)($d['amount'] ?? '')), 0, 30), 'link' => preg_match('~^https://~i', $l) ? substr($l, 0, 300) : '',
+          'msg_el' => substr($one($d['msg_el'] ?? ''), 0, 300), 'msg_en' => substr($one($d['msg_en'] ?? ''), 0, 300)];
+}
+function dc_amount_num(string $a): float { return preg_match('/\d+(?:[.,]\d+)?/', $a, $m) ? (float)str_replace(',', '.', $m[0]) : 0.0; }
+// the extras that ask for a payment and that this installation does not have yet
+function dc_extras_open(array $in): array { $o = []; foreach (dc_items() as $m) if (dc_mode_global($m) === 'paid' && dc_mode_for($in, $m) === 'paid') $o[] = $m; return $o; }
 function dc_tx_for(array $in): int { $o = (string)($in['tx_ovr'] ?? ''); return $o === '1' ? 1 : ($o === '0' ? 0 : (dc_kv('tx_all', '1') === '0' ? 0 : 1)); }
 function dc_policy(array $in): array {
-  $off = []; foreach (DC_MODES as $m) if (dc_mode_for($in, $m) !== 'on') $off[] = $m;
+  $off = []; foreach (dc_items() as $m) if (dc_mode_for($in, $m) !== 'on') $off[] = $m;
+  $paid = []; foreach (dc_extras_open($in) as $m) { $c = dc_extra_cfg($m); $paid[$m] = ['offer' => $c['offer'], 'amount' => $c['amount'], 'link' => $c['link'] ?: dc_donate(), 'msg' => trim($c['msg_el'] . "\n" . $c['msg_en'])]; }
   $note = trim(dc_kv('modes_note_el', '') . "\n" . dc_kv('modes_note_en', '')); if ($note === '') $note = "Αυτό το mode δεν είναι ακόμη διαθέσιμο.\nThis mode is not available yet.";
   $minv = trim((string)dc_kv('min_version', '')); $old = ($minv !== '' && trim((string)($in['version'] ?? '')) !== '' && version_compare((string)$in['version'], $minv, '<')) ? 1 : 0;
-  if ($old) { $off = DC_MODES; $note = trim(dc_kv('min_msg_el', '') . "\n" . dc_kv('min_msg_en', '')); if ($note === '') $note = "Αυτή η έκδοση είναι παλιά. Ενημέρωσε το πρόγραμμα στην έκδοση $minv ή νεότερη.\nThis version is too old. Update the program to version $minv or newer."; }
-  return ['off' => array_values($off), 'note' => $note, 'tx' => dc_tx_for($in), 'minv' => $minv, 'old' => $old,
+  if ($old) { $off = dc_items(); $paid = []; $note = trim(dc_kv('min_msg_el', '') . "\n" . dc_kv('min_msg_en', '')); if ($note === '') $note = "Αυτή η έκδοση είναι παλιά. Ενημέρωσε το πρόγραμμα στην έκδοση $minv ή νεότερη.\nThis version is too old. Update the program to version $minv or newer."; }
+  return ['off' => array_values($off), 'paid' => (object)$paid, 'note' => $note, 'tx' => dc_tx_for($in), 'minv' => $minv, 'old' => $old,
     'txnote' => trim(dc_kv('tx_note_el', '') . "\n" . dc_kv('tx_note_en', '')) ?: "Η εκπομπή δεν είναι διαθέσιμη σε αυτή την εγκατάσταση (μόνο ακρόαση).\nTransmitting is not available on this installation (listen only)."];
 }
 // the whole answer of the licence server for one installation: the plain fields (older programs) + the signed payload (this program trusts only that)
@@ -680,7 +742,7 @@ function dc_lic_answer(string $id, string $hw = '', array $extra = []): array {
   [$st, $exp] = dc_lic_effective($in); $full = $state === 'full' && !$other;
   $payload = json_encode(['v' => 2, 'id' => $id, 'no' => dc_inst_no($id), 'state' => $state, 'left' => $left, 'msg' => $msg, 'exp' => (int)$exp, 'now' => time(),
     'registered' => $registered, 'offline' => $off['offline'], 'offline_days' => $off['offline_days'], 'donate' => $pub['donate'], 'offer' => $pub['offer'], 'amount' => $pub['amount'],
-    'n' => substr(preg_replace('/[^a-f0-9]/', '', strtolower((string)($_REQUEST['n'] ?? ''))), 0, 32), 'hw' => $bind, 'other_pc' => $other, 'own' => $full ? (string)($in['owner'] ?? '') : '', 'call' => (string)($in['call'] ?? ''), 'code' => $full ? (string)($in['lic_code'] ?? '') : '', 'pol' => dc_policy($in)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    'n' => substr(preg_replace('/[^a-f0-9]/', '', strtolower((string)($_REQUEST['n'] ?? ''))), 0, 32), 'hw' => $bind, 'other_pc' => $other, 'own' => $full ? (string)($in['owner'] ?? '') : '', 'call' => (string)($in['call'] ?? ''), 'code' => $full ? (string)($in['lic_code'] ?? '') : '', 'extras' => dc_extras_of($in), 'kind' => $st, 'since' => $full ? (int)($in['lic_since'] ?? 0) : 0, 'pol' => dc_policy($in)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
   return ['ok' => true, 'state' => $state, 'left' => $left, 'msg' => $msg, 'other_pc' => $other, 'registered' => $registered, 'offline' => $off['offline'], 'offline_days' => $off['offline_days']] + $pub
     + ['payload' => $payload, 'sig' => dc_sign($payload)];
 }

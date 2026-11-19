@@ -273,15 +273,15 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   }
 
   // ---------- modes and policies (page Modes) ----------
-  $MN = ['on' => L('Ενεργό', 'On'), 'off' => L('Κλειστό', 'Off'), 'beta' => L('Μόνο δοκιμαστές', 'Testers only')];
+  $MN = ['on' => L('Ενεργό', 'On'), 'off' => L('Κλειστό', 'Off'), 'beta' => L('Μόνο δοκιμαστές', 'Testers only'), 'paid' => L('Extra (επί πληρωμή)', 'Extra (paid)')];
   // "for everyone" and "for selected" are one setting: a general change reaches every installation, so the own settings (*) of single installations for that mode are removed
   $clearOvr = function (array $modes) { foreach (dc_q("SELECT id, mode_ovr FROM dc_installs WHERE mode_ovr IS NOT NULL AND mode_ovr<>''")->fetchAll() as $r) { $o = dc_mode_ovr($r); $k = $o; foreach ($modes as $m) unset($k[$m]); if ($k !== $o || (!$o && (string)$r['mode_ovr'] !== '')) dc_q('UPDATE dc_installs SET mode_ovr=? WHERE id=?', [$k ? json_encode($k) : '', $r['id']]); } };
   if ($a === 'mode_set') {
     $m = $_POST['mode'] ?? ''; $v = $_POST['state'] ?? '';
-    if (in_array($m, DC_MODES, true) && in_array($v, ['on', 'off', 'beta'], true)) { dc_kv_set(dc_mode_key($m), $v); $clearOvr([$m]); dc_event('modes', "all|$m → " . $v); flash('ok', "$m: " . $MN[$v] . L(' — για όλους.', ' — for everyone.')); }
+    if (in_array($m, dc_items(), true) && in_array($v, ['on', 'off', 'beta', 'paid'], true)) { dc_kv_set(dc_mode_key($m), $v); $clearOvr([$m]); dc_event('modes', "all|$m → " . $v); flash('ok', "$m: " . $MN[$v] . L(' — για όλους.', ' — for everyone.')); }
   }
   if ($a === 'modes_all') {
-    $v = $_POST['state'] ?? ''; if (in_array($v, ['on', 'off'], true)) { foreach (DC_MODES as $m) dc_kv_set(dc_mode_key($m), $v); $clearOvr(DC_MODES); dc_event('modes', 'all|' . L('όλα τα modes', 'all modes') . ' → ' . $v); flash('ok', L('Όλα τα modes: ', 'All modes: ') . $MN[$v]); }
+    $v = $_POST['state'] ?? ''; if (in_array($v, ['on', 'off'], true)) { foreach (dc_items() as $m) dc_kv_set(dc_mode_key($m), $v); $clearOvr(dc_items()); dc_event('modes', 'all|' . L('όλα τα modes', 'all modes') . ' → ' . $v); flash('ok', L('Όλα τα modes: ', 'All modes: ') . $MN[$v]); }
   }
   if ($a === 'modes_note') {
     foreach (['modes_note_el', 'modes_note_en', 'tx_note_el', 'tx_note_en', 'min_msg_el', 'min_msg_en'] as $k) dc_kv_set($k, substr(trim($_POST[$k] ?? ''), 0, 300));
@@ -289,8 +289,17 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     dc_kv_set('tx_all', ($_POST['tx_all'] ?? '1') === '0' ? '0' : '1');
     dc_event('modes', 'all|' . L('μηνύματα / ελάχιστη έκδοση / εκπομπή', 'messages / minimum version / transmit')); flash('ok', L('Αποθηκεύτηκε.', 'Saved.'));
   }
+  if ($a === 'extra_cfg') {
+    $m = $_POST['mode'] ?? '';
+    if (in_array($m, dc_items(), true)) {
+      $one = fn($v) => substr(trim(preg_replace('/\s*\R\s*/', ' ', (string)$v)), 0, 300); $lk = trim((string)($_POST['link'] ?? ''));
+      if ($lk !== '' && !preg_match('~^https://~i', $lk)) flash('bad', L('Ο σύνδεσμος πρέπει να αρχίζει με https:// (ή άφησέ τον κενό).', 'The link must start with https:// (or leave it empty).'));
+      else { dc_kv_set(dc_extra_dbkey($m), json_encode(['offer' => ($_POST['offer'] ?? '') === 'buy' ? 'buy' : 'donate', 'amount' => substr(trim((string)($_POST['amount'] ?? '')), 0, 30), 'link' => substr($lk, 0, 300),
+        'msg_el' => $one($_POST['msg_el'] ?? ''), 'msg_en' => $one($_POST['msg_en'] ?? '')], JSON_UNESCAPED_UNICODE)); dc_event('modes', 'all|' . $m . ' extra ' . L('ρυθμίσεις', 'settings')); flash('ok', $m . ': ' . L('αποθηκεύτηκαν οι ρυθμίσεις του extra.', 'extra settings saved.')); }
+    }
+  }
   if ($a === 'mode_inst') {
-    $ids = array_values(array_filter((array)($_POST['ids'] ?? []), 'is_string')); $ms = array_values(array_intersect(DC_MODES, (array)($_POST['modes'] ?? []))); $act = $_POST['act'] ?? '';
+    $ids = array_values(array_filter((array)($_POST['ids'] ?? []), 'is_string')); $ms = array_values(array_intersect(dc_items(), (array)($_POST['modes'] ?? []))); $act = $_POST['act'] ?? '';
     $tx = $_POST['txset'] ?? ''; $te = $_POST['testerset'] ?? '';
     if (!$ids) flash('bad', L('Διάλεξε τουλάχιστον μία εγκατάσταση.', 'Select at least one installation.'));
     elseif (!$ms && $act !== '' && $act !== '-') flash('bad', L('Διάλεξε τουλάχιστον ένα mode.', 'Select at least one mode.'));
@@ -301,6 +310,8 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
         $o = dc_mode_ovr($r);
         if (in_array($act, ['on', 'off'], true)) foreach ($ms as $m) $o[$m] = $act;
         elseif ($act === 'reset') foreach ($ms as $m) unset($o[$m]);
+        elseif ($act === 'extra_give') foreach ($ms as $m) dc_extra_give($id, $m, 'panel');
+        elseif ($act === 'extra_take') foreach ($ms as $m) dc_extra_take($id, $m, 'panel');
         dc_q('UPDATE dc_installs SET mode_ovr=? WHERE id=?', [$o ? json_encode($o) : '', $id]);
         if ($tx === '1' || $tx === '0' || $tx === 'def') dc_q('UPDATE dc_installs SET tx_ovr=? WHERE id=?', [$tx === 'def' ? '' : $tx, $id]);
         if ($te === '1' || $te === '0') dc_q('UPDATE dc_installs SET tester=? WHERE id=?', [(int)$te, $id]);
@@ -308,7 +319,7 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       if (in_array($act, ['on', 'off'], true) && $ms && $n > 0 && $n === (int)dc_scalar('SELECT COUNT(*) FROM dc_installs')) {   // every installation ticked = the general setting too (the "for everyone" cards show it)
         foreach ($ms as $m) dc_kv_set(dc_mode_key($m), $act); $clearOvr($ms);
       }
-      $what = ($act === 'on' ? L('άνοιγμα ', 'open ') : ($act === 'off' ? L('κλείσιμο ', 'close ') : ($act === 'reset' ? L('γενική ρύθμιση ', 'general setting ') : ''))) . implode(', ', $ms)
+      $what = ($act === 'on' ? L('άνοιγμα ', 'open ') : ($act === 'off' ? L('κλείσιμο ', 'close ') : ($act === 'reset' ? L('γενική ρύθμιση ', 'general setting ') : ($act === 'extra_give' ? L('ξεκλείδωμα extra ', 'unlock extra ') : ($act === 'extra_take' ? L('αφαίρεση extra ', 'remove extra ') : ''))))) . implode(', ', $ms)
         . ($tx !== '' && $tx !== '-' ? ' TX=' . $tx : '') . ($te !== '' && $te !== '-' ? ' tester=' . $te : '');
       dc_event('modes', "$n|" . trim($what)); flash('ok', L("Εφαρμόστηκε σε $n εγκαταστάσεις: ", "Applied to $n installations: ") . trim($what));
     }
@@ -344,6 +355,7 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
   if ($a === 'pay_assign') {
     $to = dc_one('SELECT id FROM dc_installs WHERE rowid=?', [(int)preg_replace('/\D/', '', $_POST['to'] ?? '')]);
     if (!$to) flash('bad', L('Δεν βρέθηκε η εγκατάσταση (γράψε π.χ. DC-00012).', 'Installation not found (enter e.g. DC-00012).'));
+    elseif (preg_match('/^x:(.+)$/', (string)($_POST['what'] ?? ''), $xm) && in_array($xm[1], dc_items(), true)) { dc_pay_extra_grant((int)$_POST['pid'], $to['id'], $xm[1], 'panel'); flash('ok', L('Ξεκλειδώθηκε το extra «', 'Unlocked the extra “') . $xm[1] . L('» στην ', '” on ') . dc_inst_no($to['id'])); }
     else { $code = dc_pay_activate((int)$_POST['pid'], $to['id'], 'panel'); flash('ok', L('Ενεργοποιήθηκε η ', 'Activated ') . dc_inst_no($to['id']) . ' · ' . $code); }
   }
   if ($a === 'pay_add') {
@@ -776,22 +788,39 @@ elseif ($p === 'licenses') {
 
 /* ===================== MODES / POLICIES ===================== */
 elseif ($p === 'modes') {
-  $hp = '<input type="hidden" name="p" value="modes">'; $MN = ['on' => L('Ενεργό', 'On'), 'off' => L('Κλειστό', 'Off'), 'beta' => L('Μόνο δοκιμαστές', 'Testers only')];
+  $hp = '<input type="hidden" name="p" value="modes">'; $MN = ['on' => L('Ενεργό', 'On'), 'off' => L('Κλειστό', 'Off'), 'beta' => L('Μόνο δοκιμαστές', 'Testers only'), 'paid' => L('Extra (επί πληρωμή)', 'Extra (paid)')];
   $total = (int)dc_scalar('SELECT COUNT(*) FROM dc_installs'); $tst = (int)dc_scalar('SELECT COUNT(*) FROM dc_installs WHERE tester=1');
   $all = dc_q('SELECT rowid AS rno, * FROM dc_installs')->fetchAll();
-  $mc = ['on' => 'ok', 'off' => 'bad', 'beta' => 'o'];
+  $mc = ['on' => 'ok', 'off' => 'bad', 'beta' => 'o', 'paid' => 'o']; $MB = ['on' => $MN['on'], 'off' => $MN['off'], 'beta' => $MN['beta'], 'paid' => 'Extra'];
   echo '<section class="card"><h2>' . L('Modes — για όλους', 'Modes — for everyone') . '</h2><p class="muted">' . L('Κλείνεις ή ανοίγεις ένα mode σε όλες τις εγκαταστάσεις. «Μόνο δοκιμαστές» = ανοιχτό μόνο στις εγκαταστάσεις που έχεις σημάδει ως δοκιμαστές (παρακάτω). Η αλλαγή φτάνει στα προγράμματα στον επόμενο έλεγχο, χωρίς καμία ενέργεια από τον χρήστη.', 'Close or open a mode on every installation. “Testers only” = open only on installations you marked as testers (below). The change reaches the programs at their next check, with nothing for the user to do.') . '</p>'
     . '<div class="mgrid">';
-  foreach (DC_MODES as $m) {
+  foreach (dc_items() as $m) {
     $g = dc_mode_global($m); $nOn = 0; foreach ($all as $r) if (dc_mode_for($r, $m) === 'on') $nOn++;
     echo '<form method="post" class="mcard ' . $g . '">' . csrf() . $hp . '<input type="hidden" name="a" value="mode_set"><input type="hidden" name="mode" value="' . h($m) . '">'
       . '<div class="mh"><b>' . h($m) . '</b><span class="pill ' . $mc[$g] . '">' . h($MN[$g]) . '</span></div>'
       . '<div class="seg">';
-    foreach (['on', 'off', 'beta'] as $v) echo '<button name="state" value="' . $v . '" class="' . ($g === $v ? 'sel ' . $v : '') . '">' . h($MN[$v]) . '</button>';
+    foreach (['on', 'off', 'beta', 'paid'] as $v) echo '<button name="state" value="' . $v . '" class="' . ($g === $v ? 'sel ' . $v : '') . '">' . h($MB[$v]) . '</button>';
     echo '</div><small class="muted">' . sprintf(L('Ανοιχτό σε %d από %d εγκαταστάσεις', 'Open on %d of %d installations'), $nOn, $total) . '</small></form>';
   }
   echo '</div><div class="mall"><form method="post" style="display:inline">' . csrf() . $hp . '<input type="hidden" name="a" value="modes_all"><input type="hidden" name="state" value="on"><button class="btn sm">' . L('Άνοιγμα ΟΛΩΝ', 'Open ALL') . '</button></form> '
     . '<form method="post" style="display:inline" onsubmit="return confirm(\'' . L('Να κλείσουν ΟΛΑ τα modes σε όλους;', 'Close ALL modes for everyone?') . '\')">' . csrf() . $hp . '<input type="hidden" name="a" value="modes_all"><input type="hidden" name="state" value="off"><button class="btn sm danger">' . L('Κλείσιμο ΟΛΩΝ', 'Close ALL') . '</button></form></div></section>';
+  // Extras: what a mode / feature that is set to "Extra" asks for (amount, button, link, message). Each is a card; they open when the mode is an Extra.
+  echo '<section class="card"><h2>' . L('Extras — επιπλέον δωρεά ή αγορά', 'Extras — additional donation or purchase') . '</h2><p class="muted">'
+    . L('Βάλε ένα mode ή μια λειτουργία στο «Extra» (πάνω). Μένει κλειστό μέχρι ο χρήστης να κάνει την επιπλέον δωρεά· τότε ξεκλειδώνεται αυτόματα (αν η πληρωμή γράφει τον αριθμό εγκατάστασης DC-… και το όνομα του extra, ή το ποσό είναι μοναδικό) ή το ξεκλειδώνεις εσύ από «Πληρωμές» ή από «Modes — σε επιλεγμένους». Το πρόγραμμα δείχνει το μήνυμά σου και το κουμπί με το ποσό. Κενός σύνδεσμος = ο γενικός σύνδεσμος δωρεάς.',
+        'Set a mode or a feature to “Extra” (above). It stays closed until the user makes the additional donation; it is then unlocked automatically (if the payment carries the installation number DC-… and the name of the extra, or the amount is unique) or you unlock it in “Payments” or “Modes — for selected installations”. The program shows your message and the button with the amount. Empty link = the general donation link.')
+    . '</p>';
+  foreach (dc_items() as $m) {
+    $g = dc_mode_global($m); $c = dc_extra_cfg($m); $nHave = (int)dc_scalar("SELECT COUNT(*) FROM dc_installs WHERE extras LIKE ?", ['%"' . $m . '"%']);
+    echo '<details class="relrow"' . ($g === 'paid' ? ' open' : '') . '><summary><b>' . h(dc_item_name($m)) . '</b> <span class="pill ' . $mc[$g] . '">' . h($MN[$g]) . '</span>' . ($c['amount'] !== '' ? ' <span class="muted">' . h($c['amount']) . '</span>' : '') . ($nHave ? ' <small class="muted">· ' . sprintf(L('%d το έχουν', '%d have it'), $nHave) . '</small>' : '') . '</summary>'
+      . '<form method="post" class="form">' . csrf() . $hp . '<input type="hidden" name="a" value="extra_cfg"><input type="hidden" name="mode" value="' . h($m) . '"><div class="g2">'
+      . '<label>' . L('Κουμπί στο πρόγραμμα', 'Button in the program') . '<select name="offer"><option value="donate"' . ($c['offer'] === 'donate' ? ' selected' : '') . '>' . L('Δωρεά (Donate)', 'Donation (Donate)') . '</option><option value="buy"' . ($c['offer'] === 'buy' ? ' selected' : '') . '>' . L('Αγορά', 'Buy') . '</option></select></label>'
+      . '<label>' . L('Ποσό που φαίνεται στο κουμπί (π.χ. 3 €)', 'Amount shown on the button (e.g. 3 €)') . '<input name="amount" value="' . h($c['amount']) . '" maxlength="30" placeholder="3 €"></label>'
+      . '<label style="grid-column:1/-1">' . L('Σύνδεσμος πληρωμής https://… (κενό = γενικός σύνδεσμος δωρεάς)', 'Payment link https://… (empty = the general donation link)') . '<input name="link" value="' . h($c['link']) . '" maxlength="300" placeholder="https://www.paypal.com/donate/?hosted_button_id=…"></label>'
+      . '<label>' . L('Μήνυμα στο πρόγραμμα (Ελληνικά)', 'Message in the program (Greek)') . '<textarea name="msg_el" rows="2" placeholder="π.χ. Το AllStar είναι extra λειτουργία.">' . h($c['msg_el']) . '</textarea></label>'
+      . '<label>' . L('Μήνυμα στο πρόγραμμα (Αγγλικά)', 'Message in the program (English)') . '<textarea name="msg_en" rows="2" placeholder="e.g. AllStar is an extra feature.">' . h($c['msg_en']) . '</textarea></label>'
+      . '</div><button class="btn pri">' . L('Αποθήκευση', 'Save') . '</button></form></details>';
+  }
+  echo '</section>';
 
   $txg = dc_kv('tx_all', '1') !== '0';
   echo '<section class="card"><h2>' . L('Εκπομπή, ελάχιστη έκδοση και μηνύματα', 'Transmit, minimum version and messages') . '</h2><form method="post" class="form">' . csrf() . $hp . '<input type="hidden" name="a" value="modes_note"><div class="g2">'
@@ -813,18 +842,19 @@ elseif ($p === 'modes') {
     . '<form class="filters" method="get"><input type="hidden" name="p" value="modes"><input name="q" value="' . h($fq) . '" placeholder="' . L('Αναζήτηση: call, όνομα, αριθμός DC-…, ID, email', 'Search: call, name, number DC-…, ID, email') . '"><button class="btn">' . L('Φίλτρο', 'Filter') . '</button></form>'
     . '<form method="post" class="form" id="mi">' . csrf() . $hp . '<input type="hidden" name="a" value="mode_inst">'
     . '<div class="mbar"><div><b>' . L('1. Ποια modes', '1. Which modes') . '</b><div class="mchk">';
-  foreach (DC_MODES as $m) echo '<label class="chk"><input type="checkbox" name="modes[]" value="' . h($m) . '"> ' . h($m) . '</label>';
-  echo '</div></div><div><b>' . L('2. Τι να γίνει', '2. What to do') . '</b><select name="act"><option value="-">' . L('— τίποτα στα modes —', '— nothing for modes —') . '</option><option value="on">' . L('Άνοιγμα (ενεργό)', 'Open (on)') . '</option><option value="off">' . L('Κλείσιμο', 'Close') . '</option><option value="reset">' . L('Επαναφορά στη γενική ρύθμιση', 'Back to the general setting') . '</option></select></div>'
+  foreach (dc_items() as $m) echo '<label class="chk"><input type="checkbox" name="modes[]" value="' . h($m) . '"> ' . h($m) . '</label>';
+  echo '</div></div><div><b>' . L('2. Τι να γίνει', '2. What to do') . '</b><select name="act"><option value="-">' . L('— τίποτα στα modes —', '— nothing for modes —') . '</option><option value="on">' . L('Άνοιγμα (ενεργό)', 'Open (on)') . '</option><option value="off">' . L('Κλείσιμο', 'Close') . '</option><option value="reset">' . L('Επαναφορά στη γενική ρύθμιση', 'Back to the general setting') . '</option><option value="extra_give">' . L('Ξεκλείδωμα του extra (πληρώθηκε)', 'Unlock the extra (paid)') . '</option><option value="extra_take">' . L('Αφαίρεση του extra', 'Remove the extra') . '</option></select></div>'
     . '<div><b>' . L('Εκπομπή', 'Transmit') . '</b><select name="txset"><option value="-">—</option><option value="1">' . L('Επιτρέπεται', 'Allowed') . '</option><option value="0">' . L('Μόνο ακρόαση', 'Listen only') . '</option><option value="def">' . L('Όπως η γενική ρύθμιση', 'Like the general setting') . '</option></select></div>'
     . '<div><b>' . L('Δοκιμαστής', 'Tester') . '</b><select name="testerset"><option value="-">—</option><option value="1">' . L('Ναι (δοκιμαστής)', 'Yes (tester)') . '</option><option value="0">' . L('Όχι', 'No') . '</option></select></div>'
     . '<div style="align-self:end"><button class="btn pri">' . L('3. Εφαρμογή στους τσεκαρισμένους', '3. Apply to the ticked') . '</button></div></div>'
     . '<div class="tw"><table class="tbl"><tr><th><input type="checkbox" id="mall" title="' . h(L('Όλοι', 'All')) . '"></th><th>Call</th><th>' . L('Έκδοση', 'Version') . '</th>';
-  foreach (DC_MODES as $m) echo '<th class="mh2">' . h($m) . '</th>';
+  foreach (dc_items() as $m) echo '<th class="mh2">' . h($m) . '</th>';
   echo '<th>TX</th><th>' . L('Δοκιμ.', 'Tester') . '</th></tr>';
   foreach ($rows as $r) {
     $ov = dc_mode_ovr($r);
     echo '<tr><td><input type="checkbox" name="ids[]" value="' . h($r['id']) . '" class="mrow"></td><td><span class="mono muted">' . sprintf('DC-%05d', $r['rno']) . '</span> <b>' . h($r['call'] ?: substr($r['id'], 0, 8)) . '</b>' . ($r['name'] ? '<br><small class="muted">' . h($r['name']) . '</small>' : '') . '</td><td class="muted">' . h($r['version'] ?: '—') . '</td>';
-    foreach (DC_MODES as $m) { $e = dc_mode_for($r, $m); echo '<td><span class="dot ' . ($e === 'on' ? 'on' : 'off') . '" title="' . h($m . ': ' . $MN[$e] . (isset($ov[$m]) ? ' (' . L('δική του ρύθμιση', 'own setting') . ')' : '')) . '"></span>' . (isset($ov[$m]) ? '<sup>*</sup>' : '') . '</td>'; }
+    $own = dc_extras_of($r);
+    foreach (dc_items() as $m) { $e = dc_mode_for($r, $m); echo '<td><span class="dot ' . ($e === 'on' ? 'on' : 'off') . '" title="' . h($m . ': ' . $MN[$e] . (isset($ov[$m]) ? ' (' . L('δική του ρύθμιση', 'own setting') . ')' : '') . (in_array($m, $own, true) ? ' (' . L('έχει το extra', 'has the extra') . ')' : '')) . '"></span>' . (isset($ov[$m]) ? '<sup>*</sup>' : '') . (in_array($m, $own, true) ? '<sup title="extra">★</sup>' : '') . '</td>'; }
     $tx = dc_tx_for($r);
     echo '<td>' . ($tx ? '<span class="pill ok">TX</span>' : '<span class="pill bad">RX</span>') . ($r['tx_ovr'] !== null && $r['tx_ovr'] !== '' ? '<sup>*</sup>' : '') . '</td><td>' . (!empty($r['tester']) ? '<span class="pill o">' . L('δοκιμαστής', 'tester') . '</span>' : '<span class="muted">—</span>') . '</td></tr>';
   }
@@ -873,12 +903,13 @@ elseif ($p === 'payments') {
   // list
   echo '<section class="card"><h2>' . L('Πληρωμές', 'Payments') . '</h2><div class="tw"><table class="tbl"><tr><th>' . L('Ώρα', 'Time') . '</th><th>' . L('Ποσό', 'Amount') . '</th><th>' . L('Από', 'From') . '</th><th>' . L('Σημείωση', 'Note') . '</th><th>' . L('Εγκατάσταση / κωδικός', 'Installation / code') . '</th></tr>';
   $rows = dc_q('SELECT * FROM dc_payments ORDER BY t DESC LIMIT 300')->fetchAll(); if (!$rows) echo '<tr><td colspan="5" class="muted">' . L('Καμία πληρωμή ακόμη.', 'No payments yet.') . '</td></tr>';
+  $xsel = '<select name="what" style="max-width:150px" title="' . h(L('Τι ενεργοποιεί η πληρωμή', 'What the payment unlocks')) . '"><option value="">' . L('Άδεια', 'Licence') . '</option>'; foreach (dc_items() as $xi) $xsel .= '<option value="x:' . h($xi) . '">Extra: ' . h($xi) . '</option>'; $xsel .= '</select> ';
   foreach ($rows as $x) {
     $st = $x['status'] === 'Completed' ? '' : ' <span class="pill ' . (in_array($x['status'], ['Refunded', 'Reversed'], true) ? 'bad' : 'o') . '">' . h($x['status']) . '</span>';
     list($guess) = $x['install'] ? [null] : dc_pay_match(['custom' => $x['custom'], 'memo' => $x['memo'], 'payer_email' => $x['payer_email']]);
     if ($x['install']) $act = '<a href="?p=installs&q=' . urlencode(dc_inst_no($x['install'])) . '"><b>' . h(dc_inst_no($x['install'])) . '</b></a> <span class="mono">' . h($x['code']) . '</span><br><small class="muted">' . h($x['matched_by']) . '</small>';
     elseif ($x['status'] === 'Ignored') $act = '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_restore"><input type="hidden" name="pid" value="' . $x['id'] . '"><button class="btn sm">' . L('Επαναφορά', 'Restore') . '</button></form>';
-    else $act = '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_assign"><input type="hidden" name="pid" value="' . $x['id'] . '"><input name="to" placeholder="DC-00012" value="' . h($guess ? dc_inst_no($guess) : '') . '" style="width:120px"><button class="btn sm pri">' . L('Ενεργοποίηση', 'Activate') . '</button></form>'
+    else $act = '<form method="post" class="licf">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_assign"><input type="hidden" name="pid" value="' . $x['id'] . '"><input name="to" placeholder="DC-00012" value="' . h($guess ? dc_inst_no($guess) : '') . '" style="width:120px">' . $xsel . '<button class="btn sm pri">' . L('Ενεργοποίηση', 'Activate') . '</button></form>'
       . ($x['status'] === 'Completed' ? '<form method="post" style="margin-top:4px" onsubmit="return confirm(\'' . L('Να αγνοηθεί αυτή η πληρωμή; Δεν θα μετράει στα σύνολα.', 'Ignore this payment? It will not count in the totals.') . '\')">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_ignore"><input type="hidden" name="pid" value="' . $x['id'] . '"><button class="btn sm">' . L('Αγνόηση', 'Ignore') . '</button></form>' : '');
     echo '<tr><td>' . dc_dt($x['t']) . '<br><small class="mono muted">' . h($x['txn']) . '</small></td><td><b>' . h(number_format((float)$x['amount'], 2) . ' ' . $x['currency']) . '</b>' . $st . '</td><td>' . h($x['payer_name']) . '<br><small class="muted">' . h($x['payer_email']) . '</small></td><td><small>' . h($x['memo']) . '</small>'
       . '<form method="post" class="licf" style="margin-top:4px">' . csrf() . '<input type="hidden" name="p" value="payments"><input type="hidden" name="a" value="pay_note"><input type="hidden" name="pid" value="' . $x['id'] . '"><input name="note" value="' . h($x['note']) . '" placeholder="' . L('δική σου σημείωση', 'your note') . '" style="width:150px"><button class="btn sm">✓</button></form></td><td>' . $act . '</td></tr>';
@@ -1586,6 +1617,8 @@ function activity_rows($rows) {
       case 'reinstall': $txt = L('Επανεγκατάσταση: ', 'Reinstalled: ') . $who($d[0]) . ' ' . L('πήρε την κατάσταση της ', 'took the state of ') . '<b>' . h(dc_inst_no($d[1] ?? '')) . '</b>'; $c = 'b'; break;
       case 'payment':   $txt = L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · ' . h($d[3] ?? ''); $c = 'g'; break;
       case 'pay_auto':  $txt = '♥ ' . L('Αυτόματη ενεργοποίηση ', 'Automatic activation ') . $who($d[0]) . ' · ' . h($d[2] ?? '') . ' · <span class="mono">' . h($d[3] ?? '') . '</span>'; $c = 'g'; break;
+      case 'extra':     $txt = '★ ' . L('Extra ', 'Extra ') . '<b>' . h($d[1] ?? '') . '</b> ' . (($d[2] ?? '+') === '+' ? L('ξεκλειδώθηκε σε ', 'unlocked for ') : L('αφαιρέθηκε από ', 'removed from ')) . $who($d[0]) . ' · ' . h($d[3] ?? ''); $c = 'g'; break;
+      case 'pay_extra': $txt = '♥ ' . L('Αυτόματο extra «', 'Automatic extra “') . h($d[3] ?? '') . L('» ', '” ') . $who($d[0]) . ' · ' . h($d[2] ?? ''); $c = 'g'; break;
       case 'pay_unmatched': $txt = '♥ ' . L('Πληρωμή ', 'Payment ') . '<b>' . h($d[1] ?? '') . '</b> ' . L('από ', 'from ') . h($d[2] ?? '') . ' — <a href="?p=payments">' . L('χρειάζεται ενεργοποίηση', 'needs activation') . '</a>'; $c = 'o'; break;
       case 'pay_refund': $txt = '⚠ PayPal ' . h($d[1] ?? '') . ' · ' . h($d[0] ?? '') . (!empty($d[2]) ? ' · ' . $who($d[2]) : ''); $c = 'r'; break;
       case 'pay_invalid': $txt = '⚠ ' . L('Μη έγκυρο μήνυμα PayPal ', 'Invalid PayPal message ') . h($e['detail']); $c = 'r'; break;
@@ -1633,7 +1666,7 @@ function login_page($err = '') {
   </body></html><?php
 }
 
-function css() { ?><style>.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin:12px 0}.mcard{border:1px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg2);display:flex;flex-direction:column;gap:10px}.mcard.on{border-color:color-mix(in srgb,var(--rx) 55%,transparent)}.mcard.off{opacity:.92}.mcard .mh{display:flex;justify-content:space-between;align-items:center;font-size:16px}.seg{display:flex;gap:4px}.seg button{flex:1;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--text);border-radius:8px;padding:7px 4px}.seg button:hover{border-color:var(--acc)}.seg button.sel.on{background:var(--rx);border-color:var(--rx);color:#04140f}.seg button.sel.off{background:var(--bad);border-color:var(--bad);color:#fff}.seg button.sel.beta{background:var(--tx);border-color:var(--tx);color:#1b1200}.mall{display:flex;gap:8px}.mbar{display:flex;flex-wrap:wrap;gap:14px 22px;margin:12px 0}.mbar>div{display:flex;flex-direction:column;gap:6px}.mchk{display:flex;flex-wrap:wrap;gap:4px 12px}.mchk .chk{display:flex;flex-direction:row;gap:5px;align-items:center}.dot{display:inline-block;width:12px;height:12px;border-radius:50%}.dot.on{background:var(--rx)}.dot.off{background:var(--line2)}th.mh2{font-size:11px}
+function css() { ?><style>.mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin:12px 0}.mcard{border:1px solid var(--line2);border-radius:12px;padding:12px;background:var(--bg2);display:flex;flex-direction:column;gap:10px}.mcard.on{border-color:color-mix(in srgb,var(--rx) 55%,transparent)}.mcard.off{opacity:.92}.mcard .mh{display:flex;justify-content:space-between;align-items:center;font-size:16px}.seg{display:flex;gap:4px}.seg button{flex:1;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;border:1px solid var(--line2);background:transparent;color:var(--text);border-radius:8px;padding:7px 4px}.seg button:hover{border-color:var(--acc)}.seg button.sel.on{background:var(--rx);border-color:var(--rx);color:#04140f}.seg button.sel.off{background:var(--bad);border-color:var(--bad);color:#fff}.seg button.sel.paid{background:var(--acc);color:#04140f}.seg button.sel.beta{background:var(--tx);border-color:var(--tx);color:#1b1200}.mall{display:flex;gap:8px}.mbar{display:flex;flex-wrap:wrap;gap:14px 22px;margin:12px 0}.mbar>div{display:flex;flex-direction:column;gap:6px}.mchk{display:flex;flex-wrap:wrap;gap:4px 12px}.mchk .chk{display:flex;flex-direction:row;gap:5px;align-items:center}.dot{display:inline-block;width:12px;height:12px;border-radius:50%}.dot.on{background:var(--rx)}.dot.off{background:var(--line2)}th.mh2{font-size:11px}
 
 :root{--bg:#070a10;--bg2:#0c111a;--card:#101722;--line:#1f2a3a;--line2:#2b3a50;--text:#e8eef5;--muted:#8d9cb0;--acc:#17c0a8;--acc2:#3cc8ff;--rx:#3ee08b;--tx:#ffad42;--bad:#ff5a6e;--mono:ui-monospace,Menlo,Consolas,monospace;--card2:#131c2a;--shadow:0 1px 0 rgba(255,255,255,.04) inset,0 8px 24px rgba(0,0,0,.35);color-scheme:dark}
 @media (prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#eef2f7;--bg2:#fff;--card:#fff;--line:#d9e1ea;--line2:#c3cfdc;--text:#111a26;--muted:#56677c;--acc:#0e9e8a;--acc2:#0a84c6;--rx:#14894d;--tx:#b96400;--bad:#c22a40;--card2:#f6f8fb;--shadow:0 1px 2px rgba(16,24,40,.06),0 6px 18px rgba(16,24,40,.06);color-scheme:light}}

@@ -137,3 +137,20 @@ def test_block_dialog_shows_that_text_and_the_amount(tmp_path):
     v = L.Verdict("blocked", "locked", "", "Your demo period has ended. Contact SA7SVR to activate.", "https://x.example", dict(offer="donate", amount="5 €", no="DC-7"))
     d = BlockDialog(v, lambda: v)
     assert "make a donation" in d.msg.text() and d.donate.text() == "♥ Donate · 5 €" and not d.donate.isHidden()
+
+
+def test_licence_window_shows_permanent_licence_number_code_and_owner(tmp_path):
+    from app import license as L, i18n
+    from app.ui.license_dialog import licence_line
+    import time
+    mk = lambda st="full", **i: L.Verdict("ok", st, "", "", "https://x.example", i)
+    since = int(time.mktime((2026, 11, 18, 12, 0, 0, 0, 0, -1)))
+    l = licence_line(mk(no="DC-00001", kind="full", exp=0, since=since))
+    assert l == "Licence: Permanent · DC-00001 · since 2026-11-18", l
+    assert licence_line(mk(no="DC-00001", kind="full", exp=since)).startswith("Licence: until 2026-11-18 · DC-00001")
+    assert licence_line(mk(no="DC-00001", kind="free")) == "Licence: Free use · DC-00001"
+    assert licence_line(mk("demo", no="DC-00001")) == "" and licence_line(None) == ""
+    assert licence_line(mk(kind="full", exp=0)) == "Licence: Permanent"                          # an older server answer without number / date
+    i18n.set_language("Ελληνικά")
+    try: assert licence_line(mk(no="DC-00001", kind="full", exp=0, since=since)) == "Άδεια: Μόνιμη · DC-00001 · από 2026-11-18"
+    finally: i18n.set_language("English")

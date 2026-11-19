@@ -3,6 +3,7 @@ from ..qt import QtWidgets as W, QtCore, QtGui, Qt
 from ..rules import Target, valid_dmr_tg, id_label
 from .. import i18n
 from ..i18n import tr
+from ..license import with_amount as lic_with_amount
 from ..theme import NET_COLOR, C
 from .. import directory, countries
 from .widgets import *
@@ -50,7 +51,7 @@ class Workspace(W.QWidget):
         lv.addLayout(top); lv.addWidget(self.search); lv.addLayout(cr); lv.addWidget(self.count); lv.addWidget(self.list, 1); lv.addLayout(pr)
         # --- middle: selected station
         mid = panel(); _mo = vbox(mid, s=0); _sc = W.QScrollArea(); _sc.setWidgetResizable(True); _sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); _in = W.QWidget(); _in.setObjectName('scrollinner'); _in.setStyleSheet('QWidget#scrollinner{background:transparent;}'); _sc.setWidget(_in); _mo.addWidget(_sc); mv = vbox(_in, m=(16, 16, 16, 12), s=8)
-        self._sc = _sc; self.closed_note = panel("note"); _cv = vbox(self.closed_note, m=(12, 10, 12, 10)); self.closed_txt = label(""); self.closed_txt.setWordWrap(True); _cv.addWidget(self.closed_txt); self.closed_note.setVisible(False); _mo.insertWidget(0, self.closed_note)      # shown when the owner's server has closed this mode
+        self._sc = _sc; self.closed_note = panel("note"); _cv = vbox(self.closed_note, m=(12, 10, 12, 10)); self.closed_txt = label(""); self.closed_txt.setWordWrap(True); _cv.addWidget(self.closed_txt); self.closed_btn = button("♥ Donate"); self.closed_btn.setVisible(False); self.closed_btn.clicked.connect(self._pay_extra); _cv.addWidget(self.closed_btn, 0, Qt.AlignmentFlag.AlignLeft); self.closed_note.setVisible(False); _mo.insertWidget(0, self.closed_note)      # shown when the owner's server has closed this mode
         mv.addWidget(label("Selected station", eyebrow=True)); self.title = label("Select a station"); self.title.setStyleSheet("font-size:20px;font-weight:700;")
         self.sub = label("Select an entry in the list on the left.", muted=True); mv.addWidget(self.title); mv.addWidget(self.sub)
         if net == "AllStar":
@@ -421,10 +422,17 @@ class Workspace(W.QWidget):
         for c, m in enumerate((R.ResizeToContents, R.ResizeToContents, R.Stretch, R.ResizeToContents, R.ResizeToContents)): hd.setSectionResizeMode(c, m)
         self.lh_tbl.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
+    def _pay_extra(self):
+        from .license_dialog import open_donate
+        open_donate(self.ctx.policy.paid_link(self.net))
+
     def refresh(self):
         closed = not self.ctx.policy.allows(self.net)
         self.closed_note.setVisible(closed); self._sc.setEnabled(not closed)
         if closed: self.closed_txt.setText("⚠  " + tr(self.ctx.policy.reason(self.net)))
+        pi = self.ctx.policy.paid_info(self.net) if closed else None                  # an Extra that is not paid yet: the button that opens the payment page, with the amount
+        self.closed_btn.setVisible(bool(pi))
+        if pi: self.closed_btn.setText(lic_with_amount("♥ Buy" if pi.get("offer") == "buy" else "♥ Donate", pi))
         t = self.ctx.selected; mine = t is not None and t.net == self.net
         self.title.setText(t.name if mine else "Select a station")
         self.sub.setText(f"{t.net} · {t.id}" if mine else "Select an entry in the list on the left.")

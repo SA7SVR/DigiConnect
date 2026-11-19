@@ -1,4 +1,4 @@
-﻿DigiConnect 2.3.11 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.3.12 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,10 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.3.11)
+What is new in this version (2.3.12)
+  • NEW: a mode (for example AllStar) can be an "extra": it stays closed until an additional donation is made; the page shows the message and the Donate button with the amount, and it opens by itself after the payment.
+  • NEW (Licence window): for a finished licence it shows "Licence: Permanent · DC-00001 · since <date>", the activation code, the name and the extras.
+  New in 2.3.11:
   • FIXED: the Donate / Buy button now shows the amount you set in the server panel (for example "♥ Donate · 5 €"); until now the server sent it but the program never displayed it.
   New in 2.3.10:
   • NEW (Map): click a country → every station is its own dot, the call sign shows when you touch it; AllStarLink on the map; the map follows the station you choose.

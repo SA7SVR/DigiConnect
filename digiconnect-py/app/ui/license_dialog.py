@@ -62,6 +62,19 @@ class RegistrationDialog(W.QDialog):
         self.store.save_settings(); self.answer = m; self.accept()
 
 
+def licence_line(v) -> str:
+    """For a finished licence: 'Licence: Permanent · DC-00001 · since 2026-11-18' (or 'until <date>', or 'Free use'). Empty when the copy is not licensed."""
+    if not v or v.state != "full": return ""
+    i = v.info or {}; day = lambda t: time.strftime("%Y-%m-%d", time.localtime(int(t)))
+    if i.get("kind") == "free": what = tr("Free use")
+    elif i.get("exp"): what = tr("until " + day(i["exp"]))
+    else: what = tr("Permanent")
+    out = f"{tr('Licence')}: {what}"
+    if i.get("no"): out += f" · {i['no']}"
+    if i.get("since") and i.get("kind") != "free": out += " · " + tr("since " + day(i["since"]))
+    return out
+
+
 def block_text(v) -> str:
     """The text of the 'cannot continue' window. When the demo (or a timed licence) has ended it also says what to do to go on, like HAM Digi does:
     what happened (translated), the steps for the offer the owner chose in the server panel, then the owner's own message from the panel (as written)."""
@@ -273,12 +286,17 @@ class LicenceDialog(W.QDialog):
         state = {"full": tr("Licensed"), "demo": tr("Demo"), "free": tr("Free")}.get(v.state if v else "", tr(v.state) if v and v.state else "—")
         lines = [f"{tr('Status')}: {state}" + (f" · {tr(v.left)}" if v and v.left else "")]
         if i.get("no"): lines.append(f"{tr('Installation')}: {i['no']}" + (f" · {i['call']}" if i.get("call") else ""))
+        lic_line = licence_line(v)
+        if lic_line: lines.append(lic_line)
+        if i.get("code") and v and v.state == "full": lines.append(f"{tr('Activation code')}: {i['code']}")
         if i.get("own"): lines.append(f"{tr('Licensed to')}: {i['own']}")
         lines.append(f"{tr('This computer')}: {self.lic.hw[:8]}")
         ok_at = getattr(self.lic, "last_ok_ts", 0.0); err = getattr(self.lic, "last_error", "")
         if ok_at and not err: lines.append(f"{tr('Server answer')}: ✓ {time.strftime('%H:%M:%S', time.localtime(ok_at))}")
         if err: lines.append(f"{tr('Server answer')}: ✗ {err} — " + tr("the settings from the server are not applied"))
         pol = i.get("pol") or {}
+        have = [str(x) for x in (i.get("extras") or [])]; paid = pol.get("paid") if isinstance(pol.get("paid"), dict) else {}
+        if have or paid: lines.append(f"{tr('Extras')}: " + ", ".join([f"{k} ✓" for k in have] + [f"{k} ({v.get('amount') or tr('extra')})" for k, v in paid.items() if isinstance(v, dict)]))
         if pol: lines.append(f"{tr('Closed modes')}: {', '.join(pol.get('off') or []) or '—'}" + ("" if pol.get("tx", 1) else " · " + tr("listen only")))
         self.status.setText("\n".join(lines)); self.donate.setVisible(i.get("offer", "donate") != "none"); self.donate.setText(lic_mod.with_amount("♥ " + tr("Donate"), i))
 

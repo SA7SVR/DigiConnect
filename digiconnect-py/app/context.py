@@ -25,6 +25,7 @@ class Ctx(QtCore.QObject):
     _asl_done = Signal(int, str)
     dmr_server_changed = Signal()       # a DMR server was picked: the DMR page and Settings > Radio networks show the same server and port
     policy_changed = Signal()           # the owner's server opened/closed a mode or switched transmitting
+    extra_needed = Signal(str)          # the person tried to use a mode that is an Extra not paid yet: the window opens that mode's page (message + button)
     asl_links_changed = Signal()        # the list of stations connected to an AllStar node was updated
     _asl_links_done = Signal(str, object)
     el_changed = Signal()               # EchoLink: signed in / out, the station list arrived, or a station sent text (who is connected)
@@ -407,6 +408,7 @@ class Ctx(QtCore.QObject):
     # ---- engine feedback ------------------------------------------------------
     def _closed(self, net: str):
         m = self.policy.reason(net); self.note_problem(m); self.toast.emit(m); self.changed.emit()
+        if self.policy.paid_info(net): self.extra_needed.emit(net)
 
     def _no_tx(self):
         m = self.policy.tx_reason(); self.note_problem(m); self.toast.emit(m); self.changed.emit()
@@ -442,10 +444,10 @@ class Ctx(QtCore.QObject):
         old, self.policy = self.policy, new
         msg = ""
         for r in list(self.rules.rx):
-            if not new.allows(r.target.net): self.rules.stop_listening(r.handle); self.engine.stop_rx(r.handle); msg = new.reason()
+            if not new.allows(r.target.net): self.rules.stop_listening(r.handle); self.engine.stop_rx(r.handle); msg = new.reason(r.target.net)
         t = self.rules.tx_target
         if self.rules.tx_connected and t is not None and (not new.allows(t.net) or not new.tx):
-            self.rules.disconnect_tx(); self.engine.ptt(False); self.engine.disconnect_tx(); msg = msg or (new.reason() if not new.allows(t.net) else new.tx_reason())
+            self.rules.disconnect_tx(); self.engine.ptt(False); self.engine.disconnect_tx(); msg = msg or (new.reason(t.net) if not new.allows(t.net) else new.tx_reason())
         if msg: self.note_problem(msg); self.toast.emit(msg)
         self.policy_changed.emit(); self.changed.emit(); return True
 
