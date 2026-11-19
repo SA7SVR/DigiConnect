@@ -215,7 +215,7 @@ jobs:
           set -e
           VER=$(python3 -c "import re;print(re.search(r'\"([0-9.]+)\"', open('app/version.py').read()).group(1))")
           P="DigiConnect-PACKAGE-$VER"; A="$GITHUB_WORKSPACE/arts"
-          mkdir -p "$P/1-PROGRAM/Windows/portable" "$P/1-PROGRAM/macOS/Intel" "$P/1-PROGRAM/macOS/AppleSilicon" "$P/1-PROGRAM/Linux" "$P/1-PROGRAM/Αναβάθμιση" "$P/2-SERVER" "$P/3-SOURCE"
+          mkdir -p "$P/1-PROGRAM/Windows/portable" "$P/1-PROGRAM/macOS/Intel" "$P/1-PROGRAM/macOS/AppleSilicon" "$P/1-PROGRAM/Linux" "$P/1-PROGRAM/Αναβάθμιση" "$P/2-SERVER" "$P/3-SOURCE "$P/4-REBUILD"
           find "$A" -type f | sed "s|$A/||"
           cp -r "$A/DigiConnect-Windows-Setup/." "$P/1-PROGRAM/Windows/"
           cp -r "$A/DigiConnect-Windows-portable/." "$P/1-PROGRAM/Windows/portable/"
@@ -226,6 +226,11 @@ jobs:
           cp -r server/digiconnect "$P/2-SERVER/digiconnect"
           git -C .. archive --format=zip --prefix="DigiConnect-source-$VER/" -o "$PWD/$P/3-SOURCE/DigiConnect-source-$VER.zip" HEAD
           sed "s/__VER__/$VER/g" packaging/package/ΔΙΑΒΑΣΕ-ΠΡΩΤΑ.txt > "$P/ΔΙΑΒΑΣΕ-ΠΡΩΤΑ.txt"
+          # everything needed to rebuild from scratch, readable without opening the source zip (the same files are also inside it)
+          cp docs/BUILD-AND-REBUILD.md packaging/build-pins.txt tools/make_license_key.php "$P/4-REBUILD/"
+          cp ../.github/workflows/digiconnect-py.yml "$P/4-REBUILD/digiconnect-py.yml"
+          cp -r packaging/installer "$P/4-REBUILD/installer"; cp packaging/DigiConnect.spec packaging/DigiConnect.iss "$P/4-REBUILD/"
+          test -s "$P/4-REBUILD/BUILD-AND-REBUILD.md" && test -s "$P/4-REBUILD/build-pins.txt" && test -s "$P/4-REBUILD/DigiConnect.iss" || { echo "rebuild files missing"; exit 1; }
           # the version must be the same everywhere
           grep -q "$VER" "$P/2-SERVER/digiconnect/lib.php" || { echo "server version differs from $VER"; exit 1; }
           ls "$P/1-PROGRAM/Αναβάθμιση" | grep -q "$VER" || { echo "dcpkg version differs from $VER"; exit 1; }

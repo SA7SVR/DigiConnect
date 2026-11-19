@@ -1,0 +1,27 @@
+# DigiConnect — the exact versions that built release 2.3.11/2.3.12 (taken from the CI logs of the green Windows and macOS jobs, 2026-11-19).
+# The workflow installs the newest versions of these packages; if a future build breaks, install exactly these:
+#   python -m pip install -r packaging/build-pins.txt
+# Python 3.12 (actions/setup-python '3.12')
+PySide6==6.12.0
+PySide6_Essentials==6.12.0
+PySide6_Addons==6.12.0
+shiboken6==6.12.0
+numpy==2.5.5
+sounddevice==0.5.6
+certifi==2026.10.23
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
+altgraph==0.17.5
+pytest==9.2.0
+pluggy==1.7.0
+iniconfig==2.3.1
+pygments==2.21.0
+cffi==2.1.1
+pycparser==3.12
+setuptools==84.2.1
+packaging==26.3
+# Windows only: pefile==2024.8.26  pywin32-ctypes==0.2.3      macOS only: macholib==1.16.4
+#
+# Not pip packages (named in .github/workflows/digiconnect-py.yml):
+#   Qt 6.8.1 (Windows: win64_mingw + tools_mingw1310; Linux)   Qt 6.9.3 (macOS, deployment target 12.0)   modules: qtmultimedia qtserialport
+#   Inno Setup 6 (Windows installer)   linuxdeploy + linuxdeploy-plugin-qt (Linux engine)   CMake, Ninja (Linux)   runners: windows-2022, ubuntu-22.04, macos-latest, macos-15-intel

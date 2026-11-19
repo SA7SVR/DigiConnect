@@ -11,6 +11,9 @@ DigiConnect — ΠΑΚΕΤΟ __VER__
 2-SERVER    Ο φάκελος `digiconnect` για το hellaszone.com (ανέβασέ τον πάνω στον υπάρχοντα, ΕΚΤΟΣ από config.php, data/, pkg/).
             Αναλυτικά στο digiconnect/ΔΙΑΒΑΣΕ-ΜΕ.txt.
 3-SOURCE    Ο πλήρης πηγαίος κώδικας (κρατά το για πάντα).
+4-REBUILD   Όλα όσα χρειάζονται για να ξαναχτιστεί το πρόγραμμα από το μηδέν, ανοιχτά για ανάγνωση: BUILD-AND-REBUILD.md (πώς, με ακριβείς εκδόσεις), build-pins.txt,
+            η συνταγή χτισίματος (digiconnect-py.yml), το κέλυφος του installer (DigiConnect.spec, DigiConnect.iss, installer/), make_license_key.php.
+            Ό,τι ΔΕΝ μπορεί να μπει εδώ (κλειδί αδειών license-key.php, config.php, βάση server) το κρατάς εσύ — βλ. ενότητα 6 του BUILD-AND-REBUILD.md.
 
 ΣΕΙΡΑ ΕΝΕΡΓΕΙΩΝ
   1) Server: ανέβασε τον 2-SERVER πάνω στον υπάρχοντα (ΕΚΤΟΣ από config.php, data/, pkg/).
