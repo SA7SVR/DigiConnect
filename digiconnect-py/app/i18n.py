@@ -176,6 +176,7 @@ EL: dict[str, str] = {
     "Connect to a station to see who is connected to it.": "Συνδέσου σε έναν σταθμό για να δεις ποιοι είναι συνδεδεμένοι σε αυτόν.",
     "Waiting for the station to tell who is connected …": "Αναμονή να πει ο σταθμός ποιοι είναι συνδεδεμένοι …", "{} · {} connected": "{} · {} συνδεδεμένοι",
     "Play a sound when a station connects or disconnects": "Ήχος όταν συνδέεται ή αποσυνδέεται ένας σταθμός", "Connected to {}": "Συνδέθηκε με {}",
+    "VoIP / SIP phone for the HELLAS Zone VoIP server (sign in, see who is connected, call them). Not available in this version: it will be added in a later one.": "Τηλέφωνο VoIP / SIP για τον VoIP server της HELLAS Zone (σύνδεση, λίστα συνδεδεμένων, κλήσεις). Δεν είναι διαθέσιμο σε αυτή την έκδοση: θα προστεθεί σε επόμενη.",
     "the station has not sent a list of connected stations": "ο σταθμός δεν έστειλε λίστα συνδεδεμένων σταθμών",
     "The EchoLink station did not answer within 30 seconds - it may be offline or busy, or a firewall blocks UDP 5198/5199": "Ο σταθμός EchoLink δεν απάντησε μέσα σε 30 δευτερόλεπτα - μπορεί να είναι εκτός λειτουργίας ή απασχολημένος, ή κάποιο firewall μπλοκάρει τα UDP 5198/5199",
     "Server": "Server", "Sign-in answer": "Απάντηση σύνδεσης", "Stations read": "Σταθμοί που διαβάστηκαν", "Problem": "Πρόβλημα", "EchoLink test": "Δοκιμή EchoLink",

@@ -104,6 +104,8 @@ class MainWindow(W.QMainWindow):
             if k != "favorites":                             # right click: switch this mode on or off for this installation
                 b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 b.customContextMenuRequested.connect(lambda pos, n=k, w=b: self._mode_menu(n, w, pos))
+        # VoIP / SIP phone for the HELLAS Zone VoIP server: reserved for a later version. The button is OFF (disabled) and does nothing; no page, no connection and no state is shown for it.
+        self.voip_btn = button("VoIP", "tab", tip="VoIP / SIP phone for the HELLAS Zone VoIP server (sign in, see who is connected, call them). Not available in this version: it will be added in a later one."); self.voip_btn.setEnabled(False); tabs.addWidget(self.voip_btn)
         self.stop_all_btn = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_all_btn.clicked.connect(lambda: self.ctx.stop_all()); tabs.addWidget(self.stop_all_btn)   # always in reach, on the same line as the network tabs
         tabs.addStretch(); hv.addLayout(tabs); col.addWidget(self.head)
         # pages + right drawers
