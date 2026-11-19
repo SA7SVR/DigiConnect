@@ -22,7 +22,10 @@ def sign(seed: bytes, msg: bytes) -> str:
 
 def signed_update(man: dict, nonce: str, seed: bytes) -> dict:
     """The manifest as the server sends it: plus the signed offer for this request."""
-    up = json.dumps({"v": 1, "version": man["version"], "sha256": man["sha256"], "size": man["size"], "min_shell": man.get("min_shell", ""), "n": nonce, "now": 0})
+    d = {"v": 1, "version": man["version"], "sha256": man["sha256"], "size": man["size"], "min_shell": man.get("min_shell", "")}
+    if man.get("min_engine"): d["min_engine"] = man["min_engine"]
+    if man.get("eng"): d["eng"] = man["eng"]
+    up = json.dumps({**d, "n": nonce, "now": 0})
     return dict(man, upd=up, upd_sig=sign(seed, up.encode()))
 
 

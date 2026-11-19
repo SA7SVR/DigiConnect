@@ -8,8 +8,9 @@ without any re-install. Safety net: a 'starting' marker is written before the pr
 import json, os, sys, shutil, subprocess
 from pathlib import Path
 
-SHELL_VERSION = "2.2.0"          # raised only when the shell itself changes (engine, Qt, Python); then a full installer is needed
-BASE_VERSION = "2.3.12"           # version of the app/ code built into the shell (must equal app/version.py in the source tree; a test checks it)
+SHELL_VERSION = "2.2.0"          # raised only when something changes that an update cannot replace (Qt, Python, the shell files); then a full installer is needed
+ENGINE_VERSION = "2.3.12"        # version of the protocol engine (dcengine) inside this shell: raised whenever engine/ changes (a test checks it); an update can bring a newer engine (app/engine_update.py)
+BASE_VERSION = "2.4.0"            # version of the app/ code built into the shell (must equal app/version.py in the source tree; a test checks it)
 
 
 def vtuple(v: str) -> tuple:
@@ -42,12 +43,23 @@ def _write(p: Path, data):
     tmp.write_text(json.dumps(data), encoding="utf-8"); os.replace(tmp, p)
 
 
+def engine_version(root: Path | None = None) -> str:
+    """Version of the protocol engine that will run: the installer's, or a newer one that an update brought (<updates>/engine/, see app/engine_update.py)."""
+    root = root or updates_root(); e = root / "engine"; c = _read(e / "current.json", None)
+    try:
+        if isinstance(c, dict) and c.get("version") and c["version"] not in _read(e / "bad.json", []) and (e / c.get("dir", "-")).is_dir() and newer(str(c["version"]), ENGINE_VERSION):
+            return str(c["version"])
+    except Exception: pass
+    return ENGINE_VERSION
+
+
 def current(root: Path | None = None) -> dict | None:
     """The update that should run: {'version', 'dir', 'min_shell'} or None."""
     root = root or updates_root(); c = _read(root / "current.json", None)
     if not c or not (root / c.get("dir", "-") / "app" / "__init__.py").is_file(): return None
     if c["version"] in _read(root / "bad.json", []): return None
     if vtuple(c.get("min_shell", "0")) > vtuple(SHELL_VERSION): return None
+    if vtuple(c.get("min_engine", "0")) > vtuple(engine_version(root)): return None          # the Python code of this update needs a newer engine than the one that can run
     return c
 
 

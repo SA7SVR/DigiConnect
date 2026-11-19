@@ -11,6 +11,15 @@ if (!in_array($LANG, ['el','en','sv'], true)) $LANG = 'el';
 $_SESSION['dc_lang'] = $LANG;
 function L($el, $en = '', $sv = '') { global $LANG; return $LANG === 'en' ? ($en ?: $el) : ($LANG === 'sv' ? ($sv ?: $en ?: $el) : $el); }
 function h($s) { return dc_h($s); }
+// admin panel: which systems have the engine this release needs (so nothing is forgotten before the release is made active)
+function dc_engine_status(array $rel): string {
+  $min = trim((string)($rel['min_engine'] ?? '')); if ($min === '' || $min === '0') return '';
+  $parts = []; $missing = 0;
+  foreach (['windows' => ['x64'], 'macos' => ['x64', 'arm64'], 'linux' => ['x64']] as $os => $archs)
+    foreach ($archs as $arch) { $ok = dc_engine_for($min, $os, $arch) !== null; if (!$ok) $missing++; $parts[] = ($ok ? '✓ ' : '✗ ') . "$os/$arch"; }
+  return '<p class="muted" style="margin-top:6px">' . h(L('Ελάχιστη μηχανή', 'Min engine')) . ' ' . h($min) . ': ' . h(implode('  ', $parts)) . ($missing ? ' <b style="color:#c0392b">— ' . h(L('λείπουν πακέτα μηχανής', 'engine packages missing')) . '</b>' : '') . '</p>';
+}
+
 
 /* ---- extra table for broadcast messages (safe, additive) ---- */
 dc_db();                                                       // creates / upgrades the tables (dc_messages included)
@@ -159,7 +168,8 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     $ver = trim($_POST['ver'] ?? ''); $minshell = trim($_POST['minshell'] ?? '');
     // the new DigiConnect packages carry their own version and minimum shell: read them, so nothing can be typed wrong
     $raw = @file_get_contents($_FILES['pkg']['tmp_name']); $meta = $raw !== false ? @json_decode((string)@gzdecode($raw), true) : null;
-    if (is_array($meta) && ($meta['app'] ?? '') === 'digiconnect-py' && !empty($meta['version'])) { $ver = (string)$meta['version']; $minshell = (string)($meta['minShell'] ?? '2.0.0'); }
+    $mineng = '';
+    if (is_array($meta) && ($meta['app'] ?? '') === 'digiconnect-py' && !empty($meta['version'])) { $ver = (string)$meta['version']; $minshell = (string)($meta['minShell'] ?? '2.0.0'); $mineng = (string)($meta['minEngine'] ?? ''); if ($mineng === '0') $mineng = ''; }
     unset($raw, $meta);
     if ($ver === '') flash('bad', L('Λείπει ο αριθμός έκδοσης', 'Missing version'));
     else {
@@ -168,14 +178,37 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       $dest = $cfg['pkg_dir'] . '/' . $fn;
       if (move_uploaded_file($_FILES['pkg']['tmp_name'], $dest)) {
         $sha = hash_file('sha256', $dest); $sz = filesize($dest);
-        dc_q("INSERT INTO dc_releases(version,min_shell,pkg,sha256,size,files,notes_el,notes_en,notes_sv,notes_it,status,rollout,published)
-              VALUES(?,?,?,?,?,?,?,?,?,?, 'draft',100,NULL)
-              ON CONFLICT(version) DO UPDATE SET pkg=excluded.pkg, sha256=excluded.sha256, size=excluded.size, min_shell=excluded.min_shell,
+        dc_q("INSERT INTO dc_releases(version,min_shell,min_engine,pkg,sha256,size,files,notes_el,notes_en,notes_sv,notes_it,status,rollout,published)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?, 'draft',100,NULL)
+              ON CONFLICT(version) DO UPDATE SET pkg=excluded.pkg, sha256=excluded.sha256, size=excluded.size, min_shell=excluded.min_shell, min_engine=excluded.min_engine,
               notes_el=excluded.notes_el, notes_en=excluded.notes_en, notes_sv=excluded.notes_sv, notes_it=excluded.notes_it",
-          [$ver, $minshell !== '' ? $minshell : '1.0.0', $fn, $sha, $sz, 0, $_POST['n_el'] ?? '', $_POST['n_en'] ?? '', $_POST['n_sv'] ?? '', $_POST['n_it'] ?? '']);
+          [$ver, $minshell !== '' ? $minshell : '1.0.0', $mineng, $fn, $sha, $sz, 0, $_POST['n_el'] ?? '', $_POST['n_en'] ?? '', $_POST['n_sv'] ?? '', $_POST['n_it'] ?? '']);
         dc_event('rel_upload', $ver); flash('ok', L('Ανέβηκε η έκδοση ', 'Uploaded release ') . $ver);
       } else flash('bad', L('Αποτυχία ανεβάσματος', 'Upload failed'));
     }
+  }
+  // 2.4.0: protocol engine packages (.dceng), one per system; several files can be chosen at once. The name says what each one is:
+  // DigiConnect-engine-<version>-<windows|macos|linux>-<x64|arm64>.dceng  (the program checks the package's own engine.json again before it uses it)
+  if ($a === 'eng_upload' && !empty($_FILES['eng']['tmp_name'])) {
+    @mkdir($cfg['pkg_dir'], 0775, true); $okn = []; $bad = [];
+    foreach ((array)$_FILES['eng']['tmp_name'] as $i => $tmp) {
+      $orig = (string)($_FILES['eng']['name'][$i] ?? ''); if ($tmp === '' || $orig === '') continue;
+      if (!preg_match('/^DigiConnect-engine-(\d+(?:\.\d+)*)-(windows|macos|linux)-(x64|arm64)\.dceng$/', $orig, $mm)) { $bad[] = $orig . ' (' . L('λάθος όνομα', 'wrong name') . ')'; continue; }
+      $head = (string)@file_get_contents($tmp, false, null, 0, 2);
+      if ($head !== "\x1f\x8b") { $bad[] = $orig . ' (' . L('δεν είναι πακέτο', 'not a package') . ')'; continue; }
+      $dest = $cfg['pkg_dir'] . '/' . $orig;
+      if (!move_uploaded_file($tmp, $dest)) { $bad[] = $orig . ' (' . L('αποτυχία ανεβάσματος', 'upload failed') . ')'; continue; }
+      dc_q("INSERT INTO dc_engines(version,os,arch,file,sha256,size,uploaded) VALUES(?,?,?,?,?,?,?)
+            ON CONFLICT(version,os,arch) DO UPDATE SET file=excluded.file, sha256=excluded.sha256, size=excluded.size, uploaded=excluded.uploaded",
+        [$mm[1], $mm[2], $mm[3], $orig, hash_file('sha256', $dest), filesize($dest), time()]);
+      dc_event('eng_upload', $mm[1] . '|' . $mm[2] . '|' . $mm[3]); $okn[] = $orig;
+    }
+    if ($okn) flash('ok', L('Ανέβηκαν: ', 'Uploaded: ') . implode(', ', $okn));
+    if ($bad) flash('bad', L('Δεν έγιναν δεκτά: ', 'Not accepted: ') . implode(', ', $bad));
+  }
+  if ($a === 'eng_del') {
+    $e = dc_one('SELECT * FROM dc_engines WHERE id=?', [(int)($_POST['eid'] ?? 0)]);
+    if ($e) { @unlink($cfg['pkg_dir'] . '/' . basename($e['file'])); dc_q('DELETE FROM dc_engines WHERE id=?', [$e['id']]); flash('ok', L('Διαγράφηκε το πακέτο μηχανής', 'Engine package deleted')); }
   }
   // codes (created with code_new below)
   if ($a === 'code_del') { dc_q("DELETE FROM dc_codes WHERE code=?", [$_POST['code']]); flash('ok', L('Κωδικός διαγράφηκε', 'Code deleted')); }
@@ -679,6 +712,20 @@ elseif ($p === 'releases') {
     . '<label>' . L('Αρχείο πακέτου (.dcpkg)','Package file (.dcpkg)') . '<input type="file" name="pkg" accept=".dcpkg" required></label>'
     . '<div class="g2"><label>' . L('Σημειώσεις (EL)','Notes (EL)') . '<textarea name="n_el" rows="2"></textarea></label><label>' . L('Σημειώσεις (EN)','Notes (EN)') . '<textarea name="n_en" rows="2"></textarea></label></div>'
     . '<button class="btn pri">' . L('Ανέβασμα','Upload') . '</button></form></section>';
+  $engs = dc_q("SELECT * FROM dc_engines ORDER BY version DESC, os, arch")->fetchAll();
+  echo '<section class="card"><h2>' . L('Πακέτα μηχανής (engine)','Engine packages') . ' <small>(' . count($engs) . ')</small></h2>'
+    . '<p class="muted">' . L('Ανεβάζεις τα .dceng ΜΟΝΟ όταν η έκδοση χρειάζεται νέα μηχανή (δες «Ελάχιστη μηχανή» στην έκδοση). Όνομα: DigiConnect-engine-ΕΚΔΟΣΗ-windows|macos|linux-x64|arm64.dceng. Ανέβασε πρώτα τα πακέτα, μετά ενεργοποίησε την έκδοση.',
+        'Upload the .dceng files ONLY when a release needs a new engine (see "Min engine" of the release). Name: DigiConnect-engine-VERSION-windows|macos|linux-x64|arm64.dceng. Upload the packages first, then make the release active.') . '</p>'
+    . '<form class="form" method="post" enctype="multipart/form-data">' . csrf() . '<input type="hidden" name="a" value="eng_upload"><input type="hidden" name="p" value="releases">'
+    . '<label>' . L('Αρχεία μηχανής (.dceng) — μπορείς να διαλέξεις πολλά','Engine files (.dceng) — you can choose several') . '<input type="file" name="eng[]" accept=".dceng" multiple required></label>'
+    . '<button class="btn pri">' . L('Ανέβασμα μηχανής','Upload engine') . '</button></form>';
+  if ($engs) {
+    echo '<div class="tw"><table class="tbl"><tr><th>' . L('Έκδοση','Version') . '</th><th>OS</th><th>arch</th><th>' . L('Μέγεθος','Size') . '</th><th>sha256</th><th></th></tr>';
+    foreach ($engs as $e) echo '<tr><td>' . h($e['version']) . '</td><td>' . h($e['os']) . '</td><td>' . h($e['arch']) . '</td><td>' . round($e['size'] / 1048576, 1) . ' MB</td><td class="mono">' . h(substr($e['sha256'], 0, 16)) . '…</td>'
+      . '<td><form method="post" onsubmit="return confirm(\'Delete?\')">' . csrf() . '<input type="hidden" name="p" value="releases"><input type="hidden" name="eid" value="' . (int)$e['id'] . '"><button class="btn sm danger" name="a" value="eng_del">' . L('Διαγραφή','Delete') . '</button></form></td></tr>';
+    echo '</table></div>';
+  }
+  echo '</section>';
   $rels = dc_q("SELECT * FROM dc_releases ORDER BY COALESCE(published,0) DESC, id DESC")->fetchAll();
   echo '<section class="card"><h2>' . L('Εκδόσεις','Releases') . ' <small>(' . count($rels) . ')</small></h2>';
   if (!$rels) echo '<p class="empty">' . L('Καμία έκδοση. Ανέβασε την πρώτη.','No releases yet. Upload the first.') . '</p>';
@@ -693,6 +740,7 @@ elseif ($p === 'releases') {
       . '<form method="post" class="ro">' . csrf() . '<input type="hidden" name="p" value="releases"><input type="hidden" name="version" value="' . h($r['version']) . '"><label>rollout <input type="number" name="rollout" min="0" max="100" value="' . (int)$r['rollout'] . '"></label><button class="btn" name="a" value="rel_rollout">%</button></form>'
       . '<form method="post" onsubmit="return confirm(\'Delete v' . h($r['version']) . '?\')">' . csrf() . '<input type="hidden" name="p" value="releases"><input type="hidden" name="version" value="' . h($r['version']) . '"><button class="btn danger" name="a" value="rel_del">' . L('Διαγραφή','Delete') . '</button></form>'
       . '</div><p class="muted mono" style="margin-top:10px">sha256: ' . h(substr($r['sha256'] ?? '', 0, 32)) . '…</p>'
+      . dc_engine_status($r)
       . ($r['notes_el'] ? '<pre class="notes">' . h($r['notes_el']) . '</pre>' : '') . '</div></details>';
   }
   echo '</section>';

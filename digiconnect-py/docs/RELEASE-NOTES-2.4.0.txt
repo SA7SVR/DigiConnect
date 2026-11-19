@@ -1,0 +1,34 @@
+DigiConnect 2.4.0 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar / Note di rilascio
+================================================================================================
+
+ΕΛΛΗΝΙΚΑ
+--------
+ΝΕΑ ΣΤΗΝ 2.4.0 — ΑΥΤΟΜΑΤΗ ΑΝΑΒΑΘΜΙΣΗ ΚΑΙ ΤΗΣ ΜΗΧΑΝΗΣ, ΟΔΗΓΙΕΣ ΕΓΚΑΤΑΣΤΑΣΗΣ
+• ΝΕΟ: η αυτόματη αναβάθμιση φέρνει πια και νέα μηχανή (το κομμάτι C++ με τα πρωτόκολλα και τον ήχο), χωρίς νέο πρόγραμμα εγκατάστασης. Η μηχανή κατεβαίνει πρώτα, ελέγχεται (μέγεθος, SHA-256 από την υπογεγραμμένη προσφορά του server, υπογραφή στο Mac, πραγματική εκκίνηση) και μόνο μετά ενεργοποιείται ο νέος κώδικας. Αν η νέα μηχανή δεν ξεκινήσει, το πρόγραμμα γυρίζει μόνο του σε αυτήν του Setup.
+• ΝΕΟ (server): Εκδόσεις › «Πακέτα μηχανής»: ανεβάζεις τα .dceng μόνο όταν η έκδοση χρειάζεται νέα μηχανή· το panel δείχνει ✓/✗ ανά σύστημα πριν ενεργοποιήσεις την έκδοση.
+• ΝΕΟ (ιστοσελίδα): στη λήψη εξηγείται βήμα-βήμα η εγκατάσταση σε Windows, Mac και Linux και η προειδοποίηση της πρώτης εκκίνησης (EL/EN/SV/IT).
+• Η μηχανή δεν άλλαξε σε αυτή την έκδοση (είναι της 2.3.12). Ο κανόνας για τις επόμενες: όποτε αλλάζει το engine/, ανεβαίνει το ENGINE_VERSION και φτιάχνονται πακέτα μηχανής — ένα τεστ το επιβάλλει.
+
+ENGLISH
+-------
+NEW IN 2.4.0 — THE ENGINE IS UPDATED AUTOMATICALLY TOO, INSTALL INSTRUCTIONS
+• NEW: automatic updates now also bring a new protocol engine (the C++ part with the protocols and the audio) without a new installer. The engine is downloaded first and checked (size, SHA-256 from the server's signed offer, signature on macOS, a real test start); only then the new code is switched on. If the new engine does not start, the program goes back to the one of the installer by itself.
+• NEW (server): Releases › "Engine packages": upload the .dceng files only when a release needs a new engine; the panel shows ✓/✗ per system before you make the release active.
+• NEW (website): the download section explains the installation on Windows, Mac and Linux step by step, and the warning of the first start (EL/EN/SV/IT).
+• The engine itself did not change in this release (it is the one of 2.3.12). Rule for later releases: whenever engine/ changes, ENGINE_VERSION is raised and engine packages are built — a test enforces it.
+
+SVENSKA
+-------
+NYTT I 2.4.0 — MOTORN UPPDATERAS OCKSÅ AUTOMATISKT, INSTALLATIONSANVISNING
+• NYTT: de automatiska uppdateringarna kan nu även ge en ny protokollmotor (C++-delen med protokollen och ljudet) utan ny installationsfil. Motorn laddas ner först och kontrolleras (storlek, SHA-256 från serverns signerade erbjudande, signatur på macOS, en riktig teststart); först därefter slås den nya koden på. Startar den nya motorn inte går programmet själv tillbaka till installationens motor.
+• NYTT (server): Utgåvor › "Motorpaket": ladda upp .dceng-filerna bara när en utgåva behöver en ny motor; panelen visar ✓/✗ per system innan du aktiverar utgåvan.
+• NYTT (webbplats): nedladdningsavsnittet förklarar installationen på Windows, Mac och Linux steg för steg, och varningen vid första start (EL/EN/SV/IT).
+• Själva motorn ändrades inte i denna utgåva (det är 2.3.12:s). Regel framöver: när engine/ ändras höjs ENGINE_VERSION och motorpaket byggs — ett test kräver det.
+
+ITALIANO
+--------
+NOVITÀ DELLA 2.4.0 — ANCHE IL MOTORE SI AGGIORNA IN AUTOMATICO, ISTRUZIONI DI INSTALLAZIONE
+• NUOVO: gli aggiornamenti automatici portano ora anche un nuovo motore dei protocolli (la parte C++ con i protocolli e l'audio) senza un nuovo installer. Il motore viene scaricato per primo e controllato (dimensione, SHA-256 dall'offerta firmata del server, firma su macOS, un vero avvio di prova); solo dopo si attiva il nuovo codice. Se il nuovo motore non parte, il programma torna da solo a quello dell'installer.
+• NUOVO (server): Versioni › «Pacchetti motore»: carica i .dceng solo quando una versione richiede un nuovo motore; il pannello mostra ✓/✗ per sistema prima di attivare la versione.
+• NUOVO (sito): la sezione download spiega passo per passo l'installazione su Windows, Mac e Linux e l'avviso del primo avvio (EL/EN/SV/IT).
+• Il motore non è cambiato in questa versione (è quello della 2.3.12). Regola per le prossime: ogni volta che engine/ cambia si alza ENGINE_VERSION e si costruiscono i pacchetti motore — un test lo impone.

@@ -18,13 +18,15 @@ def _run(ov):
     from app.theme import qss
     from app.context import Ctx
     from app.store import Store
-    from app.engine_client import EngineClient, find_engine
+    from app.engine_client import EngineClient, find_engine, check_updated_engine
     from app.ui.main_window import MainWindow
     from app.updater import Updater
     from app.presence import Presence, LiveStamp
     app = QtWidgets.QApplication(sys.argv); app.setApplicationName("DigiConnect"); app.setOrganizationName("HELLASZone")
     store = Store(); path = find_engine()
-    ctx = Ctx(store, EngineClient(path, store) if path else None); app.setStyleSheet(qss(ctx.store.settings["text_size"]))
+    client = EngineClient(path, store) if path else None
+    if client: check_updated_engine(client)          # an updated engine must still start; if not, the installer's engine is used again
+    ctx = Ctx(store, client); app.setStyleSheet(qss(ctx.store.settings["text_size"]))
     from app.license import License
     from app.ui.license_dialog import run_gate, Watcher
     updater = Updater(store)

@@ -49,6 +49,12 @@ jobs:
           echo "pytest finished OK"; which python || echo "python NOT on PATH"
           python -m PyInstaller --noconfirm packaging/DigiConnect.spec
           mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
+      - name: Engine package for the automatic update, installed and started like on a user's computer
+        shell: bash
+        run: |
+          ENG=$(python -c "import bootstrap;print(bootstrap.ENGINE_VERSION)")
+          python tools/build_engine_pkg.py engine_dist "$ENG" windows x64 --out engine_pkgs
+          for f in engine_pkgs/*.dceng; do python tools/test_engine_pkg.py "$f"; done
       - name: Test the BUILT program (starts it with an empty profile, opens every page, finds the engine)
         shell: bash
         run: bash tools/selftest_built.sh "$PWD/dist/DigiConnect/DigiConnect.exe"
@@ -75,6 +81,8 @@ jobs:
         with: { name: DigiConnect-Windows-Setup, path: digiconnect-py/installer_out/DigiConnect-Setup.exe }
       - uses: actions/upload-artifact@v4
         with: { name: DigiConnect-Windows-portable, path: digiconnect-py/dist/DigiConnect }
+      - uses: actions/upload-artifact@v4
+        with: { name: DigiConnect-engine-windows-x64, path: digiconnect-py/engine_pkgs/*.dceng }
 
   linux:
     runs-on: ubuntu-22.04
@@ -117,7 +125,10 @@ jobs:
           mkdir -p dist/DigiConnect/engine && cp -r engine_dist/* dist/DigiConnect/engine/
           tar -C dist -czf DigiConnect-Linux-x86_64.tar.gz DigiConnect
           VER=$(python -c "import re;print(re.search(r'\"([0-9.]+)\"', open('app/version.py').read()).group(1))")
-          python tools/build_dcpkg.py "$VER" --out update_pkg
+          ENG=$(python -c "import bootstrap;print(bootstrap.ENGINE_VERSION)")
+          python tools/build_dcpkg.py "$VER" --min-engine "$ENG" --out update_pkg          # this Python code needs (at least) the engine it was built with
+          python tools/build_engine_pkg.py engine_dist "$ENG" linux x64 --out engine_pkgs
+          for f in engine_pkgs/*.dceng; do QT_QPA_PLATFORM=offscreen python tools/test_engine_pkg.py "$f"; done
       - name: Test the BUILT program (starts it with an empty profile, opens every page, finds the engine)
         run: |
           unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR
@@ -126,6 +137,8 @@ jobs:
         with: { name: DigiConnect-Linux, path: digiconnect-py/DigiConnect-Linux-x86_64.tar.gz }
       - uses: actions/upload-artifact@v4
         with: { name: DigiConnect-update-package-dcpkg, path: digiconnect-py/update_pkg/*.dcpkg }
+      - uses: actions/upload-artifact@v4
+        with: { name: DigiConnect-engine-linux-x64, path: digiconnect-py/engine_pkgs/*.dceng }
 
   macos:
     strategy:
@@ -177,6 +190,8 @@ jobs:
             python3 engine/tests/check_dmr_login.py "$PWD/build/dcengine.app/Contents/MacOS/dcengine" 2>&1 | tail -25
           done
           ls -la ~/Library/Logs/DiagnosticReports 2>/dev/null | head; for f in ~/Library/Logs/DiagnosticReports/dcengine*; do [ -f "$f" ] && { echo "--- $f"; head -c 6000 "$f"; }; done; true
+      - name: Sign the engine (ad hoc) - the same state it has inside the program, and what the update package carries
+        run: codesign --force --deep --sign - build/dcengine.app && codesign --verify --deep --strict build/dcengine.app
       - name: Tests
         # Apple Silicon: the standalone engine loopback above passes, one end-to-end test does not yet (under investigation);
         # it is reported but must not keep the Apple Silicon program from being built. Intel runs the same tests and must pass.
@@ -194,12 +209,20 @@ jobs:
           codesign --force --deep --sign - dist/DigiConnect.app || true
           lipo -archs dist/DigiConnect.app/Contents/MacOS/DigiConnect || file dist/DigiConnect.app/Contents/MacOS/*
           hdiutil create -volname DigiConnect -srcfolder dist/DigiConnect.app -ov -format UDZO DigiConnect-macOS-${{ matrix.arch }}.dmg
+      - name: Engine package for the automatic update, installed and started like on a user's computer
+        run: |
+          ENG=$(python -c "import bootstrap;print(bootstrap.ENGINE_VERSION)")
+          rm -rf engine_stage && mkdir engine_stage && cp -R build/dcengine.app engine_stage/
+          python tools/build_engine_pkg.py engine_stage "$ENG" macos ${{ matrix.arch == 'Intel' && 'x64' || 'arm64' }} --out engine_pkgs
+          for f in engine_pkgs/*.dceng; do python tools/test_engine_pkg.py "$f"; done
       - name: Test the BUILT program (starts it with an empty profile, opens every page, finds the engine)
         run: |
           unset LD_LIBRARY_PATH QT_PLUGIN_PATH QML2_IMPORT_PATH QT_ROOT_DIR
           bash tools/selftest_built.sh "$PWD/dist/DigiConnect.app/Contents/MacOS/DigiConnect"
       - uses: actions/upload-artifact@v4
         with: { name: "DigiConnect-macOS-${{ matrix.arch }}", path: "digiconnect-py/DigiConnect-macOS-${{ matrix.arch }}.dmg" }
+      - uses: actions/upload-artifact@v4
+        with: { name: "DigiConnect-engine-macos-${{ matrix.arch }}", path: digiconnect-py/engine_pkgs/*.dceng }
 
   package:
     # ONE package for the whole release: program (all systems) + server + source, version in the name
@@ -223,11 +246,14 @@ jobs:
           cp -r "$A/DigiConnect-macOS-AppleSilicon/." "$P/1-PROGRAM/macOS/AppleSilicon/"
           cp -r "$A/DigiConnect-Linux/." "$P/1-PROGRAM/Linux/"
           cp -r "$A/DigiConnect-update-package-dcpkg/." "$P/1-PROGRAM/Αναβάθμιση/"
+          mkdir -p "$P/1-PROGRAM/Αναβάθμιση/engine-packages"          # protocol engine for the automatic update: upload ONLY when the panel says a release is missing its engine
+          for d in windows-x64 linux-x64 macos-Intel macos-AppleSilicon; do cp "$A/DigiConnect-engine-$d/"*.dceng "$P/1-PROGRAM/Αναβάθμιση/engine-packages/"; done
+          test "$(ls "$P/1-PROGRAM/Αναβάθμιση/engine-packages" | wc -l)" = 4 || { echo "engine packages missing"; exit 1; }
           cp -r server/digiconnect "$P/2-SERVER/digiconnect"
           git -C .. archive --format=zip --prefix="DigiConnect-source-$VER/" -o "$PWD/$P/3-SOURCE/DigiConnect-source-$VER.zip" HEAD
           sed "s/__VER__/$VER/g" packaging/package/ΔΙΑΒΑΣΕ-ΠΡΩΤΑ.txt > "$P/ΔΙΑΒΑΣΕ-ΠΡΩΤΑ.txt"
           # everything needed to rebuild from scratch, readable without opening the source zip (the same files are also inside it)
-          cp docs/BUILD-AND-REBUILD.md packaging/build-pins.txt tools/make_license_key.php "$P/4-REBUILD/"
+          cp docs/BUILD-AND-REBUILD.md packaging/build-pins.txt tools/make_license_key.php tools/build_engine_pkg.py tools/test_engine_pkg.py tools/engine_src_hash.py tools/build_dcpkg.py "$P/4-REBUILD/"
           cp ../.github/workflows/digiconnect-py.yml "$P/4-REBUILD/digiconnect-py.yml"
           cp -r packaging/installer "$P/4-REBUILD/installer"; cp packaging/DigiConnect.spec packaging/DigiConnect.iss "$P/4-REBUILD/"
           test -s "$P/4-REBUILD/BUILD-AND-REBUILD.md" && test -s "$P/4-REBUILD/build-pins.txt" && test -s "$P/4-REBUILD/DigiConnect.iss" || { echo "rebuild files missing"; exit 1; }

@@ -12,6 +12,17 @@ from .servers import Servers, protocol_for, split_dstar
 
 
 def find_engine() -> str | None:
+    """The engine to run: an updated one (app/engine_update.py) when a good one is installed, else the one of the installer."""
+    if not os.environ.get("DC_ENGINE"):
+        from . import engine_update
+        try: c = engine_update.current()
+        except Exception: c = None
+        if c: return c["path"]
+    return builtin_engine()
+
+
+def builtin_engine() -> str | None:
+    """The engine that came with the installer."""
     exe = "dcengine.exe" if sys.platform.startswith("win") else "dcengine"
     cands = []
     if os.environ.get("DC_ENGINE"): cands.append(Path(os.environ["DC_ENGINE"]))
@@ -23,6 +34,23 @@ def find_engine() -> str | None:
     for c in cands:
         if c.is_file(): return str(c)
     return None
+
+
+def check_updated_engine(client) -> None:
+    """At start-up, in the background: an engine that came from an update must still start (an antivirus or a damaged disk can spoil files later).
+    If it does not, it is marked bad and the client uses the installer's engine again."""
+    import threading
+    def work():
+        from . import engine_update, diag
+        try:
+            c = engine_update.current()
+            if not c or os.path.normcase(os.path.abspath(client.path)) != os.path.normcase(os.path.abspath(c["path"])): return
+            if engine_update.hello(c["path"]): return
+        except Exception: return
+        engine_update.mark_bad(c["version"]); back = builtin_engine()
+        diag.log(f"start-up check: updated engine {c['version']} does not start, using the installer's engine ({back})")
+        if back: client.path = back
+    threading.Thread(target=work, daemon=True).start()
 
 
 def clean_engine_env():
@@ -387,6 +415,8 @@ class EngineClient(QtCore.QObject, Engine):
             from . import diag; diag.log(f"engine {ln.key}: {e.get('text', '')}"); return          # e.g. the steps of a DMR login (never the password)
         if ev in ("status", "error"):
             from . import diag; diag.log(f"engine {ln.key}: {ev} {e.get('state', '')} {e.get('msg', '')}")
+        if ev == "status" and e.get("state") == "error" and e.get("msg") == "The protocol engine could not be started" and self._updated_engine_failed():
+            ln.rx.clear(); ln.tx = False; self.links.pop(ln.key, None); ln.close(); self.status.emit(ln, "error", "The updated protocol engine could not start; the installer's engine is used now. Connect again."); return
         if ev == "status" and e.get("state") == "error" and e.get("msg") == "DMR_NAK_CONFIG" and self._retry_dmr_config(ln): return
         if ev == "status":
             ln.state = e.get("state", ln.state)
@@ -403,6 +433,18 @@ class EngineClient(QtCore.QObject, Engine):
             self._level = max(self._level, float(e.get("out", 0)))
         elif ev == "wave":
             self.mic_wave.emit(list(e.get("s", [])), bool(e.get("gate", True)), float(e.get("lim", 0.0)))
+
+    def _updated_engine_failed(self) -> bool:
+        """The engine in use came from an update and could not be started: drop it for good and go back to the installer's engine. True when that was the case."""
+        from . import engine_update, diag
+        try: c = engine_update.current()
+        except Exception: c = None
+        if not c or os.path.normcase(os.path.abspath(self.path)) != os.path.normcase(os.path.abspath(c["path"])): return False
+        engine_update.mark_bad(c["version"]); back = builtin_engine()
+        diag.log(f"updated engine {c['version']} could not be started: marked bad, using the installer's engine ({back})")
+        if back: self.path = back
+        self.notice.emit("The updated protocol engine could not start, so DigiConnect went back to the one that came with the installer. Connect again.")
+        return True
 
     def _on_finished(self, ln: Link):
         if self.links.get(ln.key) is ln:

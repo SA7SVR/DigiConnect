@@ -49,7 +49,18 @@ if ($rel) {
     $out['sha256']    = $rel['sha256'];
     $out['size']      = (int)$rel['size'];
     // the offer is signed: the program installs only what is in here (version, hash, size) — and only when it answers THIS request (nonce)
-    $up = json_encode(['v' => 1, 'version' => $rel['version'], 'sha256' => (string)$rel['sha256'], 'size' => (int)$rel['size'], 'min_shell' => (string)$rel['min_shell'], 'n' => $nonce, 'now' => time()], JSON_UNESCAPED_SLASHES);
+    // 2.4.0: a release can need a newer protocol engine. The engine package for THIS system (os + arch) is offered inside the signed part (version, hash, size);
+    // the program installs and test-starts it before it switches the new Python code on
+    $minEng = trim((string)($rel['min_engine'] ?? ''));
+    if ($minEng === '0') $minEng = '';
+    $eng = $minEng !== '' ? dc_engine_for($minEng, (string)$os, (string)$arch) : null;
+    $sig = ['v' => 1, 'version' => $rel['version'], 'sha256' => (string)$rel['sha256'], 'size' => (int)$rel['size'], 'min_shell' => (string)$rel['min_shell']];
+    if ($minEng !== '') $sig['min_engine'] = $minEng;
+    if ($eng) {
+      $sig['eng'] = ['version' => (string)$eng['version'], 'sha256' => (string)$eng['sha256'], 'size' => (int)$eng['size']];
+      $out['engine_pkg'] = $base . '/download.php?f=engine&v=' . rawurlencode($eng['version']) . '&os=' . rawurlencode((string)$os) . '&arch=' . rawurlencode((string)$arch) . ($id ? '&id=' . rawurlencode($id) : '');
+    }
+    $up = json_encode($sig + ['n' => $nonce, 'now' => time()], JSON_UNESCAPED_SLASHES);
     $out['upd'] = $up; $out['upd_sig'] = dc_sign($up);
     $out['notes']     = ['el' => $rel['notes_el'], 'en' => $rel['notes_en'], 'sv' => $rel['notes_sv'], 'it' => $rel['notes_it']];
   }

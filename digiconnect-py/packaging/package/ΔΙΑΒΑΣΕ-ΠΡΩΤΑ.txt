@@ -8,6 +8,7 @@ DigiConnect — ΠΑΚΕΤΟ __VER__
               macOS\Intel\ και macOS\AppleSilicon\   ← .dmg
               Linux\                          ← .tar.gz
               Αναβάθμιση\DigiConnect-__VER__.dcpkg   ← ΕΝΑ αρχείο για αυτόματη αναβάθμιση όλων (Windows/Mac/Linux)
+              Αναβάθμιση\engine-packages\*.dceng      ← η μηχανή ανά σύστημα (4 αρχεία)· ανεβαίνουν στο panel ΜΟΝΟ όταν το panel το ζητήσει (βήμα 3)
 2-SERVER    Ο φάκελος `digiconnect` για το hellaszone.com (ανέβασέ τον πάνω στον υπάρχοντα, ΕΚΤΟΣ από config.php, data/, pkg/).
             Αναλυτικά στο digiconnect/ΔΙΑΒΑΣΕ-ΜΕ.txt.
 3-SOURCE    Ο πλήρης πηγαίος κώδικας (κρατά το για πάντα).
@@ -24,7 +25,8 @@ DigiConnect — ΠΑΚΕΤΟ __VER__
   2) Αρχεία λήψης για τη σελίδα: βάλε στο digiconnect/pkg/ τα
        DigiConnect-Setup.exe, DigiConnect-macOS-Intel.dmg, DigiConnect-macOS-AppleSilicon.dmg, DigiConnect-Linux-x86_64.tar.gz
   3) Αναβάθμιση υπαρχόντων χρηστών: panel › Εκδόσεις › «Ανέβασμα νέας έκδοσης» → το .dcpkg → «Ενεργοποίηση».
-     Οι σημειώσεις έκδοσης (EL/EN/SV) είναι στο 3-SOURCE › docs › RELEASE-NOTES-__VER__.txt (αντίγραψέ τες στα πεδία του panel).
+     Πακέτα μηχανής: αν στην έκδοση φαίνεται «✗ λείπουν πακέτα μηχανής», ανέβασε ΠΡΩΤΑ τα 4 .dceng από Αναβάθμιση\engine-packages (panel › Εκδόσεις › Πακέτα μηχανής, διαλέγεις και τα 4 μαζί), ΜΕΤΑ κάνε «Ενεργοποίηση». Αν δείχνει ✓ παντού, δεν ανεβάζεις τίποτα.
+     Οι σημειώσεις έκδοσης (EL/EN/SV/IT) είναι στο 3-SOURCE › docs › RELEASE-NOTES-__VER__.txt (αντίγραψέ τες στα πεδία του panel).
   4) PayPal: μία φορά, βάλε το απόσπασμα στο hamdigi/update/ipn.php (βλ. digiconnect/ΔΙΑΒΑΣΕ-ΜΕ.txt). Δεν χρειάζεται δεύτερος λογαριασμός/IPN.
 
   5) Προαιρετικά (Ρυθμίσεις › Άδεια): «Εγγραφές με έγκριση» και «Άδειες ανά κύρια έκδοση» — κλειστά από προεπιλογή, δεν αλλάζουν τίποτα αν δεν τα ανοίξεις.

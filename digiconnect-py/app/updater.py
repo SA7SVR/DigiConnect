@@ -6,12 +6,13 @@ launch (bootstrap.activate), or at once when the user presses Restart. Nothing i
 always be dropped (bootstrap rolls back automatically if the new code fails to start).
 
 Package (.dcpkg) = gzip(JSON): {"app":"digiconnect-py","format":2,"version":"2.0.1","minShell":"2.0.0","files":{"app/x.py":"<base64>",...}}.
-Only app/ and assets/ and LICENSES/ may be written. A package that needs a newer shell (engine / Qt) is not installed;
-the user is told that a full installer is needed."""
+Only app/ and assets/ and LICENSES/ may be written. A package that needs a newer shell (Qt / Python / the shell files) is not installed;
+the user is told that a full installer is needed. A new protocol engine (C++) comes as its own package (.dceng, app/engine_update.py), downloaded and
+tested BEFORE the Python code is installed; the offer for it is signed together with the rest, so nothing but what HELLAS Zone signed is installed."""
 import base64, gzip, hashlib, json, platform, shutil, sys, threading, uuid, os
 from pathlib import Path
 from .qt import QtCore, Signal
-from . import net
+from . import net, engine_update
 import bootstrap
 from .version import APP_VERSION
 
@@ -71,7 +72,7 @@ def install_package(blob: bytes, root: Path, expect_sha: str = "", expect_size: 
     for name, data in out.items():
         p = tmp / name; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(data)
     os.replace(tmp, final)
-    cur = {"version": ver, "dir": dname, "min_shell": str(pkg.get("minShell") or "0")}
+    cur = {"version": ver, "dir": dname, "min_shell": str(pkg.get("minShell") or "0"), "min_engine": str(pkg.get("minEngine") or "0")}
     bootstrap._write(root / "current.json", cur)
     bad = bootstrap._read(root / "bad.json", [])
     if ver in bad: bootstrap._write(root / "bad.json", [b for b in bad if b != ver])
@@ -90,6 +91,8 @@ class Updater(QtCore.QObject):
         from . import license as _lic
         self.pubkeys = list(_lic.PUBKEYS if pubkeys is None else pubkeys)                 # an update is accepted only when HELLAS Zone signed it
         self.store, self.root = store, root or bootstrap.updates_root()
+        self.engine_root = self.root                        # engine packages go to <updates>/engine/ ; tests use their own folder
+        self.engine_check = engine_update.hello             # the test start of a new engine (tests with a fake engine replace it)
         self.url = url or store.settings.get("update_url") or DEFAULT_URL
         self.state, self.message, self.pending = "idle", "", None     # pending = version waiting for a restart
         self.info = {}                    # what the server offers: version, size, notes (list of lines), pkg; empty until a check found something
@@ -140,13 +143,31 @@ class Updater(QtCore.QObject):
             self.info = {"version": ver, "size": int(m.get("size") or 0), "notes": notes_for(m, store_lang(self.store)), "min_shell": str(m.get("min_shell") or "")}
             if bootstrap.vtuple(m.get("min_shell") or "0") > bootstrap.vtuple(bootstrap.SHELL_VERSION):
                 self._done.emit("needs_installer", ver); return
+            self.install_engine(m, ver)                     # a newer engine first (nothing else changes when that fails)
             self._done.emit("downloading", ver)
             blob = net.get(m["pkg"], 60, MAX_PKG, progress=lambda d, t: self._pct.emit(int(d * 100 / t) if t else (int(d * 100 / self.info["size"]) if self.info["size"] else -1)))
             self._pct.emit(100)
             cur = install_package(blob, self.root, m.get("sha256", ""), int(m.get("size") or 0), on_step=lambda st: self._done.emit(st, ver))
             self._done.emit("ready", cur["version"])
         except UpdateError as e: self._done.emit("error", f"update rejected: {e}")
+        except engine_update.EngineError as e: self._done.emit("error", f"engine update rejected: {e}")
         except Exception as e: self._done.emit("error", f"{type(e).__name__}: {e}")
+
+    def install_engine(self, m: dict, ver: str):
+        """Brings the engine the release needs / offers: download, check against the SIGNED size and hash, unpack, test-start, switch. Raises when it must but cannot."""
+        have = engine_update.installed_version(self.engine_root)
+        eng = m.get("eng") if isinstance(m.get("eng"), dict) else None
+        need = str(m.get("min_engine") or "")
+        if eng and bootstrap.newer(str(eng.get("version", "0")), have):
+            url = str(m.get("engine_pkg") or "")
+            if not url: raise engine_update.EngineError("the server gave no address for the engine")
+            self._done.emit("downloading", ver)
+            blob = net.get(url, 60, engine_update.MAX_PKG, progress=lambda d, t: self._pct.emit(int(d * 100 / t) if t else (int(d * 100 / int(eng.get("size") or 1)) if eng.get("size") else -1)))
+            self._pct.emit(100)
+            engine_update.install(blob, self.engine_root, str(eng.get("version", "")), str(eng.get("sha256", "")), int(eng.get("size") or 0), on_step=lambda st: self._done.emit(st, ver), check=self.engine_check)
+            have = engine_update.installed_version(self.engine_root)
+        if need and bootstrap.newer(need, have):
+            raise engine_update.EngineError(f"version {ver} needs engine {need} and this system has {have}")
 
     def verify_update(self, m: dict, nonce: str) -> dict:
         """The signed facts of an update offer: {version, sha256, size, min_shell}. Raises UpdateError when the offer is not signed by us or is an old answer."""
@@ -156,7 +177,7 @@ class Updater(QtCore.QObject):
         if not any(sigverify.verify(k, str(up).encode(), str(sg)) for k in self.pubkeys): raise UpdateError("the update offer has a wrong signature")
         d = json.loads(up)
         if d.get("n") != nonce: raise UpdateError("old update offer (replay)")
-        return {k: d[k] for k in ("version", "sha256", "size", "min_shell") if k in d}
+        return {k: d[k] for k in ("version", "sha256", "size", "min_shell", "min_engine", "eng") if k in d}
 
     def _on_pct(self, p):
         self.pct = p; self.progress.emit(p)

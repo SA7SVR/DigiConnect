@@ -1,4 +1,4 @@
-﻿DigiConnect 2.3.12 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.4.0 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,10 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.3.12)
+What is new in this version (2.4.0)
+  • NEW: automatic updates can now also bring a new protocol engine (the part with the protocols and the audio) without a new installer. The engine is downloaded first, checked and test-started; if it does not start, the program goes back to the one that came with the installer by itself.
+  • NEW: the website explains the installation on Windows, Mac and Linux step by step (and the warning that appears the first time).
+  New in 2.3.12:
   • NEW: a mode (for example AllStar) can be an "extra": it stays closed until an additional donation is made; the page shows the message and the Donate button with the amount, and it opens by itself after the payment.
   • NEW (Licence window): for a finished licence it shows "Licence: Permanent · DC-00001 · since <date>", the activation code, the name and the extras.
   New in 2.3.11:

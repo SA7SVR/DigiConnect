@@ -22,11 +22,22 @@ def crash_reports(limit: int = 6000) -> str:
         return ""
 
 
+def _engine_version_line() -> str:
+    """Which engine runs: the installer's, or one that an update brought (and the bad ones that were dropped)."""
+    try:
+        import bootstrap
+        from . import engine_update
+        c = engine_update.current(); bad = engine_update._read(engine_update.root_dir() / "bad.json", [])
+        return f"Engine version: {c['version'] + ' (from an update)' if c else bootstrap.ENGINE_VERSION + ' (the installer)'}" + (f" · dropped after a failed start: {', '.join(map(str, bad))}" if bad else "")
+    except Exception as e:
+        return f"Engine version: unknown ({type(e).__name__})"
+
+
 def report(store=None, engine_path: str | None = None, lines: int = 250) -> str:
     from .engine_client import find_engine
     s = (store.settings if store is not None else {}) or {}
     head = [f"DigiConnect {APP_VERSION}", f"System: {platform.platform()} · {platform.machine()} · Python {platform.python_version()}",
-            f"Engine: {engine_path or find_engine() or 'NOT FOUND'}",
+            f"Engine: {engine_path or find_engine() or 'NOT FOUND'}", _engine_version_line(),
             "Settings: " + ", ".join(f"{k}={s.get(k)}" for k in SAFE if s.get(k) not in (None, ""))]
     cr = crash_reports()
     out = "\n".join(head) + "\n\n--- digiconnect.log (end) ---\n" + (diag.tail(lines) or "(empty)")

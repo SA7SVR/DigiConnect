@@ -2,7 +2,7 @@
 // DigiConnect server — shared library. Self-contained (own SQLite DB), so it never touches HAM Digi data.
 // (c) 2026 SA7SVR (Panagiotis Tsekouras).
 declare(strict_types=1);
-const DC_SERVER_VERSION = '2.3.12';   // server package number (panel footer); same number as the program in the package
+const DC_SERVER_VERSION = '2.4.0';   // server package number (panel footer); same number as the program in the package
 if (session_status() === PHP_SESSION_NONE) @session_start();
 
 function dc_cfg(): array {
@@ -51,6 +51,9 @@ function dc_db(): PDO {
       notes_el TEXT, notes_en TEXT, notes_sv TEXT, notes_it TEXT,
       status TEXT DEFAULT 'draft', rollout INT DEFAULT 100, published INT
     );
+    CREATE TABLE IF NOT EXISTS dc_engines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, version TEXT, os TEXT, arch TEXT, file TEXT, sha256 TEXT, size INT, uploaded INT, UNIQUE(version, os, arch)
+    );
     CREATE TABLE IF NOT EXISTS dc_codes (
       code TEXT PRIMARY KEY, kind TEXT, dur INT, unit TEXT, uses INT DEFAULT 1, used INT DEFAULT 0,
       created INT, note TEXT, last_used INT, last_install TEXT
@@ -77,6 +80,9 @@ function dc_db(): PDO {
   $have = array_column($pdo->query('PRAGMA table_info(dc_installs)')->fetchAll(), 'name');
   foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT', 'mode_ovr' => 'TEXT', 'tester' => 'INT DEFAULT 0', 'tx_ovr' => 'TEXT', 'extras' => 'TEXT'] as $c => $t)
     if (!in_array($c, $have, true)) $pdo->exec("ALTER TABLE dc_installs ADD COLUMN $c $t");
+  // 2.4.0: a release can need a newer protocol engine (min_engine); the engine packages themselves are in dc_engines
+  $rc = array_column($pdo->query('PRAGMA table_info(dc_releases)')->fetchAll(), 'name');
+  if (!in_array('min_engine', $rc, true)) $pdo->exec("ALTER TABLE dc_releases ADD COLUMN min_engine TEXT DEFAULT ''");
   // messages to the users as in HAM Digi: Greek + English title and text, link, end date, to everyone or to one installation (target = installation id)
   $mc = array_column($pdo->query('PRAGMA table_info(dc_messages)')->fetchAll(), 'name');
   if (!$mc) { $pdo->exec('CREATE TABLE IF NOT EXISTS dc_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, scope TEXT, target TEXT, title TEXT, body TEXT, active INT DEFAULT 1)'); $mc = ['id']; }
@@ -230,6 +236,15 @@ function dc_active_release(?string $installId = null): ?array {
   $roll = (int)($r['rollout'] ?? 100);
   if ($installId !== null && $roll < 100) { $h = hexdec(substr(md5($installId . '|' . $r['version']), 0, 4)) % 100; if ($h >= $roll) return null; }
   return $r;
+}
+
+// the engine package a release needs, for one system: the newest uploaded one that is not older than the release asks for (null = none uploaded)
+function dc_engine_for(string $minEngine, string $os, string $arch): ?array {
+  if ($minEngine === '' || !preg_match('/^[a-z]+$/', $os) || !preg_match('/^[a-z0-9_]+$/', $arch)) return null;
+  $best = null;
+  foreach (dc_q('SELECT * FROM dc_engines WHERE os=? AND arch=?', [$os, $arch])->fetchAll() as $e)
+    if (version_compare($e['version'], $minEngine, '>=') && (!$best || version_compare($e['version'], $best['version'], '>'))) $best = $e;
+  return $best;
 }
 
 // ---- licence model (same as HAM Digi): state '' = follows the default policy, free | demo | full | locked, demo_until = end of a demo / of a time-limited licence ----
