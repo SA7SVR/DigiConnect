@@ -9,6 +9,10 @@ What it is
 What is new in this version (2.4.0)
   • NEW: automatic updates can now also bring a new protocol engine (the part with the protocols and the audio) without a new installer. The engine is downloaded first, checked and test-started; if it does not start, the program goes back to the one that came with the installer by itself.
   • NEW: the website explains the installation on Windows, Mac and Linux step by step (and the warning that appears the first time).
+  • NEW EchoLink: the program waits 30 seconds for the station to answer (like the official program), then shows "Connected to <callsign · name>" next to Last heard (with or without a user list), plays a connect / disconnect tone (can be switched off in Settings > Audio) and "Stop listening" is ready at once. It has not been tried with a real station by the maker: please tell us what you see.
+  • NEW AllStarLink: "Now talking" and Last heard now work from the real voice packets of the node (it shows "Node <number>": IAX carries no callsign).
+  • NEW: a switched-off "VoIP" button, reserved for a later SIP phone. FIXED (server): the name of the extra was missing from the thank-you email after a payment.
+  • The engine changed: this installer must be the first one you give to new users.
   New in 2.3.12:
   • NEW: a mode (for example AllStar) can be an "extra": it stays closed until an additional donation is made; the page shows the message and the Donate button with the amount, and it opens by itself after the payment.
   • NEW (Licence window): for a finished licence it shows "Licence: Permanent · DC-00001 · since <date>", the activation code, the name and the extras.
