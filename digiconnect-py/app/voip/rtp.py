@@ -1,5 +1,5 @@
 """RTP (RFC 3550) for G.711 audio: packets, jitter buffer, and the keypad tones of RFC 4733 (telephone-event)."""
-import random, socket, struct, threading, time
+import queue, random, socket, struct, threading, time
 import numpy as np
 from . import g711
 
@@ -53,7 +53,8 @@ class JitterBuffer:
             if self.next is not None and self.started and self._ahead(seq, self.next) >= 0x8000: self.late += 1; return      # older than what was already played
             if seq in self.buf: return
             self.buf[seq] = pcm
-            if self.next is None or (not self.started and self._ahead(self.next, seq) < 0x8000 and seq != self.next): self.next = seq if self.next is None else min(self.next, seq, key=lambda s: self._ahead(s, self.next))
+            if self.next is None: self.next = seq
+            elif not self.started and seq != self.next and self._ahead(self.next, seq) < 0x8000: self.next = seq          # an earlier packet arrived late, before playing began: start from it
             while len(self.buf) > self.maxlen and self.next is not None:           # far too much waiting: skip ahead (the speaker is behind)
                 self.next = (self.next + 1) & 0xFFFF; self.buf.pop(self.next - 1 if self.next else 0xFFFF, None)
 
@@ -81,7 +82,7 @@ class RtpSession:
 
     def __init__(self, bind_ip: str = "0.0.0.0", port_range=(12000, 12999), on_dtmf=None):
         self.sock = None; self.pt = 0; self.event_pt = 101; self.remote = None; self.ssrc = random.getrandbits(32); self.seq = random.getrandbits(16); self.ts = random.getrandbits(32)
-        self.on_dtmf = on_dtmf; self.jitter = JitterBuffer(); self.running = False; self.sent = self.recv = 0; self._first = True; self._dtmf_ts = {}; self._send_lock = threading.Lock()
+        self.on_dtmf = on_dtmf; self.jitter = JitterBuffer(); self.running = False; self.sent = self.recv = 0; self._first = True; self._dtmf_ts = {}; self._send_lock = threading.Lock(); self._dtmf_q = queue.Queue()
         self.last_rx = 0.0; self.peer_seen = None
         lo, hi = port_range; ports = list(range(lo - lo % 2, hi, 2)); random.shuffle(ports)
         for p in ports:                                                            # an even port, as RTP asks
@@ -95,7 +96,7 @@ class RtpSession:
         except OSError: pass
 
     def start(self):
-        self.running = True; threading.Thread(target=self._loop, daemon=True, name="rtp-rx").start()
+        self.running = True; threading.Thread(target=self._loop, daemon=True, name="rtp-rx").start(); threading.Thread(target=self._dtmf_worker, daemon=True, name="rtp-dtmf").start()
 
     def set_remote(self, ip: str, port: int, pt: int, event_pt: int = 101):
         self.remote = (ip, port) if ip and port else None; self.pt = pt; self.event_pt = event_pt or 101
@@ -138,26 +139,33 @@ class RtpSession:
             except OSError: pass
 
     def send_dtmf(self, digit: str, ms: int = 160):
-        """The keypad tone of one key as telephone-event packets (RFC 4733): start, updates every 20 ms, and the end packet three times."""
+        """The keypad tone of one key as telephone-event packets (RFC 4733): start, updates every 20 ms, and the end packet three times.
+        Keys pressed quickly are sent one after the other (each with its own timestamp and a pause between them), never mixed together."""
         code = DTMF_CODES.get(digit.upper())
-        if code is None: return False
-        t = self._target()
-        if not (self.running and t): return False
+        if code is None or not (self.running and self._target()): return False
+        self._dtmf_q.put((code, ms)); return True
 
-        def work():
-            with self._send_lock: ts0 = self.ts; mk = True; seq0 = self.seq
-            n = max(1, ms // 20)
-            for i in range(n):
-                with self._send_lock:
-                    pkt = build_packet(self.event_pt, self.seq, ts0, self.ssrc, dtmf_payload(code, False, FRAME * (i + 1)), marker=mk); mk = False
-                    self.seq = (self.seq + 1) & 0xFFFF; self.ts = (self.ts + FRAME) & 0xFFFFFFFF
-                try: self.sock.sendto(pkt, t)
-                except OSError: return
-                time.sleep(0.02)
-            for _ in range(3):
-                with self._send_lock:
-                    pkt = build_packet(self.event_pt, self.seq, ts0, self.ssrc, dtmf_payload(code, True, FRAME * n)); self.seq = (self.seq + 1) & 0xFFFF
-                try: self.sock.sendto(pkt, t)
-                except OSError: return
-            with self._send_lock: self.ts = (self.ts + FRAME) & 0xFFFFFFFF
-        threading.Thread(target=work, daemon=True, name="rtp-dtmf").start(); return True
+    def _dtmf_worker(self):
+        while self.running:
+            try: code, ms = self._dtmf_q.get(timeout=0.2)
+            except queue.Empty: continue
+            t = self._target()
+            if t: self._send_digit(code, ms, t)
+            time.sleep(0.06)                                                                   # RFC 4733: a gap between two events
+
+    def _send_digit(self, code: int, ms: int, t):
+        with self._send_lock: ts0 = self.ts; mk = True
+        n = max(1, ms // 20)
+        for i in range(n):
+            with self._send_lock:
+                pkt = build_packet(self.event_pt, self.seq, ts0, self.ssrc, dtmf_payload(code, False, FRAME * (i + 1)), marker=mk); mk = False
+                self.seq = (self.seq + 1) & 0xFFFF; self.ts = (self.ts + FRAME) & 0xFFFFFFFF
+            try: self.sock.sendto(pkt, t)
+            except OSError: return
+            time.sleep(0.02)
+        for _ in range(3):
+            with self._send_lock:
+                pkt = build_packet(self.event_pt, self.seq, ts0, self.ssrc, dtmf_payload(code, True, FRAME * n)); self.seq = (self.seq + 1) & 0xFFFF
+            try: self.sock.sendto(pkt, t)
+            except OSError: return
+        with self._send_lock: self.ts = (self.ts + FRAME) & 0xFFFFFFFF

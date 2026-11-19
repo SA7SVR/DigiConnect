@@ -416,20 +416,20 @@ class UserAgent:
 
     def call(self, target: str) -> "Call | None":
         """Places a call to a number or name. Returns the Call at once; its state changes arrive as events."""
-        c = Call(self, "out", self._target_uri(target)); holder = []
+        c = Call(self, "out", self._target_uri(target)); c.remote_user = S.uri_parts(c.remote_uri)["user"] or target.strip()
         def go():
             if self.reg_state != "registered": c.state = "ended"; c.end_reason = "Not signed in to the server"; self.emit("call", call=c, state="ended"); return
             self._start_invite(c)
         self.post(go); return c
 
-    def _new_rtp(self) -> RtpSession:
-        r = RtpSession(port_range=self.cfg.bind_rtp); r.start(); return r
+    def _new_rtp(self, call=None) -> RtpSession:
+        r = RtpSession(port_range=self.cfg.bind_rtp, on_dtmf=(lambda d: self.emit("dtmf", call=call, digit=d)) if call is not None else None); r.start(); return r
 
     def _media_ip(self) -> str:
         return self.pub_ip or (self.tr.local[0] if self.tr else "0.0.0.0")
 
     def _start_invite(self, c: Call):
-        c.call_id = S.new_call_id(); c.local_uri = f"sip:{self.cfg.user}@{self.cfg.domain}"; c.media = self._new_rtp()
+        c.call_id = S.new_call_id(); c.local_uri = f"sip:{self.cfg.user}@{self.cfg.domain}"; c.media = self._new_rtp(c)
         c.local_sdp = SDP.build(self._media_ip(), c.media.port)
         self.calls[c.call_id] = c; c.state = "calling"; self.emit("call", call=c, state="calling")
         self._send_invite(c)
@@ -556,7 +556,7 @@ class UserAgent:
 
     def _answer(self, c: Call):
         if c.state != "incoming": return
-        c.media = self._new_rtp(); rem = c.remote_sdp
+        c.media = self._new_rtp(c); rem = c.remote_sdp
         pt = SDP.choose(rem) if rem else 0
         ip = self._media_ip()
         c.local_sdp = SDP.build(ip, c.media.port, only=[pt] if pt >= 0 else None)

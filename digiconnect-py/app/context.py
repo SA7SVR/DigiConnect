@@ -65,6 +65,8 @@ class Ctx(QtCore.QObject):
         self.engine_msg = ""
         self._problem = ("", 0.0)                # the last refusal / failure, kept visible in the status line for a while
         self.last_heard: list[dict] = []        # newest first
+        from .voip.phone import Phone
+        self.phone = Phone(self.store)                 # the VoIP telephone (SIP): does nothing until the user signs in
         from .callbook import Callbook
         self.callbook = Callbook(self.store.root)   # DMR ID -> callsign, name, country (RadioID), remembered on this computer
         self.talking: dict[tuple, dict] = {}    # (network, target id) -> the station that is talking there right now

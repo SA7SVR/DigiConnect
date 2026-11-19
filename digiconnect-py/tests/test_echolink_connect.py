@@ -134,11 +134,13 @@ def test_the_sound_option_is_in_the_audio_block_and_is_saved(tmp_path, monkeypat
     b.sig.setChecked(True); assert st.settings["sound_signals"] is True
 
 
-def test_the_voip_button_is_reserved_and_switched_off(tmp_path):
+def test_the_voip_button_opens_the_phone_page(tmp_path):
     from app.ui.main_window import MainWindow
     st = Store(tmp_path); ctx = Ctx(st, NullEngine()); w = MainWindow(ctx)
-    assert not w.voip_btn.isEnabled() and w.voip_btn.text() == "VoIP"                       # nothing is shown or connected: it is only reserved for a later version
-    assert "VoIP" not in w.tabs and "Not available in this version" in w.voip_btn.toolTip()
+    assert w.voip_btn.isEnabled() and w.voip_btn.text() == "VoIP" and "VoIP" not in w.tabs
+    w.voip_btn.click(); W.QApplication.processEvents()
+    assert w.current == "voip" and w.pages.currentWidget() is w.voipp and w.voip_btn.isChecked() and w.title.text() == "VoIP phone"
+    w.nav("favorites"); assert w.current == "favorites" and not w.voip_btn.isChecked()
     i18n.set_language("el")
     try: assert i18n.tr(w.voip_btn.toolTip()) != w.voip_btn.toolTip()
     finally: i18n.set_language("English")

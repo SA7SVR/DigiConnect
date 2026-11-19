@@ -104,8 +104,8 @@ class MainWindow(W.QMainWindow):
             if k != "favorites":                             # right click: switch this mode on or off for this installation
                 b.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 b.customContextMenuRequested.connect(lambda pos, n=k, w=b: self._mode_menu(n, w, pos))
-        # VoIP / SIP phone for the HELLAS Zone VoIP server: reserved for a later version. The button is OFF (disabled) and does nothing; no page, no connection and no state is shown for it.
-        self.voip_btn = button("VoIP", "tab", tip="VoIP / SIP phone for the HELLAS Zone VoIP server (sign in, see who is connected, call them). Not available in this version: it will be added in a later one."); self.voip_btn.setEnabled(False); tabs.addWidget(self.voip_btn)
+        # VoIP / SIP telephone: sign in to the SIP server, see who is available, call and talk
+        self.voip_btn = button("VoIP", "tab", checkable=True, tip="VoIP / SIP phone: sign in to the HELLAS Zone VoIP server (or another SIP server), see who is available and call them."); self.voip_btn.clicked.connect(lambda: self.nav("voip")); tabs.addWidget(self.voip_btn)
         self.stop_all_btn = button("Stop all", "danger", "close", tip="Stop all listening and transmission"); self.stop_all_btn.clicked.connect(lambda: self.ctx.stop_all()); tabs.addWidget(self.stop_all_btn)   # always in reach, on the same line as the network tabs
         tabs.addStretch(); hv.addLayout(tabs); col.addWidget(self.head)
         # pages + right drawers
@@ -122,6 +122,8 @@ class MainWindow(W.QMainWindow):
         self.mapp = MapPage(self.ctx); self.pages.addWidget(self.mapp)
         self.recp = RecordPage(self.ctx); self.pages.addWidget(self.recp)
         for n in NETS: self.pages.addWidget(self.ws[n])
+        from .voippage import VoipPage
+        self.voipp = VoipPage(self.ctx); self.pages.addWidget(self.voipp)
         self.mixer = Mixer(self.ctx); self.dock = Dock(self.ctx, lambda: None)
         col.addWidget(self.mixer); col.addWidget(self._pad(self.dock, 14, 14))   # the control bar keeps a clear gap above and below
         foot = W.QFrame(); foot.setObjectName("footer"); foot.setFixedHeight(52); fh = hbox(foot, m=(24, 0, 24, 0), s=10)
@@ -146,6 +148,9 @@ class MainWindow(W.QMainWindow):
         self.set_top.clicked.connect(lambda: self.open_settings()); self.theme_btn.clicked.connect(self.toggle_theme); self.settings.closed.connect(self._close_drawers); self.qdrawer.closed.connect(self._close_drawers)
         self.qdrawer.saved.connect(self.log.reload); self.settings.applied.connect(self.apply_settings); self.ctx.dmr_server_changed.connect(self.settings.sync_server)
         self.ctx.changed.connect(self._sync_chrome)
+        self.ctx.phone.call_changed.connect(self._phone_call)
+        if self.ctx.store.settings.get("voip_auto") and self.ctx.store.settings.get("voip_user") and self.ctx.store.settings.get("voip_pw") and self.ctx.store.settings.get("voip_remember", True):
+            QtCore.QTimer.singleShot(2500, lambda: self.ctx.phone.sign_in())          # only when the user asked for it and the password is saved
         t = QtCore.QTimer(self); t.timeout.connect(self._clock); t.start(1000)
         QtGui.QShortcut(QtGui.QKeySequence("F4"), self, activated=self._mute_all)
         QtGui.QShortcut(QtGui.QKeySequence("F2"), self, activated=self._f2)
@@ -221,8 +226,9 @@ class MainWindow(W.QMainWindow):
             return
         if key in self.TOGGLE and self.current == key:
             self.nav(self._home); return
-        if key == "favorites" or key.startswith("net:"): self._home = key          # where the second press of a toggle button goes back to
+        if key == "favorites" or key.startswith("net:") or key == "voip": self._home = key          # where the second press of a toggle button goes back to
         if key == "mic": self.current = "mic"; self.pages.setCurrentWidget(self.micp); self._sync_chrome(); return
+        if key == "voip": self.current = "voip"; self._home = "voip"; self.pages.setCurrentWidget(self.voipp); self.ctx.last_net = self.ctx.last_net; self._sync_chrome(); return
         if key == "mixer": self._mixer_user = True; self.mixer.setVisible(not self.mixer.isVisible()); self._sync_chrome(); return
         if key in ("analysis",): self.nav("log"); self.log._analysis(); return
         if key == "updates": self.show_updates(); return
@@ -243,24 +249,28 @@ class MainWindow(W.QMainWindow):
 
     def _sync_chrome(self):
         k, ws = self.current, self.current.startswith("net:")
-        self.head.setVisible(k == "favorites" or ws)
+        self.head.setVisible(k == "favorites" or ws or k == "voip")
         self.stop_top.setVisible(not (k == "favorites" or ws))          # the Stop all of the tab row is hidden with the row
         net = k[4:] if ws else None
-        self.title.setText("My favorites" if k == "favorites" else (f"Radio workspace  {net}" if ws else ""))
+        self.title.setText("My favorites" if k == "favorites" else ("VoIP phone" if k == "voip" else (f"Radio workspace  {net}" if ws else "")))
         self.title.setTextFormat(Qt.TextFormat.RichText)
         if ws: self.title.setText(f"{tr('Radio workspace')} <span style='color:{__import__('app.theme', fromlist=['NET_COLOR']).NET_COLOR[net]}'>{net}</span>")
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
+        self.voip_btn.setChecked(k == "voip")
         for t, b in self.tabs.items():
             if t != "favorites":
                 closed = t in self.ctx.policy.off              # closed by the owner's server (EchoLink too)
                 off = t in self.ctx.policy.user_off
                 b.setText(t + " · " + tr("extra" if self.ctx.policy.paid_info(t) else "closed") if closed else (t + " · " + tr("off") if off else t)); b.setIcon(dot(NET_COLOR[t])); b.setIconSize(QtCore.QSize(10, 10))
                 if bool(b.property("closed")) != closed: b.setProperty("closed", closed); repolish(b)
-        self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else "Choose a station, then Listen. Connect transmission separately to participate.")
+        self.subtitle.setText("All your networks. One radio workspace." if k == "favorites" else ("Telephone calls over the Internet with your SIP server." if k == "voip" else "Choose a station, then Listen. Connect transmission separately to participate."))
         self.h_add.setVisible(k == "favorites")
         self.tabs["favorites"].setText(f"My favorites   {len(self.ctx.store.favorites)}")
         for key, b in self.rail_btn.items():
             b.setChecked((key == "favorites" and k == "favorites") or (key in self.TOGGLE and key == k) or (key == "mixer" and self.mixer.isVisible()))
+        # the radio mixer has no use on the phone page and would squeeze it: it is put away there and comes back with the other pages
+        if k == "voip" and self.mixer.isVisible(): self._mixer_for_voip = True; self.mixer.setVisible(False)
+        elif k != "voip" and getattr(self, "_mixer_for_voip", False): self._mixer_for_voip = False; self.mixer.setVisible(True)
         # one fixed control bar on every page: Listen / PTT / limit stay in the same place at the bottom
         self.dock.setVisible(True); self.dock.parentWidget().setVisible(True)
         self.h_nq.setVisible(ws or k == 'favorites'); self.h_set.setVisible(ws)
@@ -270,7 +280,7 @@ class MainWindow(W.QMainWindow):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         # small window: the mixer would squeeze the pages, so it starts hidden (the headphone button still opens it)
-        if hasattr(self, "mixer") and not getattr(self, "_mixer_user", False): self.mixer.setVisible(self.height() >= 820); self._sync_chrome()
+        if hasattr(self, "mixer") and not getattr(self, "_mixer_user", False) and self.current != "voip": self.mixer.setVisible(self.height() >= 820); self._sync_chrome()
 
     # ---- updates ---------------------------------------------------------------
     def bind_updater(self):
@@ -289,7 +299,15 @@ class MainWindow(W.QMainWindow):
         from .updates_dialog import UpdatesDialog
         self._upd_dlg = UpdatesDialog(self.updater, self); self._upd_dlg.exec(); self._upd_dlg = None
 
+    def _phone_call(self, call, state: str):
+        """An incoming call opens the phone page (the ring is already playing); the radio is not touched."""
+        if state == "incoming":
+            who = " · ".join(x for x in (call.remote_name, call.remote_user) if x) or call.remote_uri
+            self.ctx.toast.emit(tr("Incoming call from {}").format(who)); self.nav("voip")
+
     def closeEvent(self, e):
+        try: self.ctx.phone.shutdown()                    # leave the SIP server cleanly and end a call
+        except Exception: pass
         if hasattr(self.ctx.engine, "shutdown"): self.ctx.engine.shutdown()
         super().closeEvent(e)
 

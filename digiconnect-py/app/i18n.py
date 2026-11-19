@@ -445,3 +445,6 @@ def combo_item(combo: W.QComboBox, index: int, src: str):
     """Marks combo item `index` as translatable (its position, not its text, carries the meaning)."""
     combo.__dict__.setdefault("_i18n_items", {})[index] = src
     if index < combo.count(): combo.setItemText(index, tr(src))
+
+
+from .voip import texts as _voip_texts   # noqa: E402,F401  (adds the Greek texts of the VoIP phone to EL; must come after EL is defined)
