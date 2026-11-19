@@ -47,6 +47,7 @@ DMR::DMR() :
     m_mode = "DMR";
 	m_dmrcnt = 0;
 	m_flco = FLCO_GROUP;
+	m_txflco = FLCO_GROUP;                                            // was never set unless the UI switched private/group call: the first transmit then used whatever memory held (macOS Intel CI: LC byte 0 = 0xA7)
 	m_attenuation = 5;
 #ifdef USE_MD380_VOCODER
     md380_init();

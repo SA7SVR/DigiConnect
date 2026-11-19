@@ -7,6 +7,7 @@ DigiConnect 2.3.12 — Release notes / Σημειώσεις έκδοσης / Ver
 • ΝΕΟ (server + πρόγραμμα): ένα mode ή μια λειτουργία μπορεί να είναι «Extra» — μένει κλειστό μέχρι ο χρήστης να κάνει επιπλέον δωρεά ή αγορά. Στο panel (Modes) ορίζεις ποσό, κουμπί, σύνδεσμο και μήνυμα για κάθε extra. Ξεκλειδώνει αυτόματα από την πληρωμή (αριθμός DC-… + όνομα του extra, ή ποσό που ταιριάζει σε ένα μόνο extra) ή χειροκίνητα από το panel. Στο πρόγραμμα η καρτέλα γράφει «extra», η σελίδα του mode δείχνει το μήνυμά σου και το κουμπί με το ποσό.
 • ΝΕΟ (παράθυρο Άδεια): για ολοκληρωμένη άδεια γράφει «Άδεια: Μόνιμη · DC-00001 · από ημερομηνία», τον κωδικό ενεργοποίησης, το όνομα και τα extras που έχεις.
 • Έκδοση 2.3.11 (δεν άλλαξε): ποσό στο κουμπί Δωρεά και μήνυμα όταν λήξει το demo.
+• ΔΙΟΡΘΩΘΗΚΕ (μηχανή, DMR): η πρώτη εκπομπή μπορούσε να στείλει λάθος σημαία ομαδικής/ιδιωτικής κλήσης (μια τιμή που δεν είχε οριστεί ποτέ)· εμφανίστηκε σε δοκιμή macOS Intel. Τώρα ορίζεται πάντα «ομαδική κλήση» από την αρχή και υπάρχει τεστ που το ελέγχει. Αλλαγή στη μηχανή: χρειάζεται ο πλήρης installer. Ο server δεν άλλαξε.
 
 ΝΕΑ ΣΤΗΝ 2.3.11 — ΠΟΣΟ ΣΤΟ ΚΟΥΜΠΙ ΔΩΡΕΑΣ
 • ΔΙΟΡΘΩΘΗΚΕ: το κουμπί «Donate» / «Αγορά» δείχνει το ποσό που ορίζεις στο panel του server (π.χ. «♥ Donate · 5 €»), στην πάνω μπάρα, στο παράθυρο «Άδεια» και στο παράθυρο που εμφανίζεται όταν το πρόγραμμα δεν μπορεί να συνεχίσει. Κενό ποσό = όπως πριν.
@@ -66,6 +67,7 @@ NEW IN 2.3.12 — EXTRAS (ADDITIONAL DONATION), LICENCE DETAILS
 • NEW (server + program): a mode or a feature can be an “Extra” — it stays closed until the user makes an additional donation or purchase. In the panel (Modes) you set the amount, button, link and message of each extra. It unlocks automatically from the payment (number DC-… + the name of the extra, or an amount that fits only one extra) or manually in the panel. In the program the tab says “extra”, the mode’s page shows your message and the button with the amount.
 • NEW (Licence window): for a finished licence it shows “Licence: Permanent · DC-00001 · since date”, the activation code, the name and the extras you have.
 • Version 2.3.11 (unchanged): amount on the Donate button and a message when the demo ends.
+• FIXED (engine, DMR): the first transmission could send a wrong group/private-call flag (a value that was never set); it showed up in a macOS Intel test. It is now always "group call" from the start, and a test checks it. Engine change: the full installer is needed. The server did not change.
 
 NEW IN 2.3.11 — AMOUNT ON THE DONATE BUTTON
 • FIXED: the “Donate” / “Buy” button shows the amount you set in the server panel (e.g. “♥ Donate · 5 €”), in the top bar, in the Licence window and in the window shown when the program cannot continue. Empty amount = as before.
@@ -125,6 +127,7 @@ NYTT I 2.3.12 — EXTRAS (EXTRA DONATION), LICENSUPPGIFTER
 • NYTT (server + program): ett läge eller en funktion kan vara ett “Extra” — det förblir stängt tills användaren gör en extra donation eller ett köp. I panelen (Lägen) anger du belopp, knapp, länk och meddelande för varje extra. Det låses upp automatiskt av betalningen (nummer DC-… + extrans namn, eller ett belopp som bara passar ett extra) eller manuellt i panelen. I programmet står “extra” på fliken, lägets sida visar ditt meddelande och knappen med beloppet.
 • NYTT (Licensfönstret): för en klar licens visas “Licens: Permanent · DC-00001 · sedan datum”, aktiveringskoden, namnet och dina extras.
 • Version 2.3.11 (oförändrad): belopp på Donate-knappen och ett meddelande när demon tagit slut.
+• RÄTTAT (motorn, DMR): den första sändningen kunde skicka fel flagga för grupp-/privatanrop (ett värde som aldrig sattes); det upptäcktes i ett macOS Intel-test. Nu är det alltid «gruppanrop» från början och ett test kontrollerar det. Ändring i motorn: hela installationsprogrammet behövs. Servern ändrades inte.
 
 NYTT I 2.3.11 — BELOPP PÅ DONATIONSKNAPPEN
 • FIXAT: knappen “Donate” / “Köp” visar beloppet du anger i serverpanelen (t.ex. “♥ Donate · 5 €”), i toppraden, i licensfönstret och i fönstret när programmet inte kan fortsätta. Tomt belopp = som förut.
