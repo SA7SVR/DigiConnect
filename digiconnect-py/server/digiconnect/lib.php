@@ -411,8 +411,8 @@ function dc_pay_extra_grant(int $payId, string $installId, string $key, string $
   dc_q('UPDATE dc_payments SET install=?, code=?, matched_by=?, note=? WHERE id=?', [$installId, '', $by, 'extra: ' . $key, $payId]);
   if (!$r['mail'] && $p['payer_email']) dc_q('UPDATE dc_installs SET mail=? WHERE id=?', [strtolower($p['payer_email']), $installId]);
   $no = dc_inst_no($installId); $to = $p['payer_email'] ?: $r['mail'];
-  $el = "Ευχαριστώ πολύ για τη στήριξη του DigiConnect!\n\nΤο extra «$key» ξεκλειδώθηκε για το πρόγραμμά σου ($no). Το πρόγραμμα το βλέπει μόνο του την επόμενη φορά που συνδέεται στο διαδίκτυο.\n\n73 de SA7SVR";
-  $en = "Thank you very much for supporting DigiConnect!\n\nThe extra “$key” is now unlocked for your program ($no). The program sees it by itself the next time it connects to the internet.\n\n73 de SA7SVR";
+  $el = "Ευχαριστώ πολύ για τη στήριξη του DigiConnect!\n\nΤο extra «{$key}» ξεκλειδώθηκε για το πρόγραμμά σου ($no). Το πρόγραμμα το βλέπει μόνο του την επόμενη φορά που συνδέεται στο διαδίκτυο.\n\n73 de SA7SVR";
+  $en = "Thank you very much for supporting DigiConnect!\n\nThe extra “{$key}” is now unlocked for your program ($no). The program sees it by itself the next time it connects to the internet.\n\n73 de SA7SVR";
   if ($to) dc_mail($to, 'DigiConnect — extra ' . $key . ' ' . $no, ($r['lang'] ?? '') === 'en' ? $en : $el . "\n\n— — —\n\n" . $en);
 }
 function dc_new_code(): string { $raw = strtoupper(bin2hex(random_bytes(6))); return 'HZD-' . substr($raw, 0, 4) . '-' . substr($raw, 4, 4) . '-' . substr($raw, 8, 4); }
@@ -465,7 +465,7 @@ function dc_ipn_process(array $p, string $raw, array $S): string {
     $extraWaiting = $inFull && dc_extras_open($row);          // already licensed and an extra is for sale: a payment we cannot tell apart is NOT a new licence
     if ($iid && $S['auto'] && $ex !== '') {
       dc_pay_extra_grant($pid, $iid, $ex, 'auto: ' . $how);
-      dc_alert('pay_extra', "$iid|$txn|$amount $cur|$ex", "Νέα πληρωμή $amount $cur από $name — ξεκλειδώθηκε αυτόματα το extra «$ex» στην " . dc_inst_no($iid) . ".\nNew payment $amount $cur from $name — the extra “$ex” was unlocked automatically on " . dc_inst_no($iid) . '.');
+      dc_alert('pay_extra', "$iid|$txn|$amount $cur|$ex", "Νέα πληρωμή $amount $cur από $name — ξεκλειδώθηκε αυτόματα το extra «{$ex}» στην " . dc_inst_no($iid) . ".\nNew payment $amount $cur from $name — the extra “{$ex}” was unlocked automatically on " . dc_inst_no($iid) . '.');
     } elseif ($iid && $S['auto'] && !$extraWaiting && $amount >= $S['min']) {
       $code = dc_pay_activate($pid, $iid, 'auto: ' . $how);
       dc_alert('pay_auto', "$iid|$txn|$amount $cur|$code", "Νέα πληρωμή $amount $cur από $name — ενεργοποιήθηκε αυτόματα " . dc_inst_no($iid) . " (κωδικός $code).\nNew payment $amount $cur from $name — " . dc_inst_no($iid) . " activated automatically (code $code).");
