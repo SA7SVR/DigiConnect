@@ -1199,14 +1199,6 @@ elseif ($p === 'inbox') {
 /* ===================== VoIP ACCOUNT REQUESTS ===================== */
 elseif ($p === 'voip') {
   $V = dc_voip_settings();
-  echo '<section class="card"><h2>☎ ' . L('Ρυθμίσεις', 'Settings') . '</h2><div class="help" style="margin-bottom:10px">' . L('Όταν είναι ανοιχτές οι αιτήσεις, το πρόγραμμα δείχνει το κουμπί «Δεν έχω λογαριασμό». Τα στοιχεία του server στέλνονται στον χρήστη μόνο όταν εγκρίνεις την αίτησή του.', 'When requests are open, the program shows the button “I don’t have an account”. The server details are sent to a user only when you approve the request.') . '</div>'
-    . '<form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="a" value="voip_set">'
-    . '<label><input type="checkbox" name="voip_on" value="1"' . ($V['on'] ? ' checked' : '') . '> ' . L('Δέχομαι αιτήσεις', 'Accept requests') . '</label>'
-    . '<label>' . L('Server SIP (π.χ. sip.foxhost.org)', 'SIP server (e.g. sip.foxhost.org)') . '<input name="voip_server" value="' . h($V['server']) . '"></label>'
-    . '<label>Port<input name="voip_port" type="number" value="' . (int)$V['port'] . '"></label>'
-    . '<label>' . L('Μεταφορά', 'Transport') . '<select name="voip_transport">' . implode('', array_map(function ($t) use ($V) { return '<option value="' . $t . '"' . ($V['transport'] === $t ? ' selected' : '') . '>' . strtoupper($t) . '</option>'; }, ['udp', 'tcp', 'tls'])) . '</select></label>'
-    . '<label>Domain (' . L('μόνο αν διαφέρει από τον server', 'only if different from the server') . ')<input name="voip_domain" value="' . h($V['domain']) . '"></label>'
-    . '<button class="btn pri sm">' . L('Αποθήκευση', 'Save') . '</button></form></section>';
   $rows = dc_q("SELECT * FROM dc_voip_req ORDER BY (status='new') DESC, t DESC LIMIT 200")->fetchAll();
   echo '<section class="card"><h2>' . L('Αιτήσεις', 'Requests') . '</h2>';
   if (!$rows) echo '<div class="muted">' . L('Δεν υπάρχουν αιτήσεις ακόμη.', 'No requests yet.') . '</div>';
@@ -1228,6 +1220,14 @@ elseif ($p === 'voip') {
     echo '<form method="post" style="margin-top:6px">' . csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="rid" value="' . (int)$r['id'] . '"><button class="btn sm danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή;', 'Delete?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form></div>';
   }
   echo '</section>';
+  echo '<section class="card"><h2>☎ ' . L('Ρυθμίσεις', 'Settings') . '</h2><div class="help" style="margin-bottom:10px">' . L('Όταν είναι ανοιχτές οι αιτήσεις, το πρόγραμμα δείχνει το κουμπί «Δεν έχω λογαριασμό». Τα στοιχεία του server στέλνονται στον χρήστη μόνο όταν εγκρίνεις την αίτησή του.', 'When requests are open, the program shows the button “I don’t have an account”. The server details are sent to a user only when you approve the request.') . '</div>'
+    . '<form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="a" value="voip_set">'
+    . '<label><input type="checkbox" name="voip_on" value="1"' . ($V['on'] ? ' checked' : '') . '> ' . L('Δέχομαι αιτήσεις', 'Accept requests') . '</label>'
+    . '<label>' . L('Server SIP (π.χ. sip.foxhost.org)', 'SIP server (e.g. sip.foxhost.org)') . '<input name="voip_server" value="' . h($V['server']) . '"></label>'
+    . '<label>Port<input name="voip_port" type="number" value="' . (int)$V['port'] . '"></label>'
+    . '<label>' . L('Μεταφορά', 'Transport') . '<select name="voip_transport">' . implode('', array_map(function ($t) use ($V) { return '<option value="' . $t . '"' . ($V['transport'] === $t ? ' selected' : '') . '>' . strtoupper($t) . '</option>'; }, ['udp', 'tcp', 'tls'])) . '</select></label>'
+    . '<label>Domain (' . L('μόνο αν διαφέρει από τον server', 'only if different from the server') . ')<input name="voip_domain" value="' . h($V['domain']) . '"></label>'
+    . '<button class="btn pri sm">' . L('Αποθήκευση', 'Save') . '</button></form></section>';
 }
 
 /* ===================== LIVE CHATS ===================== */
