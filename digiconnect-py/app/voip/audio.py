@@ -66,7 +66,7 @@ class Audio:
     def __init__(self, on_mic, get_speaker, mic_name: str = "", spk_name: str = ""):
         self.on_mic, self.get_speaker, self.mic_name, self.spk_name = on_mic, get_speaker, mic_name, spk_name
         self.muted = False; self.mic_level = 0.0; self.spk_level = 0.0; self.in_stream = self.out_stream = None; self.mic_used = self.spk_used = ""; self.error = ""
-        self._in_buf = np.zeros(0, np.float32); self._out_fifo = np.zeros(0, np.float32); self._in_rs = self._out_rs = None; self.in_rate = self.out_rate = RATE; self._lock = threading.Lock(); self.volume = 1.0
+        self._in_buf = np.zeros(0, np.float32); self._out_fifo = np.zeros(0, np.float32); self._in_rs = self._out_rs = None; self.in_rate = self.out_rate = RATE; self._lock = threading.Lock(); self.volume = 1.0; self.mic_gain = 1.0
 
     # ---- the two callbacks (also called directly by the tests)
     def feed_mic(self, block: np.ndarray):
@@ -75,7 +75,7 @@ class Audio:
         self._in_buf = np.concatenate([self._in_buf, x])
         while len(self._in_buf) >= FRAME:
             f, self._in_buf = self._in_buf[:FRAME], self._in_buf[FRAME:]
-            pcm = np.clip(f * 32768.0, -32768, 32767).astype(np.int16)
+            pcm = np.clip(f * self.mic_gain * 32768.0, -32768, 32767).astype(np.int16)
             self.mic_level = float(np.sqrt(np.mean((pcm.astype(np.float32) / 32768.0) ** 2)))
             self.on_mic(np.zeros(FRAME, np.int16) if self.muted else pcm)
 

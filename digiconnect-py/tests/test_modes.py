@@ -10,7 +10,7 @@ from test_ui_smoke import win, pick  # noqa: F401
 from test_licence_ui import pump
 
 pytestmark = pytest.mark.skipif(not shutil.which("php"), reason="php not installed")
-ALL = ["DMR", "D-Star", "C4FM", "NXDN", "P25", "M17", "AllStar", "EchoLink"]
+ALL = ["DMR", "D-Star", "C4FM", "NXDN", "P25", "M17", "AllStar", "EchoLink", "VoIP"]          # the radio modes and the VoIP phone (a program feature the owner can also close)
 
 
 def pol(srv, iid="inst-1", v="2.3.1"):

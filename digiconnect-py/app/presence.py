@@ -2,7 +2,7 @@
 
 While the program runs it sends, about every 30 seconds, a very small message to <server>/ping.php:
   installation id, program version, operating system, callsign + name (as typed in Settings), and what the station is doing right now
-  (which network/target it listens to, which one it transmits to, whether it is transmitting).
+  (which network/target it listens to, which one it transmits to, whether it is transmitting, and whether the VoIP phone is signed in to its server, with its extension).
 No audio, no passwords, no files. Can be switched off in Settings > My station (setting share_presence)."""
 import json, platform, sys, threading
 from urllib.parse import urlencode
@@ -18,7 +18,12 @@ def activity(ctx) -> dict:
     r = ctx.rules
     rx = [f"{x.target.net}:{x.target.id}" for x in r.rx][:4]
     tx = f"{r.tx_target.net}:{r.tx_target.id}" if r.tx_connected and r.tx_target else ""
-    return dict(rx=",".join(rx), tx=tx, ptt=1 if r.ptt else 0)
+    out = dict(rx=",".join(rx), tx=tx, ptt=1 if r.ptt else 0)
+    ph = getattr(ctx, "phone", None)
+    if ph is not None:                                                         # what the VoIP phone itself knows: signed in (the server accepted the REGISTER) or not
+        reg = getattr(ph, "reg_state", "") == "registered"; out["voip"] = 1 if reg else 0
+        if reg: out["vx"] = str(ctx.store.settings.get("voip_user", ""))[:20]
+    return out
 
 
 class Presence(QtCore.QObject):

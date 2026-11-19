@@ -65,6 +65,8 @@ function dc_db(): PDO {
     CREATE TABLE IF NOT EXISTS dc_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, txn TEXT UNIQUE, status TEXT, amount REAL, currency TEXT, payer_email TEXT, payer_name TEXT, memo TEXT, custom TEXT, install TEXT, code TEXT, matched_by TEXT, note TEXT, raw TEXT);
     CREATE TABLE IF NOT EXISTS dc_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, install TEXT, call TEXT, email TEXT, name TEXT, os TEXT, version TEXT, topic TEXT, subject TEXT, body TEXT, ip TEXT, lang TEXT, src TEXT, status TEXT DEFAULT 'new', reply TEXT, reply_t INT, read_t INT);
     CREATE INDEX IF NOT EXISTS i_dc_inbox_t ON dc_inbox(t);
+    CREATE TABLE IF NOT EXISTS dc_voip_req (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, tok TEXT, name TEXT, call TEXT, want TEXT, body TEXT, ip TEXT, lang TEXT, status TEXT DEFAULT 'new', ext TEXT, pw TEXT, reason TEXT, decided_t INT, delivered_t INT);
+    CREATE INDEX IF NOT EXISTS i_dc_voip_t ON dc_voip_req(t);
     CREATE TABLE IF NOT EXISTS dc_visits (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, ip TEXT, page TEXT, lang TEXT, ua TEXT, ref TEXT, bot INT DEFAULT 0, br TEXT, os TEXT, dev TEXT);
     CREATE INDEX IF NOT EXISTS i_dc_vis_t ON dc_visits(t);
     CREATE INDEX IF NOT EXISTS i_dc_vis_ip ON dc_visits(ip);
@@ -78,7 +80,7 @@ function dc_db(): PDO {
   ");
   // additive migration: presence columns (what the station reports with ping.php)
   $have = array_column($pdo->query('PRAGMA table_info(dc_installs)')->fetchAll(), 'name');
-  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT', 'mode_ovr' => 'TEXT', 'tester' => 'INT DEFAULT 0', 'tx_ovr' => 'TEXT', 'extras' => 'TEXT'] as $c => $t)
+  foreach (['grid' => 'TEXT', 'eq' => 'TEXT', 'rx' => 'TEXT', 'tx' => 'TEXT', 'ptt' => 'INT DEFAULT 0', 'last_ping' => 'INT', 'dmr_id' => 'TEXT', 'consent_at' => 'INT', 'owner' => 'TEXT', 'lic_code' => 'TEXT', 'lic_since' => 'INT', 'hw' => 'TEXT', 'hw_set' => 'INT', 'lic_major' => 'INT', 'mode_ovr' => 'TEXT', 'tester' => 'INT DEFAULT 0', 'tx_ovr' => 'TEXT', 'extras' => 'TEXT', 'voip' => 'INT', 'voip_ext' => 'TEXT'] as $c => $t)
     if (!in_array($c, $have, true)) $pdo->exec("ALTER TABLE dc_installs ADD COLUMN $c $t");
   // 2.4.0: a release can need a newer protocol engine (min_engine); the engine packages themselves are in dc_engines
   $rc = array_column($pdo->query('PRAGMA table_info(dc_releases)')->fetchAll(), 'name');
@@ -340,12 +342,21 @@ function dc_inst_no($id): string { $n = (int)(dc_one('SELECT rowid n FROM dc_ins
 function dc_no_filter(string $q): ?int { return preg_match('/^\s*(?:DC-?)?0*(\d{1,6})\s*$/i', $q, $m) ? (int)$m[1] : null; }
 
 // ---- e-mail + alerts (same as HAM Digi): this server sends no e-mail unless "mail_on" is switched on ----
-const DC_ALERTS = ['reinstall_id', 'clone', 'reg_pending', 'pay_unmatched', 'pay_refund', 'pay_auto', 'pay_extra', 'code_reuse'];
+const DC_ALERTS = ['voip_req', 'reinstall_id', 'clone', 'reg_pending', 'pay_unmatched', 'pay_refund', 'pay_auto', 'pay_extra', 'code_reuse'];
 function dc_base_url(): string {
   $s = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https') ? 'https' : 'http';
   $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
   if (basename($dir) === 'admin') $dir = dirname($dir);
   return $s . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . rtrim($dir, '/') . '/';
+}
+// VoIP account requests: what the program is told about the SIP server when a request is approved (set in the panel, page "VoIP")
+function dc_voip_settings(): array {
+  return ['on' => dc_kv('voip_on', '0') === '1', 'server' => trim((string)dc_kv('voip_server', '')), 'port' => (int)(dc_kv('voip_port', '5060') ?: 5060),
+          'transport' => in_array(dc_kv('voip_transport', 'udp'), ['udp', 'tcp', 'tls'], true) ? dc_kv('voip_transport', 'udp') : 'udp', 'domain' => trim((string)dc_kv('voip_domain', '')),
+          'per_ip' => 5];
+}
+function dc_voip_password(int $n = 14): string {   // a suggestion for the new extension's password: letters and digits without look-alikes
+  $a = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; $o = ''; for ($i = 0; $i < $n; $i++) $o .= $a[random_int(0, strlen($a) - 1)]; return $o;
 }
 function dc_mail(string $to, string $subject, string $body): bool {
   if (dc_kv('mail_on', '0') !== '1') return false;                  // the e-mail address is then only kept as information
@@ -697,7 +708,7 @@ function dc_rev(string $id): string {
 const DC_MODES = ['DMR', 'D-Star', 'C4FM', 'NXDN', 'P25', 'M17', 'AllStar', 'EchoLink'];
 // Things that can be opened, closed or sold as an extra: the radio modes and, below, the program's other features.
 // To make a NEW program feature switchable (and able to ask for an extra donation) add ONE line here: key => [Greek name, English name]; the program asks the policy for that key.
-const DC_FEATURES = [];
+const DC_FEATURES = ['VoIP' => ['Τηλέφωνο VoIP / SIP', 'VoIP / SIP phone']];
 function dc_items(): array { return array_merge(DC_MODES, array_keys(DC_FEATURES)); }
 function dc_item_name(string $k): string { return $k . (isset(DC_FEATURES[$k]) ? ' — ' . DC_FEATURES[$k][0] . ' / ' . DC_FEATURES[$k][1] : ''); }
 function dc_mode_key(string $m): string { return 'mode_' . strtolower(preg_replace('/[^A-Za-z0-9]/', '', $m)); }

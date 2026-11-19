@@ -1,6 +1,6 @@
 <?php
 // DigiConnect — "I am online" signal from the program (about once a minute while it runs).
-// GET: id, v, os, arch, call, grid, eq, rx, tx, ptt  ->  {"ok":true}
+// GET: id, v, os, arch, call, grid, eq, rx, tx, ptt, voip (1 = signed in to the VoIP server, 0 = not), vx (its extension)  ->  {"ok":true}
 // Only updates the row of an installation that already exists or creates it as demo; stores no audio, no passwords.
 require __DIR__ . '/lib.php';
 dc_backup_tick();   // 2.3.7: the hourly copy of the database, made after this answer has been sent
@@ -14,18 +14,20 @@ $call = strtoupper(preg_replace('/[^0-9A-Za-z\/]/', '', $clip('call', 15)));
 $v = $clip('v', 20); $os = $clip('os', 16); $arch = $clip('arch', 16);
 $grid = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', $clip('grid', 8)));
 $eq = $clip('eq', 40); $rx = $clip('rx', 120); $tx = $clip('tx', 60); $ptt = ((string)($_REQUEST['ptt'] ?? '0') === '1') ? 1 : 0;
+// what the program itself knows about its VoIP sign-in (the 200 OK of the REGISTER); an older program sends nothing: NULL = unknown, never guessed
+$voip = isset($_REQUEST['voip']) ? (((string)$_REQUEST['voip'] === '1') ? 1 : 0) : null; $vx = $voip === 1 ? preg_replace('/[^0-9A-Za-z*#_.-]/', '', $clip('vx', 20)) : '';
 $now = time(); $cfg = dc_cfg();
 
 $cur = dc_one('SELECT id, call FROM dc_installs WHERE id=?', [$id]);
 if (!$cur) {
-  dc_q('INSERT INTO dc_installs(id,first_seen,last_seen,version,os,arch,checks,state,demo_until,ip,call,grid,eq,rx,tx,ptt,last_ping) VALUES(?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?)',
-    [$id, $now, $now, $v, $os, $arch, 'demo', $now + 86400 * (int)dc_opt('demo_days', $cfg['demo_days']), dc_ip(), $call, $grid, $eq, $rx, $tx, $ptt, $now]);
+  dc_q('INSERT INTO dc_installs(id,first_seen,last_seen,version,os,arch,checks,state,demo_until,ip,call,grid,eq,rx,tx,ptt,last_ping,voip,voip_ext) VALUES(?,?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?)',
+    [$id, $now, $now, $v, $os, $arch, 'demo', $now + 86400 * (int)dc_opt('demo_days', $cfg['demo_days']), dc_ip(), $call, $grid, $eq, $rx, $tx, $ptt, $now, $voip, $vx]);
   dc_event('install', "$id|$v|$os|$arch");
 } else {
   // the callsign typed in the program fills the row; one that the admin has set by hand is not overwritten by an empty value
   dc_q('UPDATE dc_installs SET last_ping=?, version=COALESCE(NULLIF(?,\'\'),version), os=COALESCE(NULLIF(?,\'\'),os), arch=COALESCE(NULLIF(?,\'\'),arch),
-        call=CASE WHEN ?<>\'\' THEN ? ELSE call END, grid=?, eq=?, rx=?, tx=?, ptt=?, ip=? WHERE id=?',
-    [$now, $v, $os, $arch, $call, $call, $grid, $eq, $rx, $tx, $ptt, dc_ip(), $id]);
+        call=CASE WHEN ?<>\'\' THEN ? ELSE call END, grid=?, eq=?, rx=?, tx=?, ptt=?, ip=?, voip=?, voip_ext=? WHERE id=?',
+    [$now, $v, $os, $arch, $call, $call, $grid, $eq, $rx, $tx, $ptt, dc_ip(), $voip, $vx, $id]);
 }
 dc_daily_mark($id, $v, $os);
 echo json_encode(['ok' => true, 't' => $now, 'rev' => dc_rev($id)]);

@@ -7,7 +7,7 @@ What it is
   You connect to any server in the world from the public lists.
 
 What is new in this version (2.5.0)
-  • NEW: the "VoIP" button is now a SIP telephone: sign in to your SIP server with your extension and password, see who is available (only what the server reports) and call colleagues. Use a headset (no echo cancellation yet).
+  • NEW: the "VoIP" button is now a SIP telephone: sign in to your SIP server with your extension and password, see who is available (only what the server reports) and call colleagues. Use a headset (no echo cancellation yet). It has five settings tabs, ringtone choices and an account request from inside the program (no e-mail); the server owner can switch VoIP on and off from the panel.
   • Not yet tested with the HELLAS Zone FreeSWITCH/FusionPBX server and real Windows sound devices.
   New in 2.4.0:
   • NEW: automatic updates can now also bring a new protocol engine (the part with the protocols and the audio) without a new installer. The engine is downloaded first, checked and test-started; if it does not start, the program goes back to the one that came with the installer by itself.

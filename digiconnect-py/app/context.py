@@ -67,6 +67,7 @@ class Ctx(QtCore.QObject):
         self.last_heard: list[dict] = []        # newest first
         from .voip.phone import Phone
         self.phone = Phone(self.store)                 # the VoIP telephone (SIP): does nothing until the user signs in
+        self.phone.blocked = lambda: "" if self.policy.allows("VoIP") else self.policy.reason("VoIP")      # the owner's server can close the phone
         from .callbook import Callbook
         self.callbook = Callbook(self.store.root)   # DMR ID -> callsign, name, country (RadioID), remembered on this computer
         self.talking: dict[tuple, dict] = {}    # (network, target id) -> the station that is talking there right now
@@ -489,6 +490,10 @@ class Ctx(QtCore.QObject):
         if self.rules.tx_connected and t is not None and (not new.allows(t.net) or not new.tx):
             self.rules.disconnect_tx(); self.engine.ptt(False); self.engine.disconnect_tx(); msg = msg or (new.reason(t.net) if not new.allows(t.net) else new.tx_reason())
         if msg: self.note_problem(msg); self.toast.emit(msg)
+        if not new.allows("VoIP"):                                                       # the owner's server closed the phone: the call ends and the program signs out
+            active = self.phone.reg_state != "unregistered" or self.phone.call is not None
+            self.phone.hangup(); self.phone.sign_out(0.0)
+            if active: m2 = new.reason("VoIP"); self.note_problem(m2); self.toast.emit(m2)
         self.policy_changed.emit(); self.changed.emit(); return True
 
     def note_problem(self, text: str):

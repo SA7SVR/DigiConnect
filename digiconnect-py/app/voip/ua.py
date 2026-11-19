@@ -22,10 +22,14 @@ def fail_text(code: int, reason: str = "") -> str:
 
 
 class Config:
-    def __init__(self, server="", port=5060, transport="udp", user="", password="", auth_user="", domain="", display_name="", expires=300, bind_rtp=(12000, 12999), tls_verify=True, tls_ca=""):
+    def __init__(self, server="", port=5060, transport="udp", user="", password="", auth_user="", domain="", display_name="", expires=300, bind_rtp=(12000, 12999), tls_verify=True, tls_ca="",
+                 local_port=0, keepalive=True, keepalive_secs=0, stun="", public_ip="", codecs=(0, 8), dtmf="auto", user_agent="", jitter=3, trace=False):
+        """server = where the connection goes (the outbound proxy when there is one); domain = the SIP domain of the account (the server when empty)."""
         self.server, self.port, self.transport = server.strip(), int(port or 5060), (transport or "udp").lower()
         self.user, self.password, self.auth_user = user.strip(), password, (auth_user or user).strip()
-        self.domain = (domain or server).strip(); self.display_name = display_name.strip(); self.expires = int(expires or 300); self.bind_rtp = bind_rtp; self.tls_verify, self.tls_ca = bool(tls_verify), tls_ca
+        self.domain = (domain or server).strip(); self.display_name = display_name.strip(); self.expires = max(30, int(expires or 300)); self.bind_rtp = bind_rtp; self.tls_verify, self.tls_ca = bool(tls_verify), tls_ca
+        self.local_port = int(local_port or 0); self.keepalive = bool(keepalive); self.keepalive_secs = int(keepalive_secs or 0); self.stun = (stun or "").strip(); self.public_ip = (public_ip or "").strip()
+        self.codecs = tuple(codecs) or (0, 8); self.dtmf = dtmf if dtmf in ("auto", "rfc4733", "info") else "auto"; self.user_agent = (user_agent or "").strip(); self.jitter = max(1, int(jitter or 3)); self.trace = bool(trace)
 
 
 class Transport:
@@ -45,9 +49,17 @@ class Transport:
         if not infos: raise OSError("The server name could not be found")
         self.remote = infos[0][4]
         if self.cfg.transport == "udp":
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.bind(("0.0.0.0", 0)); s.connect(self.remote)           # connect: the address of the interface that reaches the server
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try: s.bind(("0.0.0.0", self.cfg.local_port))
+            except OSError as ex: s.close(); raise OSError(f"The local SIP port {self.cfg.local_port} cannot be used ({ex.strerror or ex})")
+            s.connect(self.remote)                                                                                      # connect: the address of the interface that reaches the server
         else:
-            s = socket.create_connection(self.remote, timeout=10)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(10)
+            if self.cfg.local_port:
+                try: s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("0.0.0.0", self.cfg.local_port))
+                except OSError as ex: s.close(); raise OSError(f"The local SIP port {self.cfg.local_port} cannot be used ({ex.strerror or ex})")
+            try: s.connect(self.remote)
+            except OSError: s.close(); raise
             if self.cfg.transport == "tls":
                 ctx = ssl.create_default_context()
                 try:
@@ -110,7 +122,7 @@ class Call:
     def answer(self): self.ua.post(lambda: self.ua._answer(self))
     def reject(self, code: int = 603): self.ua.post(lambda: self.ua._reject(self, code))
     def hangup(self): self.ua.post(lambda: self.ua._hangup(self))
-    def send_dtmf(self, digit: str): self.ua.post(lambda: self.media and self.media.send_dtmf(digit))
+    def send_dtmf(self, digit: str): self.ua.post(lambda: self.ua._send_dtmf(self, digit))
 
     @property
     def active(self) -> bool: return self.state == "active"
@@ -235,7 +247,7 @@ class UserAgent:
 
     def _base(self, method: str, uri: str, call_id: str, cseq: int, frm: str, to: str, branch: str = "") -> S.Message:
         m = S.Message(method=method, uri=uri); m.add("Via", self._via(branch or S.new_branch())); m.add("Max-Forwards", "70"); m.add("From", frm); m.add("To", to)
-        m.add("Call-ID", call_id); m.add("CSeq", f"{cseq} {method}"); m.add("User-Agent", USER_AGENT); return m
+        m.add("Call-ID", call_id); m.add("CSeq", f"{cseq} {method}"); m.add("User-Agent", self.cfg.user_agent or USER_AGENT); return m
 
     def _register(self, expires: int):
         if not self.tr or self.tr.closed: return
@@ -309,10 +321,12 @@ class UserAgent:
 
     def _start_keepalive(self):
         self.cancel(self.keepalive_timer)
+        if not self.cfg.keepalive: return
+        every = max(5, self.cfg.keepalive_secs or (25 if self.cfg.transport == "udp" else 55))
         def ka():
             if self.tr and not self.tr.closed and self.reg_state == "registered": self.tr.send(b"\r\n\r\n")
-            self.keepalive_timer = self.call_later(25 if self.cfg.transport == "udp" else 55, ka)
-        self.keepalive_timer = self.call_later(25 if self.cfg.transport == "udp" else 55, ka)
+            self.keepalive_timer = self.call_later(every, ka)
+        self.keepalive_timer = self.call_later(every, ka)
 
     # ---- transactions ---------------------------------------------------------------------------------------------
     def _send_request(self, m: S.Message, on_response, on_timeout=None) -> ClientTx:
@@ -343,7 +357,7 @@ class UserAgent:
     def _dump(self, way: str, m: S.Message):
         first = f"{m.method} {m.uri}" if m.is_request else f"{m.status} {m.reason}"
         self.log(f"SIP {way}: {first}  [{m.get('cseq')}]")
-        if getattr(self, "debug", False):
+        if getattr(self, "debug", False) or self.cfg.trace:
             txt = m.to_bytes().decode("utf-8", "replace")
             txt = re.sub(r"(?im)^((?:proxy-)?authorization:).*$", r"\1 (hidden)", txt); self.log(txt)
 
@@ -385,7 +399,7 @@ class UserAgent:
         if to_tag and ";tag=" not in to: to += f";tag={to_tag}"
         r.add("To", to)
         for k, v in (extra or []): r.add(k, v)
-        r.add("User-Agent", USER_AGENT)
+        r.add("User-Agent", self.cfg.user_agent or USER_AGENT)
         if body: r.add("Content-Type", "application/sdp")
         r.body = body; self.tr.send(r.to_bytes()); self._dump("out", r); return r
 
@@ -423,14 +437,30 @@ class UserAgent:
         self.post(go); return c
 
     def _new_rtp(self, call=None) -> RtpSession:
-        r = RtpSession(port_range=self.cfg.bind_rtp, on_dtmf=(lambda d: self.emit("dtmf", call=call, digit=d)) if call is not None else None); r.start(); return r
+        r = RtpSession(port_range=self.cfg.bind_rtp, on_dtmf=(lambda d: self.emit("dtmf", call=call, digit=d)) if call is not None else None, prefill=self.cfg.jitter)
+        if self.cfg.stun:
+            from . import stun
+            sv = stun.parse_host(self.cfg.stun)
+            if sv and not r.discover_public(sv): self.log(f"STUN: no answer from {self.cfg.stun}; the address of the connection is used")
+            elif sv: self.log(f"STUN: the audio port is seen as {r.public[0]}:{r.public[1]}")
+        r.start(); return r
+
+    def _media_addr(self, c: Call) -> tuple[str, int]:
+        """Address and port the other side must send the sound to: what STUN found, or the public address learnt from the server, or the local one."""
+        pub = c.media.public if c.media else None
+        ip = self.cfg.public_ip or (pub[0] if pub else self._media_ip())
+        return ip, (pub[1] if pub and not self.cfg.public_ip else (c.media.port if c.media else 0))
 
     def _media_ip(self) -> str:
-        return self.pub_ip or (self.tr.local[0] if self.tr else "0.0.0.0")
+        return self.cfg.public_ip or self.pub_ip or (self.tr.local[0] if self.tr else "0.0.0.0")
+
+    def _sdp(self, ip: str, port: int, **kw) -> bytes:
+        """Our offer or answer: the codecs in the user's order; the address STUN found for this call's audio port, when there is one."""
+        return SDP.build(ip, port, prefer=self.cfg.codecs, **kw)
 
     def _start_invite(self, c: Call):
         c.call_id = S.new_call_id(); c.local_uri = f"sip:{self.cfg.user}@{self.cfg.domain}"; c.media = self._new_rtp(c)
-        c.local_sdp = SDP.build(self._media_ip(), c.media.port)
+        c.local_sdp = self._sdp(*self._media_addr(c))
         self.calls[c.call_id] = c; c.state = "calling"; self.emit("call", call=c, state="calling")
         self._send_invite(c)
 
@@ -466,7 +496,7 @@ class UserAgent:
     def _early_media(self, c: Call, r: S.Message):
         rem = SDP.parse(r.body)
         if not rem.ip or not rem.port: return
-        pt = SDP.choose(rem)
+        pt = SDP.choose(rem, self.cfg.codecs)
         if pt < 0:
             if r.status >= 200: self._end(c, "No common audio format with the other side", send_bye=True)
             return
@@ -492,7 +522,7 @@ class UserAgent:
         if not c.invite or getattr(c, "cancel_sent", False): return
         c.cancel_sent = True; req = c.invite
         m = S.Message(method="CANCEL", uri=req.uri); m.add("Via", req.all("via")[0]); m.add("Max-Forwards", "70"); m.add("From", req.get("from")); m.add("To", req.get("to")); m.add("Call-ID", req.call_id)
-        m.add("CSeq", f"{req.cseq[0]} CANCEL"); m.add("User-Agent", USER_AGENT)
+        m.add("CSeq", f"{req.cseq[0]} CANCEL"); m.add("User-Agent", self.cfg.user_agent or USER_AGENT)
         for rt in req.all("route"): m.add("Route", rt)
         self.txs[m.branch] = tx = ClientTx(m, lambda r: None, lambda: None); self.tr.send(m.to_bytes()); self._dump("out", m)
         self.call_later(10, lambda: (c.state not in ("ended",)) and self._end(c, "Cancelled", send_bye=False))
@@ -520,13 +550,24 @@ class UserAgent:
         self._bye(c)
         self._end(c, "Hung up")
 
-    def _bye(self, c: Call):
+    def _dialog_request(self, c: Call, method: str) -> S.Message:
+        """A request inside the call's dialog (BYE, INFO, ...): same Call-ID and tags, the other side's contact as target, the route set of the server."""
         c.cseq += 1
-        to = f"<{c.remote_uri}>;tag={c.remote_tag}" if c.direction == "out" else None
-        if c.direction == "out": m = self._base("BYE", c.remote_target or c.remote_uri, c.call_id, c.cseq, self._from(c.local_tag), to)
-        else:
-            m = self._base("BYE", c.remote_target or c.remote_uri, c.call_id, c.cseq, f"<{c.local_uri}>;tag={c.local_tag}", f"{c.invite.get('from')}")
+        if c.direction == "out": m = self._base(method, c.remote_target or c.remote_uri, c.call_id, c.cseq, self._from(c.local_tag), f"<{c.remote_uri}>;tag={c.remote_tag}")
+        else: m = self._base(method, c.remote_target or c.remote_uri, c.call_id, c.cseq, f"<{c.local_uri}>;tag={c.local_tag}", f"{c.invite.get('from')}")
         for rt in c.route_set: m.add("Route", rt)
+        return m
+
+    def _bye(self, c: Call):
+        self._send_request(self._dialog_request(c, "BYE"), lambda r: None, lambda: None)
+
+    def _send_dtmf(self, c: Call, digit: str):
+        """One key to the other side: as RTP events (RFC 4733), or as a SIP INFO request (application/dtmf-relay) for a server that does not take events. 'auto' = events when the other side offered them."""
+        if c.state != "active" or not c.media or digit.upper() not in "0123456789*#ABCD" or len(digit) != 1: return
+        mode = self.cfg.dtmf
+        if mode == "auto": mode = "rfc4733" if (c.remote_sdp and c.remote_sdp.event_pt) else "info"
+        if mode == "rfc4733": c.media.send_dtmf(digit); return
+        m = self._dialog_request(c, "INFO"); m.add("Content-Type", "application/dtmf-relay"); m.body = f"Signal={digit.upper()}\r\nDuration=160\r\n".encode()
         self._send_request(m, lambda r: None, lambda: None)
 
     # --- incoming call
@@ -544,7 +585,7 @@ class UserAgent:
         c.remote_user = S.uri_parts(S.uri_of(m.get("p-asserted-identity") or ""))["user"] or c.remote_user if m.get("p-asserted-identity") else c.remote_user
         if m.body:
             rem = SDP.parse(m.body); c.remote_sdp = rem
-            if SDP.choose(rem) < 0:
+            if SDP.choose(rem, self.cfg.codecs) < 0:
                 self.server_txs[key] = self._reply(m, 488, "Not Acceptable Here", to_tag=c.local_tag); return
         self.calls[cid] = c; c.state = "incoming"
         self._invite_key = key
@@ -557,9 +598,8 @@ class UserAgent:
     def _answer(self, c: Call):
         if c.state != "incoming": return
         c.media = self._new_rtp(c); rem = c.remote_sdp
-        pt = SDP.choose(rem) if rem else 0
-        ip = self._media_ip()
-        c.local_sdp = SDP.build(ip, c.media.port, only=[pt] if pt >= 0 else None)
+        pt = SDP.choose(rem, self.cfg.codecs) if rem else self.cfg.codecs[0]
+        c.local_sdp = self._sdp(*self._media_addr(c), only=[pt] if pt >= 0 else None)
         if rem: c.media.set_remote(rem.ip, rem.port, pt, rem.event_pt); self._punch(c)
         r = self._reply(c.invite, 200, "OK", [("Contact", f"<{self.contact_uri()}>"), ("Allow", "INVITE, ACK, CANCEL, BYE, OPTIONS, NOTIFY, INFO, UPDATE")], body=c.local_sdp, to_tag=c.local_tag)
         self.server_txs[c._key] = r; c.final_resp = r; c.answered_at = time.time(); c.acked = False; self.cancel(c.ring_timer)
@@ -579,7 +619,7 @@ class UserAgent:
         c.acked = True; self.cancel(c.resp_timer)
         if m.body and not c.remote_sdp:                                                  # the offer was in our 200 and the answer comes in the ACK
             rem = SDP.parse(m.body); c.remote_sdp = rem
-            if c.media: c.media.set_remote(rem.ip, rem.port, max(0, SDP.choose(rem)), rem.event_pt); self._punch(c)
+            if c.media: c.media.set_remote(rem.ip, rem.port, max(0, SDP.choose(rem, self.cfg.codecs)), rem.event_pt); self._punch(c)
         if c.state == "connecting": c.answered_at = time.time(); self._set_call(c, "active")
 
     def _reject(self, c: Call, code: int):
@@ -605,10 +645,10 @@ class UserAgent:
             rem = SDP.parse(m.body)
             held = rem.on_hold; c.held_by_remote = held
             if rem.ip and rem.port and not held and c.media:
-                pt = SDP.choose(rem); 
+                pt = SDP.choose(rem, self.cfg.codecs); 
                 if pt >= 0: c.media.set_remote(rem.ip, rem.port, pt, rem.event_pt); c.remote_sdp = rem
             direction = "recvonly" if held else "sendrecv"
-            ans = SDP.build(self._media_ip(), c.media.port if c.media else 0, only=[c.media.pt] if c.media else None, direction=direction)
+            ans = self._sdp(*self._media_addr(c), only=[c.media.pt] if c.media else None, direction=direction)
             self.server_txs[key] = self._reply(m, 200, "OK", [("Contact", f"<{self.contact_uri()}>")], body=ans)
         else: self.server_txs[key] = self._reply(m, 200, "OK", [("Contact", f"<{self.contact_uri()}>")], body=c.local_sdp)
         self.emit("call", call=c, state="held" if c.held_by_remote else "active")

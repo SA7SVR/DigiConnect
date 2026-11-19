@@ -79,5 +79,18 @@ def test_the_registration_line_follows_the_state(tmp_path):
 def test_the_call_list_shows_direction_name_and_length(tmp_path):
     st, ctx, pg = make(tmp_path, voip_history=[dict(t=time.time(), dir="placed", number="1002", name="Takis", secs=75), dict(t=time.time(), dir="missed", number="1003", name="", secs=0)])
     pg.refresh_history(); a, b = pg.hist.item(0).text(), pg.hist.item(1).text()
-    assert a.startswith("→") and "Takis" in a and "1002" in a and a.endswith("1:15") and b.startswith("✕") and "1003" in b
+    assert a.startswith("→") and "Takis" in a and "1002" in a and a.endswith("(1:15)") and "\n" in a and b.startswith("✕") and "1003" in b and "(" not in b.split("\n")[1]       # the length is in brackets, only when there was a conversation
     assert pg.hist.item(0).data(0x0100) == "1002"
+
+
+def test_add_edit_remove_are_fixed_at_the_very_bottom_of_the_people_panel(tmp_path):
+    st, ctx, pg = make(tmp_path)
+    pg.resize(1280, 800); W.QApplication.processEvents()
+    panel_bottom = pg.people.parentWidget().mapToGlobal(pg.people.parentWidget().rect().bottomLeft()).y()
+    ys = [b.mapToGlobal(b.rect().bottomLeft()).y() for b in (pg.add, pg.edit, pg.rm)]
+    assert len(set(ys)) == 1 and panel_bottom - ys[0] < 24, (ys, panel_bottom)                    # on one line, right at the bottom edge
+    assert pg.add.y() > pg.hist.y() + pg.hist.height() - 2 and pg.add.y() > pg.people.y() + pg.people.height()   # below both lists
+    assert abs(pg.add.width() - pg.edit.width()) <= 1 and abs(pg.edit.width() - pg.rm.width()) <= 1
+    pg.resize(1280, 1000); W.QApplication.processEvents()                                         # a taller window: the buttons follow the bottom edge
+    pb = pg.people.parentWidget().mapToGlobal(pg.people.parentWidget().rect().bottomLeft()).y()
+    assert pb - pg.add.mapToGlobal(pg.add.rect().bottomLeft()).y() < 24

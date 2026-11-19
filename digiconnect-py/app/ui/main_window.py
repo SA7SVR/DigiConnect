@@ -142,7 +142,7 @@ class MainWindow(W.QMainWindow):
         fh.addStretch()
         self.foot_l = label("Engine: " + self.ctx.engine.name); fh.addWidget(self.foot_l)
         self.lang = label(self.ctx.store.settings["language"]); fh.addWidget(self.lang); outer.addWidget(foot)
-        self.toast = Toast(root); self.ctx.toast.connect(self.toast.show_msg); self.ctx.extra_needed.connect(lambda n: self.nav("net:" + n))
+        self.toast = Toast(root); self.ctx.toast.connect(self.toast.show_msg); self.ctx.extra_needed.connect(lambda n: self.nav("voip" if n == "VoIP" else "net:" + n))
         # wiring
         self.mixer.hide_requested.connect(lambda: self.mixer.setVisible(False)); self.h_nq.clicked.connect(self.open_qso); self.h_set.clicked.connect(lambda: self.open_settings())
         self.set_top.clicked.connect(lambda: self.open_settings()); self.theme_btn.clicked.connect(self.toggle_theme); self.settings.closed.connect(self._close_drawers); self.qdrawer.closed.connect(self._close_drawers)
@@ -257,6 +257,8 @@ class MainWindow(W.QMainWindow):
         if ws: self.title.setText(f"{tr('Radio workspace')} <span style='color:{__import__('app.theme', fromlist=['NET_COLOR']).NET_COLOR[net]}'>{net}</span>")
         for t, b in self.tabs.items(): b.setChecked((t == "favorites" and k == "favorites") or (t == net))
         self.voip_btn.setChecked(k == "voip")
+        vclosed = not self.ctx.policy.allows("VoIP"); self.voip_btn.setText("VoIP · " + tr("extra" if self.ctx.policy.paid_info("VoIP") else "closed") if vclosed else "VoIP")
+        if bool(self.voip_btn.property("closed")) != vclosed: self.voip_btn.setProperty("closed", vclosed); repolish(self.voip_btn)
         for t, b in self.tabs.items():
             if t != "favorites":
                 closed = t in self.ctx.policy.off              # closed by the owner's server (EchoLink too)
@@ -272,7 +274,7 @@ class MainWindow(W.QMainWindow):
         if k == "voip" and self.mixer.isVisible(): self._mixer_for_voip = True; self.mixer.setVisible(False)
         elif k != "voip" and getattr(self, "_mixer_for_voip", False): self._mixer_for_voip = False; self.mixer.setVisible(True)
         # one fixed control bar on every page: Listen / PTT / limit stay in the same place at the bottom
-        self.dock.setVisible(True); self.dock.parentWidget().setVisible(True)
+        self.dock.setVisible(k != "voip"); self.dock.parentWidget().setVisible(k != "voip")            # not on the phone page: Listen / PTT mean nothing there and the room goes to the phone
         self.h_nq.setVisible(ws or k == 'favorites'); self.h_set.setVisible(ws)
         n = len(getattr(self.ctx.engine, "links", {}))
         self.foot_l.setText("Engine: " + self.ctx.engine.name + (f" · {n} link{'s' if n != 1 else ''}" if n else ""))

@@ -80,9 +80,9 @@ class JitterBuffer:
 class RtpSession:
     """One call's audio: a UDP socket that sends and receives (the same port both ways, so a NAT router lets the answer in)."""
 
-    def __init__(self, bind_ip: str = "0.0.0.0", port_range=(12000, 12999), on_dtmf=None):
+    def __init__(self, bind_ip: str = "0.0.0.0", port_range=(12000, 12999), on_dtmf=None, prefill: int = 3):
         self.sock = None; self.pt = 0; self.event_pt = 101; self.remote = None; self.ssrc = random.getrandbits(32); self.seq = random.getrandbits(16); self.ts = random.getrandbits(32)
-        self.on_dtmf = on_dtmf; self.jitter = JitterBuffer(); self.running = False; self.sent = self.recv = 0; self._first = True; self._dtmf_ts = {}; self._send_lock = threading.Lock(); self._dtmf_q = queue.Queue()
+        self.on_dtmf = on_dtmf; self.public = None; self.jitter = JitterBuffer(prefill=prefill); self.running = False; self.sent = self.recv = 0; self._first = True; self._dtmf_ts = {}; self._send_lock = threading.Lock(); self._dtmf_q = queue.Queue()
         self.last_rx = 0.0; self.peer_seen = None
         lo, hi = port_range; ports = list(range(lo - lo % 2, hi, 2)); random.shuffle(ports)
         for p in ports:                                                            # an even port, as RTP asks
@@ -94,6 +94,11 @@ class RtpSession:
         self.sock.settimeout(0.2)
         try: self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 18)
         except OSError: pass
+
+    def discover_public(self, stun_server) -> bool:
+        """Asks a STUN server for the public address of this audio port (before start). self.public = (ip, port) or None."""
+        from . import stun
+        self.public = stun.discover(self.sock, stun_server); return self.public is not None
 
     def start(self):
         self.running = True; threading.Thread(target=self._loop, daemon=True, name="rtp-rx").start(); threading.Thread(target=self._dtmf_worker, daemon=True, name="rtp-dtmf").start()

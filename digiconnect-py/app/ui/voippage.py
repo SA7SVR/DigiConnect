@@ -1,11 +1,12 @@
 """VoIP phone page: sign in to the SIP server, see who is available, call and talk. Everything shown is what the server says (registered, ringing, busy, ...); when the server says nothing the page says "unknown"."""
-import time
+import threading, time
 from ..qt import QtWidgets as W, QtCore, QtGui, Qt
-from .widgets import label, button, checkbox, panel, vbox, hbox, field, LevelBar
+from .widgets import label, button, checkbox, panel, vbox, hbox, field, LevelBar, FlowLayout
 from .icons import dot
 from ..i18n import tr
-from ..voip.phone import STATE_TEXT
+from ..voip.phone import STATE_TEXT, RINGTONES
 from ..voip.texts import reason
+from ..voip import signup
 
 DOT = {"available": "#3ecf8e", "free": "#7bd88f", "ringing": "#f5a623", "busy": "#ef5350", "offline": "#6b7a90", "nonumber": "#6b7a90", "unknown": "#6b7a90"}
 REG_TONE = {"registered": "green", "registering": "amber", "failed": "red", "unregistered": "muted"}
@@ -13,9 +14,14 @@ PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
 
 
 class VoipPage(W.QWidget):
+    signup_done = QtCore.Signal(str, object)           # (what was asked, ('ok', answer) | ('err', SignupError)) - from the worker thread to the window
+
     def __init__(self, ctx):
         super().__init__(); self.ctx = ctx; self.ph = ctx.phone; s = ctx.store.settings
-        outer = hbox(self, s=14)
+        top = vbox(self, s=10)                           # a notice when the owner's server has closed the phone, and the page itself
+        self.closed_note = panel("note"); _cv = vbox(self.closed_note, m=(12, 10, 12, 10), s=8); self.closed_txt = label(""); self.closed_txt.setWordWrap(True); _cv.addWidget(self.closed_txt)
+        self.closed_btn = button("♥ Donate", "primary"); self.closed_btn.clicked.connect(self._pay_extra); _cv.addWidget(self.closed_btn, 0, Qt.AlignmentFlag.AlignLeft); top.addWidget(self.closed_note)
+        self.body = W.QWidget(); outer = hbox(self.body, s=14); top.addWidget(self.body, 1)
 
         def column(card, stretch):                       # every column scrolls by itself when the window is small
             sc = W.QScrollArea(); sc.setWidgetResizable(True); sc.setFrameShape(W.QFrame.Shape.NoFrame); sc.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -24,25 +30,122 @@ class VoipPage(W.QWidget):
         class _Root:
             def addWidget(self, w, st=1): column(w, st)
         root = _Root()
-        # ---------------- account
-        acc = panel("card"); av = vbox(acc, m=(16, 14, 16, 14), s=8); root.addWidget(acc, 4)
+        # ---------------- account: five tabs (Account, Network, Audio, Calls, Advanced); everything is saved as soon as it is changed
+        acc = panel("card"); av = vbox(acc, m=(16, 14, 16, 14), s=8); root.addWidget(acc, 6)
         av.addWidget(label("ACCOUNT", section=True))
-        self.server = W.QLineEdit(s.get("voip_server", "")); self.server.setPlaceholderText("sip.example.org")
-        self.port = W.QLineEdit(str(s.get("voip_port", 5060))); self.port.setFixedWidth(80)
-        self.transport = W.QComboBox(); self.transport.addItems(["UDP", "TCP", "TLS"]); self.transport.setCurrentText(str(s.get("voip_transport", "udp")).upper())
-        sr = hbox(s=8); sr.addWidget(field("Server", self.server), 1); sr.addWidget(field("Port", self.port)); sr.addWidget(field("Transport", self.transport)); av.addLayout(sr)
-        self.user = W.QLineEdit(s.get("voip_user", "")); self.user.setPlaceholderText("1001")
-        self.pw = W.QLineEdit(s.get("voip_pw", "") if s.get("voip_remember", True) else ""); self.pw.setEchoMode(W.QLineEdit.EchoMode.Password)
-        self.name = W.QLineEdit(s.get("voip_name") or s.get("op_name") or s.get("callsign", "")); self.name.setPlaceholderText("SA7SVR")
-        av.addWidget(field("Username (extension)", self.user)); av.addWidget(field("Password", self.pw)); av.addWidget(field("Name shown to the other side", self.name))
-        self.remember = checkbox("Remember the password on this computer"); self.remember.setChecked(bool(s.get("voip_remember", True)))
-        self.auto = checkbox("Sign in when DigiConnect starts"); self.auto.setChecked(bool(s.get("voip_auto", False)))
-        self.tlsv = checkbox("Check the server's certificate (TLS)"); self.tlsv.setChecked(bool(s.get("voip_tls_verify", True)))
-        for c in (self.remember, self.auto, self.tlsv): av.addWidget(c)
-        self.sign = button("Sign in", "primary"); av.addWidget(self.sign)
-        self.reg = label("Not signed in", muted=True); self.reg.setWordWrap(True); av.addWidget(self.reg)
-        av.addWidget(label("The password is entered here by you and sent only to your server. Use a headset: the program has no echo cancellation, so with open speakers the other side hears itself.", muted=True)); av.itemAt(av.count() - 1).widget().setWordWrap(True)
-        av.addStretch()
+        self.ctl = {}                                    # settings key -> (widget, kind)
+
+        def reg(key, w, kind, default=None):
+            self.ctl[key] = (w, kind)
+            if kind == "text": w.editingFinished.connect(self._changed)
+            elif kind == "int": w.editingFinished.connect(self._changed); w.valueChanged.connect(lambda _v: self._changed())
+            elif kind == "bool": w.toggled.connect(lambda _v: self._changed())
+            elif kind == "combo": w.currentIndexChanged.connect(lambda _i: self._changed())
+            return w
+
+        def spin(lo, hi, val, special="", suffix="", step=1):
+            sp = W.QSpinBox(); sp.setRange(lo, hi); sp.setValue(val); sp.setSingleStep(step); sp.setKeyboardTracking(False)
+            if special: sp.setSpecialValueText(special)
+            if suffix: sp.setSuffix(suffix)
+            return sp
+
+        def combo(items, data=None):
+            c = W.QComboBox()
+            for i, t in enumerate(items): c.addItem(t, (data or items)[i])
+            return c
+
+        def page(): w = W.QWidget(); v = vbox(w, m=(0, 6, 0, 0), s=8); return w, v
+
+        def note(text):
+            l = label(text, muted=True); l.setWordWrap(True); return l
+        self.sections = []
+        bar = FlowLayout(hspace=6, vspace=6); barw = W.QWidget(); barw.setLayout(bar); av.addWidget(barw)
+        self.stack = W.QStackedWidget(); av.addWidget(self.stack)
+
+        def add_tab(title):
+            w, v = page(); self.stack.addWidget(w); b = button(title, "tab", checkable=True); b.clicked.connect(lambda _=False, i=len(self.sections): self._tab(i)); bar.addWidget(b); self.sections.append(b); return v
+
+        # -- Account
+        v = add_tab("Account")
+        self.server = reg("voip_server", W.QLineEdit(str(s.get("voip_server", ""))), "text"); self.server.setPlaceholderText("sip.example.org")
+        self.port = reg("voip_port", W.QLineEdit(str(s.get("voip_port", 5060))), "text"); self.port.setFixedWidth(80)
+        self.transport = reg("voip_transport", combo(["UDP", "TCP", "TLS"]), "combo"); self.transport.setCurrentText(str(s.get("voip_transport", "udp")).upper())
+        sr = hbox(s=8); sr.addWidget(field("Server", self.server), 1); sr.addWidget(field("Port", self.port)); sr.addWidget(field("Transport", self.transport)); v.addLayout(sr)
+        self.user = reg("voip_user", W.QLineEdit(s.get("voip_user", "")), "text"); self.user.setPlaceholderText("1001")
+        self.auth_user = reg("voip_auth_user", W.QLineEdit(s.get("voip_auth_user", "")), "text"); self.auth_user.setPlaceholderText(tr("Same as the username"))
+        self.pw = W.QLineEdit(s.get("voip_pw", "") if s.get("voip_remember", True) else ""); self.pw.setEchoMode(W.QLineEdit.EchoMode.Password); self.pw.editingFinished.connect(self._changed)
+        self.domain = reg("voip_domain", W.QLineEdit(s.get("voip_domain", "")), "text"); self.domain.setPlaceholderText(tr("Same as the server"))
+        self.name = W.QLineEdit(s.get("voip_name") or s.get("op_name") or s.get("callsign", "")); self.name.setPlaceholderText("SA7SVR"); self.name.editingFinished.connect(self._changed)
+        v.addWidget(field("Username (extension)", self.user)); v.addWidget(field("Authentication username (if different)", self.auth_user)); v.addWidget(field("Password", self.pw))
+        v.addWidget(field("Domain / realm (if different from the server)", self.domain)); v.addWidget(field("Name shown to the other side", self.name))
+        self.remember = reg("voip_remember", checkbox("Remember the password on this computer"), "bool"); self.remember.setChecked(bool(s.get("voip_remember", True)))
+        self.auto = reg("voip_auto", checkbox("Sign in when DigiConnect starts"), "bool"); self.auto.setChecked(bool(s.get("voip_auto", False)))
+        for c in (self.remember, self.auto): v.addWidget(c)
+        self.sign = button("Sign in", "primary"); v.addWidget(self.sign)
+        self.reg = label("Not signed in", muted=True); self.reg.setWordWrap(True); v.addWidget(self.reg)
+        self.req_btn = button("I don't have an account: request one"); self.req_chk = button("Check the request"); self.req_lbl = label("", muted=True); self.req_lbl.setWordWrap(True)
+        v.addWidget(self.req_btn); v.addWidget(self.req_chk); v.addWidget(self.req_lbl)
+        self.req_btn.clicked.connect(self._req_dialog); self.req_chk.clicked.connect(lambda: self._req_check(False)); self.signup_done.connect(self._on_signup)
+        self.req_timer = QtCore.QTimer(self); self.req_timer.setInterval(300000); self.req_timer.timeout.connect(lambda: self._req_check(True)); self.req_timer.start()
+        v.addWidget(note("The password is entered here by you and sent only to your server. Use a headset: the program has no echo cancellation, so with open speakers the other side hears itself.")); v.addStretch()
+        # -- Network
+        v = add_tab("Network")
+        self.proxy = reg("voip_proxy", W.QLineEdit(s.get("voip_proxy", "")), "text"); self.proxy.setPlaceholderText("proxy.example.org:5060")
+        v.addWidget(field("Outbound proxy (optional; the connection goes there, the account stays on the server)", self.proxy))
+        self.local_port = reg("voip_local_port", spin(0, 65535, int(s.get("voip_local_port", 0) or 0), special=tr("Automatic")), "int")
+        self.expires = reg("voip_expires", spin(30, 86400, int(s.get("voip_expires", 300) or 300), suffix=" s"), "int")
+        r = hbox(s=8); r.addWidget(field("Local SIP port", self.local_port)); r.addWidget(field("Registration time", self.expires)); v.addLayout(r)
+        self.keepalive = reg("voip_keepalive", checkbox("Keep the NAT router open (keep-alive)"), "bool"); self.keepalive.setChecked(bool(s.get("voip_keepalive", True)))
+        self.keepalive_secs = reg("voip_keepalive_secs", spin(0, 600, int(s.get("voip_keepalive_secs", 0) or 0), special=tr("Automatic (25 s UDP, 55 s TCP/TLS)"), suffix=" s"), "int")
+        v.addWidget(self.keepalive); v.addWidget(field("Keep-alive every", self.keepalive_secs))
+        self.stun = reg("voip_stun", W.QLineEdit(s.get("voip_stun", "")), "text"); self.stun.setPlaceholderText("stun.l.google.com:19302"); v.addWidget(field("STUN server (optional, for audio behind a NAT router)", self.stun))
+        self.public_ip = reg("voip_public_ip", W.QLineEdit(s.get("voip_public_ip", "")), "text"); self.public_ip.setPlaceholderText(tr("Automatic")); v.addWidget(field("Public IP address (only if the router needs it set by hand)", self.public_ip))
+        self.rtp_lo = reg("voip_rtp_lo", spin(1024, 65534, int(s.get("voip_rtp_lo", 12000) or 12000)), "int"); self.rtp_hi = reg("voip_rtp_hi", spin(1026, 65535, int(s.get("voip_rtp_hi", 12999) or 12999)), "int")
+        r = hbox(s=8); r.addWidget(field("Audio ports from", self.rtp_lo)); r.addWidget(field("to", self.rtp_hi)); v.addLayout(r)
+        self.tlsv = reg("voip_tls_verify", checkbox("Check the server's certificate (TLS)"), "bool"); self.tlsv.setChecked(bool(s.get("voip_tls_verify", True))); v.addWidget(self.tlsv)
+        self.tls_ca = reg("voip_tls_ca", W.QLineEdit(s.get("voip_tls_ca", "")), "text"); self.tls_ca.setPlaceholderText(tr("Only for a server with its own certificate"))
+        br = button("Browse…"); br.clicked.connect(self._browse_ca); cr = hbox(s=8); cr.addWidget(self.tls_ca, 1); cr.addWidget(br)
+        cw = W.QWidget(); cw.setLayout(cr); v.addWidget(field("Certificate file of the server (.pem, optional)", cw))
+        v.addWidget(note("Network changes are used the next time you sign in.")); v.addStretch()
+        # -- Audio
+        v = add_tab("Audio")
+        self.pcmu = reg("voip_pcmu", checkbox("PCMU (G.711 µ-law)"), "bool"); self.pcmu.setChecked(bool(s.get("voip_pcmu", True))); self.pcma = reg("voip_pcma", checkbox("PCMA (G.711 A-law)"), "bool"); self.pcma.setChecked(bool(s.get("voip_pcma", True)))
+        self.codec_first = reg("voip_codec_first", combo(["PCMU", "PCMA"]), "combo"); self.codec_first.setCurrentText(str(s.get("voip_codec_first", "PCMU")))
+        v.addWidget(label("Codecs", section=True)); v.addWidget(self.pcmu); v.addWidget(self.pcma); v.addWidget(field("Preferred codec", self.codec_first))
+        self.dtmf = reg("voip_dtmf", combo(["Automatic", "RTP events (RFC 4733)", "SIP INFO"], ["auto", "rfc4733", "info"]), "combo"); self.dtmf.setCurrentIndex(max(0, self.dtmf.findData(s.get("voip_dtmf", "auto")))); v.addWidget(field("Keypad tones (DTMF) sent as", self.dtmf))
+        self.mic_dev = reg("voip_mic", combo([""]), "combo"); self.spk_dev = reg("voip_spk", combo([""]), "combo")
+        v.addWidget(label("Sound devices", section=True)); v.addWidget(field("Microphone", self.mic_dev)); v.addWidget(field("Speakers / headset", self.spk_dev))
+        rf = button("Refresh the list of devices"); rf.clicked.connect(lambda: self._fill_devices(True)); v.addWidget(rf)
+        self.mic_gain = reg("voip_mic_gain", spin(0, 300, int(s.get("voip_mic_gain", 100)), suffix=" %", step=10), "int"); self.spk_vol = reg("voip_spk_vol", spin(0, 300, int(s.get("voip_spk_vol", 100)), suffix=" %", step=10), "int")
+        self.ring_vol = reg("voip_ring_vol", spin(0, 100, int(s.get("voip_ring_vol", 50)), suffix=" %", step=10), "int"); self.jitter = reg("voip_jitter_ms", spin(20, 400, int(s.get("voip_jitter_ms", 60)), suffix=" ms", step=20), "int")
+        r = hbox(s=8); r.addWidget(field("Microphone level", self.mic_gain)); r.addWidget(field("Speaker volume", self.spk_vol)); v.addLayout(r)
+        r = hbox(s=8); r.addWidget(field("Ring volume", self.ring_vol)); r.addWidget(field("Audio delay (jitter buffer)", self.jitter)); v.addLayout(r)
+        rk = list(RINGTONES); self.ringtone = reg("voip_ringtone", combo([RINGTONES[k][0] for k in rk] + ["My own sound file (WAV)"], rk + ["file"]), "combo")
+        self.ringtone.setCurrentIndex(max(0, self.ringtone.findData(s.get("voip_ringtone", "classic"))))
+        self.ring_file = reg("voip_ring_file", W.QLineEdit(s.get("voip_ring_file", "")), "text"); self.ring_file.setPlaceholderText(tr("A WAV file, used when 'My own sound file' is chosen"))
+        rb = button("Browse…"); rb.clicked.connect(self._browse_ring); self.ring_play = button("Play", "primary"); self.ring_play.clicked.connect(self._play_ring)
+        v.addWidget(label("Ringtone (incoming calls)", section=True)); rr = hbox(s=8); rr.addWidget(self.ringtone, 1); rr.addWidget(self.ring_play); v.addLayout(rr)
+        fr = hbox(s=8); fr.addWidget(self.ring_file, 1); fr.addWidget(rb); v.addLayout(fr); self.ring_msg = note(""); v.addWidget(self.ring_msg)
+        v.addWidget(note("Devices, codecs and the audio delay are used from the next call. The levels, the ringtone and the ring volume act at once.")); v.addStretch()
+        # -- Calls
+        v = add_tab("Calls")
+        self.auto_answer = reg("voip_auto_answer", checkbox("Answer incoming calls automatically"), "bool"); self.auto_answer.setChecked(bool(s.get("voip_auto_answer", False)))
+        self.auto_secs = reg("voip_auto_secs", spin(0, 60, int(s.get("voip_auto_secs", 3)), suffix=" s"), "int")
+        self.dnd = reg("voip_dnd", checkbox("Do not disturb (callers hear busy; the call is listed as missed)"), "bool"); self.dnd.setChecked(bool(s.get("voip_dnd", False)))
+        self.vm = reg("voip_vm", W.QLineEdit(s.get("voip_vm", "")), "text"); self.vm.setPlaceholderText("*97")
+        v.addWidget(self.auto_answer); v.addWidget(field("Answer after", self.auto_secs)); v.addWidget(self.dnd); v.addWidget(field("Voicemail number", self.vm))
+        self.vm_btn = button("Call voicemail"); v.addWidget(self.vm_btn)
+        v.addWidget(note("These settings act at once.")); v.addStretch()
+        # -- Advanced
+        v = add_tab("Advanced")
+        self.ua_name = reg("voip_ua", W.QLineEdit(s.get("voip_ua", "")), "text"); self.ua_name.setPlaceholderText("DigiConnect-VoIP"); v.addWidget(field("User-Agent (how the program introduces itself)", self.ua_name))
+        self.trace = reg("voip_trace", checkbox("Write every SIP message to Diagnostics (passwords are hidden)"), "bool"); self.trace.setChecked(bool(s.get("voip_trace", False))); v.addWidget(self.trace)
+        self.defaults_btn = button("Restore the network, audio, call and advanced settings to their defaults", "danger"); self.defaults_btn.clicked.connect(self._defaults); v.addWidget(self.defaults_btn)
+        v.addWidget(note("The account (server, username, password), the people and the call list are not touched. Used from the next sign-in.")); v.addStretch()
+        self._tab(0); self._loading = False; self._req_refresh(); self.refresh_gate()
+        self.ctx.policy_changed.connect(self.refresh_gate); self.ctx.changed.connect(self.refresh_gate)
+        if s.get("voip_req_state") in ("pending", "ack"): QtCore.QTimer.singleShot(2500, lambda: self._req_check(True))
+        self._fill_devices(False)
         # ---------------- phone
         ph = panel("card"); pv = vbox(ph, m=(16, 14, 16, 14), s=8); root.addWidget(ph, 4)
         pv.addWidget(label("PHONE", section=True))
@@ -60,14 +163,14 @@ class VoipPage(W.QWidget):
         pv.addWidget(label("Microphone", muted=True)); pv.addWidget(self.mic_bar); pv.addWidget(label("Speakers", muted=True)); pv.addWidget(self.spk_bar)
         self.dev = label("", muted=True); self.dev.setWordWrap(True); pv.addWidget(self.dev); pv.addStretch()
         # ---------------- people
-        pe = panel("card"); ev = vbox(pe, m=(16, 14, 16, 14), s=8); root.addWidget(pe, 5)
+        pe = panel("card"); ev = vbox(pe, m=(16, 14, 16, 14), s=8); root.addWidget(pe, 3)
         ev.addWidget(label("PEOPLE", section=True))
-        self.people = W.QListWidget(); self.people.setIconSize(QtCore.QSize(14, 14)); ev.addWidget(self.people, 3)
-        br = hbox(s=6); self.add = button("Add"); self.edit = button("Edit"); self.rm = button("Remove"); br.addWidget(self.add); br.addWidget(self.edit); br.addWidget(self.rm); br.addStretch(); ev.addLayout(br)
+        self.people = W.QListWidget(); self.people.setIconSize(QtCore.QSize(14, 14)); self.people.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); self.people.setTextElideMode(Qt.TextElideMode.ElideRight); ev.addWidget(self.people, 3)
         self.people_note = label("", muted=True); self.people_note.setWordWrap(True); ev.addWidget(self.people_note)
-        ev.addWidget(label("RECENT CALLS", section=True)); self.hist = W.QListWidget(); ev.addWidget(self.hist, 2)
+        ev.addWidget(label("RECENT CALLS", section=True)); self.hist = W.QListWidget(); self.hist.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); ev.addWidget(self.hist, 2)
+        br = hbox(s=6); self.add = button("Add"); self.edit = button("Edit"); self.rm = button("Remove"); br.addWidget(self.add, 1); br.addWidget(self.edit, 1); br.addWidget(self.rm, 1); ev.addLayout(br)     # fixed at the very bottom of the panel
         # wiring
-        self.sign.clicked.connect(self._sign); self.call_btn.clicked.connect(self._call); self.hang.clicked.connect(self.ph.hangup); self.answer.clicked.connect(self.ph.answer); self.decline.clicked.connect(self.ph.reject)
+        self.vm_btn.clicked.connect(self._voicemail); self.sign.clicked.connect(self._sign); self.call_btn.clicked.connect(self._call); self.hang.clicked.connect(self.ph.hangup); self.answer.clicked.connect(self.ph.answer); self.decline.clicked.connect(self.ph.reject)
         self.mute.toggled.connect(self.ph.set_muted); self.number.returnPressed.connect(self._call)
         self.add.clicked.connect(self._add); self.edit.clicked.connect(self._edit); self.rm.clicked.connect(self._remove); self.people.itemDoubleClicked.connect(self._dial_item)
         self.ph.registration.connect(self._on_reg); self.ph.call_changed.connect(self._on_call); self.ph.presence_changed.connect(lambda _e: self.refresh_people()); self.ph.history_changed.connect(self.refresh_history)
@@ -76,13 +179,188 @@ class VoipPage(W.QWidget):
         self._on_reg(self.ph.reg_state, self.ph.reg_text); self.refresh_people(); self.refresh_history(); self._sync_buttons()
 
     # ---- account
+    # ---- tabs and settings
+    def _tab(self, i: int):
+        self.stack.setCurrentIndex(i)
+        for k, b in enumerate(self.sections): b.setChecked(k == i)
+
+    def _fill_devices(self, force: bool):
+        """The sound devices the system reports (the same list as Settings). The first entry means 'as chosen in Settings'."""
+        from .. import audio_devices as AD
+        try: ins, outs, err = AD.list_devices(force)
+        except Exception as ex: ins, outs, err = [], [], str(ex)
+        s = self.ctx.store.settings; self._loading = True
+        try:
+            for combo, names, key in ((self.mic_dev, ins, "voip_mic"), (self.spk_dev, outs, "voip_spk")):
+                combo.blockSignals(True); combo.clear(); combo.addItem(tr("As chosen in Settings"), "")
+                for n in names: combo.addItem(str(n), str(n))
+                cur = s.get(key, "")
+                if cur and combo.findData(cur) < 0: combo.addItem(cur, cur)                         # a device that is not plugged in now stays chosen
+                combo.setCurrentIndex(max(0, combo.findData(cur))); combo.blockSignals(False)
+        finally: self._loading = False
+
+    def _read(self) -> dict:
+        out = {}
+        for key, (w, kind) in self.ctl.items():
+            if kind == "text": out[key] = w.text().strip()
+            elif kind == "int": out[key] = int(w.value())
+            elif kind == "bool": out[key] = bool(w.isChecked())
+            elif kind == "combo": out[key] = w.currentData() if w.currentData() is not None else w.currentText()
+        try: out["voip_port"] = int(out.get("voip_port") or 5060)
+        except (TypeError, ValueError): out["voip_port"] = 5060
+        if not 0 < out["voip_port"] < 65536: out["voip_port"] = 5060
+        out["voip_transport"] = str(out.get("voip_transport", "UDP")).lower()
+        out["voip_name"] = self.name.text().strip(); out["voip_pw"] = self.pw.text() if self.remember.isChecked() else ""
+        if out.get("voip_rtp_hi", 0) <= out.get("voip_rtp_lo", 0): out["voip_rtp_lo"], out["voip_rtp_hi"] = 12000, 12999
+        if not (out.get("voip_pcmu") or out.get("voip_pcma")): out["voip_pcmu"] = out["voip_pcma"] = True            # at least one codec must stay on
+        return out
+
     def save_account(self):
+        if getattr(self, "_loading", True): return
+        self.ctx.store.settings.update(self._read()); self.ctx.store.save_settings()
+
+    # ---- the owner's server can close (or open) the phone for this installation
+    def refresh_gate(self):
+        pol = self.ctx.policy; closed = not pol.allows("VoIP")
+        self.closed_note.setVisible(closed); self.body.setEnabled(not closed)
+        if closed: self.closed_txt.setText("⚠  " + tr(pol.reason("VoIP")))
+        pi = pol.paid_info("VoIP") if closed else None
+        self.closed_btn.setVisible(bool(pi))
+        if pi:
+            from ..license import with_amount
+            self.closed_btn.setText(with_amount("♥ Buy" if pi.get("offer") == "buy" else "♥ Donate", pi))
+
+    def _pay_extra(self):
+        from .license_dialog import open_donate
+        open_donate(self.ctx.policy.paid_link("VoIP"))
+
+    # ---- asking the owner of the server for an account (see voip/signup.py)
+    def _run(self, kind: str, fn):
+        def work():
+            try: res = ("ok", fn())
+            except signup.SignupError as ex: res = ("err", ex)
+            except Exception as ex: res = ("err", signup.SignupError("", str(ex)))
+            try: self.signup_done.emit(kind, res)
+            except RuntimeError: pass                                                      # the window was closed meanwhile
+        threading.Thread(target=work, daemon=True, name="voip-signup").start()
+
+    def _req_refresh(self):
+        st = self.ctx.store.settings; state = st.get("voip_req_state", ""); pend = state in ("pending", "ack")
+        self.req_btn.setVisible(not pend); self.req_chk.setVisible(pend); self.req_lbl.setVisible(bool(self.req_lbl.text()) or pend)
+        self.req_btn.setText(tr("Request an account again") if state in ("rejected", "done") else tr("I don't have an account: request one"))
+        if pend and not self.req_lbl.text(): self.req_lbl.setText(tr("Your request is waiting for the owner of the server. This page checks by itself every few minutes."))
+
+    def _req_dialog(self):
+        st = self.ctx.store.settings
+        d = W.QDialog(self); d.setWindowTitle(tr("Request a VoIP account")); v = vbox(d, m=(16, 14, 16, 14), s=8); d.setMinimumWidth(480)
+        def note(text):
+            l = label(text, muted=True); l.setWordWrap(True); return l
+        v.addWidget(note("Your request goes to the owner of the HELLAS Zone VoIP server, who creates the account and approves it. When he does, this program receives the extension and the password by itself."))
+        n = W.QLineEdit(st.get("voip_name") or st.get("op_name", "")); cs = W.QLineEdit(st.get("callsign", "")); want = W.QLineEdit(); msg = W.QPlainTextEdit(); msg.setFixedHeight(70)
+        want.setPlaceholderText(tr("optional")); v.addWidget(field("Your name", n)); v.addWidget(field("Callsign", cs)); v.addWidget(field("Extension you would like (optional)", want)); v.addWidget(field("Message (optional)", msg))
+        ok = checkbox(""); okt = label("I agree that my name and callsign are sent to the HELLAS Zone server only to answer this request"); okt.setWordWrap(True)
+        okt.mousePressEvent = lambda e: ok.toggle(); okr = hbox(s=8); okr.addWidget(ok, 0, Qt.AlignmentFlag.AlignTop); okr.addWidget(okt, 1); v.addLayout(okr)      # a check box cannot wrap its text: the text is a label beside it
+        err = label("", muted=True); err.setWordWrap(True); v.addWidget(err)
+        bb = W.QDialogButtonBox(W.QDialogButtonBox.StandardButton.Cancel); send = bb.addButton(tr("Send the request"), W.QDialogButtonBox.ButtonRole.AcceptRole); bb.rejected.connect(d.reject); v.addWidget(bb)
+        self._req_form = dict(name=n, call=cs, want=want, msg=msg, consent=ok, err=err, dialog=d)
+
+        def go():
+            if not ok.isChecked(): err.setText(tr(signup.ERRORS["consent"])); return
+            if not n.text().strip(): err.setText(tr(signup.ERRORS["name"])); return
+            if not cs.text().strip(): err.setText(tr(signup.ERRORS["call"])); return
+            send.setEnabled(False); err.setText(tr("Sending…"))
+            f = dict(name=n.text().strip(), call=cs.text().strip(), want=want.text().strip(), msg=msg.toPlainText().strip(), lang=("el" if str(st.get("language", "")).lower().startswith(("el", "gr")) else "en"))
+            def done(kind, res):
+                if kind != "submit": return
+                self.signup_done.disconnect(done)
+                if res[0] == "ok": d.accept()
+                else: err.setText(tr(res[1].text)); send.setEnabled(True)
+            self.signup_done.connect(done); self._run("submit", lambda: signup.submit(**f))
+        send.clicked.connect(go); d.exec()
+
+    def _req_check(self, silent: bool):
+        st = self.ctx.store.settings; state = st.get("voip_req_state", "")
+        if state not in ("pending", "ack") or not st.get("voip_req_token"): return
+        if not silent: self.req_lbl.setText(tr("Checking…")); self.req_lbl.show()
+        rid, tok = int(st.get("voip_req_id", 0)), st["voip_req_token"]
+        self._run("ack" if state == "ack" else "status", (lambda: signup.ack(rid, tok)) if state == "ack" else (lambda: signup.status(rid, tok)))
+
+    def _on_signup(self, kind: str, res):
+        st = self.ctx.store.settings; ok, val = res
+        if kind == "submit":
+            if ok == "ok": st.update(voip_req_id=val[0], voip_req_token=val[1], voip_req_state="pending", voip_req_reason=""); self.ctx.store.save_settings(); self.req_lbl.setText(tr("The request was sent. You will receive the account here as soon as the owner approves it.")); self._req_refresh()
+            return
+        if ok == "err":
+            if val.code == "unknown" and st.get("voip_req_state") in ("pending", "ack"):                                        # the server has no such request any more
+                st.update(voip_req_state="", voip_req_token="", voip_req_id=0); self.ctx.store.save_settings()
+            self.req_lbl.setText(tr(val.text) if val.code else tr("The server cannot be reached now:") + " " + val.text); self._req_refresh(); return
+        if kind == "ack":
+            st.update(voip_req_state="done", voip_req_token="", voip_req_id=0); self.ctx.store.save_settings(); self._req_refresh(); return
+        state = val.get("status")
+        if state == "rejected":
+            st.update(voip_req_state="rejected", voip_req_token="", voip_req_reason=val.get("reason", "")); self.ctx.store.save_settings()
+            self.req_lbl.setText(tr("The owner did not approve the request.") + (" " + val["reason"] if val.get("reason") else "")); self._req_refresh()
+        elif state == "approved" and val.get("password"):
+            self._load_account(val); st["voip_req_state"] = "ack"; self.ctx.store.save_settings()                                 # saved here first: only then the server is told to erase it
+            self.req_lbl.setText(tr("The account was approved and filled in: extension {}. Press Sign in.").format(val.get("ext", ""))); self._req_refresh(); self._req_check(True)
+        elif state == "approved":
+            st.update(voip_req_state="", voip_req_token="", voip_req_id=0); self.ctx.store.save_settings()
+            self.req_lbl.setText(tr("The request was approved, but the password was already handed over. Ask the owner for it.")); self._req_refresh()
+        else: self.req_lbl.setText(tr("Your request is still waiting for the owner of the server.")); self._req_refresh()
+
+    def _load_account(self, a: dict):
+        """What the server sent when the request was approved goes into the Account tab and is saved."""
+        self._loading = True
+        try:
+            self.user.setText(str(a.get("ext", ""))); self.pw.setText(str(a.get("password", ""))); self.server.setText(str(a.get("server", "")) or self.server.text())
+            self.port.setText(str(a.get("port") or 5060)); self.transport.setCurrentText(str(a.get("transport", "udp")).upper()); self.domain.setText(str(a.get("domain", "")))
+        finally: self._loading = False
+        self.save_account()
+
+    def _changed(self):
+        if getattr(self, "_loading", True): return
+        self.save_account(); self.ph.apply_levels()
+
+    def _browse_ca(self):
+        f, _ = W.QFileDialog.getOpenFileName(self, tr("Certificate file of the server (.pem, optional)"), "", "Certificates (*.pem *.crt *.cer);;All files (*)")
+        if f: self.tls_ca.setText(f); self._changed()
+
+    def _browse_ring(self):
+        f, _ = W.QFileDialog.getOpenFileName(self, tr("Ringtone (incoming calls)"), "", "WAV (*.wav)")
+        if f: self.ring_file.setText(f); self.ringtone.setCurrentIndex(self.ringtone.findData("file")); self._changed()
+
+    def _play_ring(self):
+        key = self.ringtone.currentData(); path = self.ring_file.text().strip()
+        if key == "file":
+            from ..voip.phone import WavRing
+            try: WavRing(path)
+            except Exception as ex: self.ring_msg.setText(tr("This file cannot be used as a ringtone:") + f" {ex}"); return
+        self.ring_msg.setText("")
+        if not self.ph.preview_ring(key, path): self.ring_msg.setText(tr("The ring cannot be played now (a call is in progress, or the speakers are not available)."))
+
+    def _defaults(self):
+        from ..store import DEFAULTS
+        keep = ("voip_server", "voip_port", "voip_transport", "voip_user", "voip_auth_user", "voip_domain", "voip_pw", "voip_name", "voip_remember", "voip_auto", "voip_contacts", "voip_history", "voip_req_id", "voip_req_token", "voip_req_state", "voip_req_reason")
         s = self.ctx.store.settings
-        try: port = int(self.port.text().strip() or 5060)
-        except ValueError: port = 5060
-        s.update(voip_server=self.server.text().strip(), voip_port=port, voip_transport=self.transport.currentText().lower(), voip_user=self.user.text().strip(), voip_name=self.name.text().strip(),
-                 voip_remember=self.remember.isChecked(), voip_auto=self.auto.isChecked(), voip_tls_verify=self.tlsv.isChecked(), voip_pw=self.pw.text() if self.remember.isChecked() else "")
-        self.ctx.store.save_settings()
+        for k, v in DEFAULTS.items():
+            if k.startswith("voip_") and k not in keep: s[k] = v if not isinstance(v, (list, dict)) else type(v)(v)
+        self.ctx.store.save_settings(); self._load_extra()
+
+    def _load_extra(self):
+        """Shows the stored values in the tabs (used after the defaults are restored)."""
+        s = self.ctx.store.settings; self._loading = True
+        try:
+            for key, (w, kind) in self.ctl.items():
+                if key in ("voip_server", "voip_port", "voip_transport", "voip_user", "voip_auth_user", "voip_domain", "voip_remember", "voip_auto"): continue
+                v = s.get(key)
+                if kind == "text": w.setText(str(v if v is not None else ""))
+                elif kind == "int": w.setValue(int(v or 0))
+                elif kind == "bool": w.setChecked(bool(v))
+                elif kind == "combo": w.setCurrentIndex(max(0, w.findData(v)))
+        finally: self._loading = False
+
+    def _voicemail(self):
+        if not self.ph.voicemail(): self.who.setText(tr("Sign in first, then enter a number") if self.ph.reg_state != "registered" else tr("Enter the voicemail number first"))
 
     def _sign(self):
         if self.ph.reg_state in ("registered", "registering"): self.ph.sign_out(); return
@@ -149,7 +427,7 @@ class VoipPage(W.QWidget):
             st, txt = self.ph.state_of(c["number"])
             nm = c.get("name") or c.get("callsign") or c["number"]
             extra = f" · {c['callsign']}" if c.get("callsign") and c.get("name") else ""
-            it = W.QListWidgetItem(f"{nm}{extra}   {c['number']}   —   {reason(txt)}"); it.setIcon(dot(DOT.get(st, DOT['unknown']))); it.setData(Qt.ItemDataRole.UserRole, c["number"]); self.people.addItem(it)
+            it = W.QListWidgetItem(f"{nm}{extra}   {c['number']}\n{reason(txt)}"); it.setIcon(dot(DOT.get(st, DOT['unknown']))); it.setData(Qt.ItemDataRole.UserRole, c["number"]); self.people.addItem(it)
             if c["number"] == sel: self.people.setCurrentItem(it)
         self.people_note.setText(tr("Add the people you call (name and extension). Their state is what the server reports: available, ringing, on a call or offline.") if not cs else
                                  (tr("Double-click a person to call.") + ("" if self.ph.reg_state == "registered" else " " + tr("Sign in to see who is available."))))
@@ -185,6 +463,7 @@ class VoipPage(W.QWidget):
         self.hist.clear(); h = self.ctx.store.settings.get("voip_history") or []
         sym = {"placed": "→", "received": "←", "missed": "✕"}
         for e in h[:30]:
-            t = time.strftime("%d %b %H:%M", time.localtime(e.get("t", 0))); dur = f" {e['secs'] // 60}:{e['secs'] % 60:02d}" if e.get("secs") else ""
-            it = W.QListWidgetItem(f"{sym.get(e.get('dir'), '')}  {e.get('name') or e.get('number')}  {e.get('number') if e.get('name') else ''}  ·  {t}{dur}"); it.setData(Qt.ItemDataRole.UserRole, e.get("number")); self.hist.addItem(it)
+            t = time.strftime("%d.%m %H:%M", time.localtime(e.get("t", 0))); dur = f"  ({e['secs'] // 60}:{e['secs'] % 60:02d})" if e.get("secs") else ""
+            who = f"{e.get('name')}  {e.get('number')}" if e.get("name") else str(e.get("number"))
+            it = W.QListWidgetItem(f"{sym.get(e.get('dir'), '')}  {who}\n{t}{dur}"); it.setData(Qt.ItemDataRole.UserRole, e.get("number")); self.hist.addItem(it)
         self.hist.itemDoubleClicked.connect(self._dial_item) if not getattr(self, "_h_conn", False) else None; self._h_conn = True
