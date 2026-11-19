@@ -54,7 +54,7 @@ def node():
         try: data, addr = sock.recvfrom(2048)
         except socket.timeout: continue
         if len(data) < 12 or not (data[0] & 0x80): continue
-        client_call = ((data[0] & 0x7f) << 8) | data[1]
+        client_call = ((data[0] & 0x7f) << 8) | data[1]; seen["addr"], seen["client_call"] = addr, client_call
         if data[10] == 1: seen["dtmf"].append(chr(data[11])); continue          # AST_FRAME_DTMF: the key is the subclass
         if data[10] != AST_FRAME_IAX: continue
         sub = data[11]
@@ -94,6 +94,24 @@ check("MD5 answer with the shared secret", seen["authrep"] == hashlib.md5(challe
 
 send("dtmf", keys="*3#"); time.sleep(1.0)
 check("DTMF keys reach the node", seen["dtmf"] == ["*", "3", "#"], seen["dtmf"])
+
+# --- the node speaks: voice frames (full frame first, then mini frames) must be reported as "someone is talking", and silence as the end -------------
+AST_FRAME_VOICE, AST_FRAME_TEXT, ULAW = 2, 7, 4
+addr, cc = seen["addr"], seen["client_call"]
+while not events.empty(): events.get_nowait()
+sock.sendto(frame(cc, AST_FRAME_VOICE, ULAW, b"\xff" * 160, oseq=3, iseq=2), addr)
+for k in range(1, 12):
+    time.sleep(0.02); sock.sendto(struct.pack(">HH", 1, k * 20) + b"\xff" * 160, addr)           # mini voice frames, as a real node sends after the first one
+r_new = wait_ev(lambda e: e["ev"] == "rx" and e["state"] == "new", 3)
+check("voice from the node is reported as talking (new)", r_new is not None, r_new)
+check("the source is the node: nothing is made up", bool(r_new) and r_new.get("src") == "Node " + NODE and r_new.get("mode") == "IAX", r_new)
+r_str = wait_ev(lambda e: e["ev"] == "rx" and e["state"] == "streaming", 3)
+check("voice from the node is reported as streaming", r_str is not None, r_str)
+r_end = wait_ev(lambda e: e["ev"] == "rx" and e["state"] == "end", 4)
+check("silence ends the transmission (end)", r_end is not None, r_end)
+sock.sendto(frame(cc, AST_FRAME_TEXT, 0, b"TALKER-TEXT-FROM-NODE", oseq=4, iseq=2), addr)
+t = wait_ev(lambda e: e["ev"] == "log" and "IAX text frame" in e.get("text", ""), 3)
+check("a text frame of the node is written to the log exactly as it came", t is not None and "TALKER-TEXT-FROM-NODE" in t["text"], t)
 
 send("quit"); time.sleep(0.5); stop.set()
 try: p.wait(timeout=4)

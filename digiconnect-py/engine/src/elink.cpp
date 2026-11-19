@@ -182,7 +182,7 @@ void ELINK::handle_rtcp(const QByteArray &b)
 	}
 	if (r.sdes) {
 		QString nm = r.name.simplified(); if (nm.isEmpty()) nm = r.cname.simplified();
-		if (!nm.isEmpty()) { m_peer = nm.section(' ', 0, 0); m_modeinfo.src = m_peer; m_modeinfo.gw = m_peer; m_modeinfo.usertxt = nm.section(' ', 1); }
+		if (!nm.isEmpty()) { m_peer = nm.section(' ', 0, 0); m_modeinfo.src = m_peer; m_modeinfo.gw = m_peer; m_modeinfo.usertxt = nm.section(' ', 1); if (m_connected) emit update(m_modeinfo); }   // already connected: the application learns who it is
 	}
 	if (!m_connected && (r.sdes || !r.bye)) connected();
 }

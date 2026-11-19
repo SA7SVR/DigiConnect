@@ -28,13 +28,14 @@ signals:
 private:
     void connect_to(const QJsonObject &c);
     void test_mic(const QString &name, int ms);
-    void test_spk(const QString &name);
+    void test_spk(const QString &name, const QString &tone = QString());
     void teardown(const QString &state, const QString &msg);
     void emit_ev(const QJsonObject &o);
     Mode *m_mode = nullptr;
     QThread *m_thread = nullptr;
     int m_status = Mode::DISCONNECTED;
     QString m_proto;
+    QString m_lastPeer, m_lastPeerName;          // EchoLink: who the station says it is (reported when it first becomes known or changes)
     qint64 m_lastLevel = 0;
     double m_inVol = 1.0;      // microphone level (1 = full device level; above 1 = software gain)
     QString m_micJson = "{}"; // microphone processing from the Microphone page (sent again on every connection)

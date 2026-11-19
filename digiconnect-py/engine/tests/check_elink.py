@@ -55,6 +55,10 @@ try:
     rtcp.sendto(sdes(0x1234, "*TEST*", "Test conference"), addr)          # the station accepts: it answers with its own SDES
     e = wait_ev(lambda e: e.get("ev") == "status" and e.get("state") in ("connected", "error", "timeout"))
     check(e is not None and e.get("state") == "connected", f"engine reports connected ({e})")
+    check(e is not None and e.get("peer") == "*TEST*" and e.get("peername") == "Test conference", f"the connected event says who answered: callsign and name from the station ({e})")
+    rtcp.sendto(sdes(0x1234, "*TEST*", "Renamed station"), addr)          # the station introduces itself differently later: the application is told
+    pe = wait_ev(lambda e: e.get("ev") == "peer", 4)
+    check(pe is not None and pe.get("peer") == "*TEST*" and pe.get("peername") == "Renamed station", f"a later SDES is reported as a peer event ({pe})")
     # text + audio from the station
     rtp.sendto(struct.pack(">BBHII", 0x80, 3, 1, 0, 0x1234) + b"oNDATA*TEST*\rConference users:\rSM0ABC SV1XYZ\r", ("127.0.0.1", addr[1] - 1 if addr[1] else 5198))
     for i in range(6):
@@ -72,6 +76,16 @@ try:
     send("disconnect")
     d, _ = recv(rtcp, 4)
     check(d is not None and b"\x81\xcb" in d, "RTCP BYE on disconnect")
+    # a station that never answers: EchoLink waits 30 seconds (the official program says "Timed out" after about 30 s), not 15
+    time.sleep(0.5)
+    while not events.empty(): events.get_nowait()                        # the 'disconnected' of the call above is not the verdict we wait for
+    send("connect", mode="ELINK", host="127.0.0.1", port=42590, callsign=CALL, name="*NOBODY*", vocoder="Software vocoder")
+    t0 = time.time()
+    early = wait_ev(lambda e: e.get("ev") == "status" and e.get("state") in ("error", "timeout", "disconnected", "connected"), 18)
+    check(early is None, f"no verdict after 18 seconds (the station may still be checking the caller in the directory) ({early})")
+    late = wait_ev(lambda e: e.get("ev") == "status" and e.get("state") == "error", 16)
+    took = time.time() - t0
+    check(late is not None and "30 seconds" in late.get("msg", "") and 28 <= took <= 36, f"the verdict comes after about 30 seconds and says so ({took:.1f} s, {late})")
 finally:
     send("quit"); time.sleep(0.3); p.kill()
 sys.exit(1 if fails else 0)

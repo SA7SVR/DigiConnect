@@ -51,7 +51,7 @@ void Engine::handle(const QJsonObject &c) {
     } else if (cmd == "test_mic") {
         test_mic(c.value("device").toString(), c.value("ms").toInt(1500));
     } else if (cmd == "test_spk") {
-        test_spk(c.value("device").toString());
+        test_spk(c.value("device").toString(), c.value("tone").toString());
     } else if (cmd == "connect") {
         connect_to(c);
     } else if (cmd == "disconnect") {
@@ -113,23 +113,32 @@ void Engine::test_mic(const QString &name, int ms) {
 }
 
 // Speaker test: plays a short 880 Hz tone through the chosen output with the same Qt audio code the receiver uses.
-void Engine::test_spk(const QString &name) {
+// With tone = "connected" / "disconnected" it plays the two short signals of a station connecting (rising) or leaving (falling): the application plays them
+// through here, so they come out of the speakers the user chose and need nothing but this engine.
+void Engine::test_spk(const QString &name, const QString &tone) {
     QAudioDevice dev = QMediaDevices::defaultAudioOutput();
     for (const auto &d : QMediaDevices::audioOutputs()) if (d.description() == name) dev = d;
     if (dev.isNull()) { emit_ev({{"ev", "test_spk"}, {"ok", false}, {"msg", "No speakers found"}}); return; }
     QAudioFormat f = dev.preferredFormat();
     const int rate = f.sampleRate() > 0 ? f.sampleRate() : 48000, ch = f.channelCount() > 0 ? f.channelCount() : 2;
-    const int n = rate * 6 / 10;
+    struct Seg { double hz; double ms; };
+    QList<Seg> segs;
+    if (tone == "connected") segs = {{880.0, 90.0}, {1318.5, 170.0}};
+    else if (tone == "disconnected") segs = {{988.0, 90.0}, {659.3, 170.0}};
+    else segs = {{880.0, 600.0}};
     QByteArray data;
-    for (int i = 0; i < n; ++i) {
-        const double env = std::min(1.0, std::min(i, n - i) / (rate * 0.03));
-        const double v = 0.3 * env * std::sin(2 * M_PI * 880.0 * i / rate);
-        for (int c = 0; c < ch; ++c) {
-            switch (f.sampleFormat()) {
-            case QAudioFormat::UInt8: { uint8_t x = (uint8_t)(128 + v * 127); data.append((char)x); break; }
-            case QAudioFormat::Int32: { int32_t x = (int32_t)(v * 2147483647.0); data.append((const char *)&x, 4); break; }
-            case QAudioFormat::Float: { float x = (float)v; data.append((const char *)&x, 4); break; }
-            default: { int16_t x = (int16_t)(v * 32767.0); data.append((const char *)&x, 2); }
+    for (const Seg &sg : segs) {
+        const int n = int(rate * sg.ms / 1000.0);
+        for (int i = 0; i < n; ++i) {
+            const double env = std::min(1.0, std::min(i, n - i) / (rate * 0.012));
+            const double v = 0.3 * env * std::sin(2 * M_PI * sg.hz * i / rate);
+            for (int c = 0; c < ch; ++c) {
+                switch (f.sampleFormat()) {
+                case QAudioFormat::UInt8: { uint8_t x = (uint8_t)(128 + v * 127); data.append((char)x); break; }
+                case QAudioFormat::Int32: { int32_t x = (int32_t)(v * 2147483647.0); data.append((const char *)&x, 4); break; }
+                case QAudioFormat::Float: { float x = (float)v; data.append((const char *)&x, 4); break; }
+                default: { int16_t x = (int16_t)(v * 32767.0); data.append((const char *)&x, 2); }
+                }
             }
         }
     }
@@ -154,7 +163,7 @@ void Engine::connect_to(const QJsonObject &c) {
         emit_ev({{"ev", "status"}, {"state", "error"}, {"msg", "mode, host, port and callsign are required"}});
         return;
     }
-    m_status = Mode::CONNECTING;
+    m_status = Mode::CONNECTING; m_lastPeer.clear(); m_lastPeerName.clear();
     emit_ev({{"ev", "status"}, {"state", "connecting"}, {"mode", m_proto}, {"host", host}, {"port", port}});
 
     const QString module = c.value("module").toString();
@@ -206,11 +215,13 @@ void Engine::connect_to(const QJsonObject &c) {
     m_thread->start();
     // Connectionless protocols (C4FM, D-Star, NXDN, P25, M17 ...) only know they are connected when the server answers. When it never does,
     // say so instead of showing a link that is not there.
-    Mode *started = m_mode;
-    QTimer::singleShot(15000, this, [this, started] {
+    // EchoLink waits 30 seconds like the official program ("Timed out" after about 30 s): the station may be asking the directory server whether the caller
+    // is valid, which takes longer right after the caller signed in. Every other protocol keeps 15 seconds.
+    Mode *started = m_mode; const bool el = (m_proto == "ELINK");
+    QTimer::singleShot(el ? 30000 : 15000, this, [this, started, el] {
         if (m_mode == started && m_mode && m_status == Mode::CONNECTING)
-            teardown("error", m_proto == "ELINK" ? "The EchoLink station did not answer within 15 seconds - it may be offline or busy, or a firewall blocks UDP 5198/5199"
-                                                 : "No answer from the server within 15 seconds - check the address and port, and that the network does not block UDP");
+            teardown("error", el ? "The EchoLink station did not answer within 30 seconds - it may be offline or busy, or a firewall blocks UDP 5198/5199"
+                                 : "No answer from the server within 15 seconds - check the address and port, and that the network does not block UDP");
     });
 }
 
@@ -228,6 +239,13 @@ void Engine::teardown(const QString &state, const QString &msg) {
     emit_ev(o);
 }
 
+// Keep printable ASCII only: protocol fields are fixed-width and may carry padding/garbage bytes.
+static QString clean_text(const QString &s) {
+    QString r;
+    for (const QChar &c : s) if (c.unicode() >= 0x20 && c.unicode() < 0x7f) r.append(c); else break;
+    return r.simplified();
+}
+
 void Engine::on_update(Mode::MODEINFO i) {
     if (!m_mode) return;
     if (m_status == Mode::CONNECTING && i.status == Mode::DISCONNECTED) {
@@ -237,12 +255,26 @@ void Engine::on_update(Mode::MODEINFO i) {
     if (m_status == Mode::CONNECTING && (i.status == Mode::CONNECTED_RW || i.status == Mode::CONNECTED_RO)) {
         m_status = i.status;
         emit swrx(1); emit swtx(1); emit in_vol(m_inVol); emit mic_dsp(m_micJson);
-        emit_ev({{"ev", "status"}, {"state", "connected"}, {"rw", i.status == Mode::CONNECTED_RW}, {"vocoder", i.sw_vocoder_loaded}});
+        QJsonObject c{{"ev", "status"}, {"state", "connected"}, {"rw", i.status == Mode::CONNECTED_RW}, {"vocoder", i.sw_vocoder_loaded}};
+        if (m_proto == "ELINK") {                                                         // who answered, as the station itself introduced itself (callsign and name)
+            const QString peer = clean_text(i.src), name = clean_text(i.usertxt);
+            m_lastPeer = peer; m_lastPeerName = name;
+            if (!peer.isEmpty()) c["peer"] = peer;
+            if (!name.isEmpty()) c["peername"] = name;
+        }
+        emit_ev(c);
         return;
     }
     if ((m_status == Mode::CONNECTED_RW || m_status == Mode::CONNECTED_RO) && (i.status == Mode::TIMEOUT || i.status == Mode::DISCONNECTED || i.status == Mode::CLOSED)) {
         teardown("timeout", i.netmsg.startsWith("EL_") ? i.netmsg.mid(3) : QString("The server stopped answering"));
         return;
+    }
+    if (m_proto == "ELINK" && (m_status == Mode::CONNECTED_RW || m_status == Mode::CONNECTED_RO)) {
+        const QString peer = clean_text(i.src), name = clean_text(i.usertxt);        // the station's introduction can arrive after the first audio: report it as soon as it is known
+        if (!peer.isEmpty() && (peer != m_lastPeer || name != m_lastPeerName)) {
+            m_lastPeer = peer; m_lastPeerName = name;
+            emit_ev({{"ev", "peer"}, {"peer", peer}, {"peername", name}});
+        }
     }
     static const char *names[] = {"new", "streaming", "end", "lost", "idle", "tx", "tx", "unknown", "packet", "packet"};
     if (i.stream_state >= 0 && i.stream_state <= Mode::PACKET_SENT && i.stream_state != Mode::STREAM_IDLE) {

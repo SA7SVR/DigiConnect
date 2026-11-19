@@ -203,6 +203,7 @@ class EngineClient(QtCore.QObject, Engine):
     status = Signal(object, str, str)     # (link, state, message)
     heard = Signal(object, dict)          # (link, rx event)
     nodetext = Signal(object, str)        # (link, text a station sent: greeting / who is connected)
+    peer = Signal(object, dict)           # (link, {peer, peername}): who the station says it is (EchoLink), when it answered or when it becomes known later
     notice = Signal(str)                  # an engine warning for the user (e.g. the microphone delivers no sound)
     volume_refresh = Signal()             # a link just connected: re-send the receive volumes
     mic_wave = Signal(object, bool, float)  # (samples -1..1, gate open, limiter gain in dB) from the microphone while transmitting
@@ -424,9 +425,12 @@ class EngineClient(QtCore.QObject, Engine):
                 self.store.settings["dmr_cfg_variant"] = ln.cfg_variant; self.store.save_settings()          # this set was accepted: start with it next time
             if ln.state == "connected":
                 self.__dict__.pop("_resend", None); ln.send("volume", **{"in": self.mic_gain()}); ln.send("mic", settings=getattr(self, "mic_settings", {})); st = getattr(self, "record_state", (False, "")); ln.send("record", on=st[0], path=st[1]); self.volume_refresh.emit()
+            if ln.state == "connected" and e.get("peer"): self.peer.emit(ln, e)
             self.status.emit(ln, ln.state, e.get("msg", ""))
             if ln.state in ("error", "timeout", "disconnected"):
                 ln.rx.clear(); ln.tx = False; self._release(ln)
+        elif ev == "peer":
+            self.peer.emit(ln, e)
         elif ev == "rx":
             self.heard.emit(ln, e)
         elif ev == "level":

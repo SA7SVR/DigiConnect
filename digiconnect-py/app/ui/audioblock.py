@@ -4,7 +4,7 @@ import threading
 from ..qt import QtWidgets as W, QtCore, Qt, Signal
 from ..i18n import tr
 from .. import audio_devices as AD
-from .widgets import label, button, field, vbox, hbox, FlowLayout
+from .widgets import label, button, field, vbox, hbox, FlowLayout, checkbox
 
 SYSTEM_DEFAULT = "System default"
 
@@ -40,6 +40,8 @@ class AudioBlock(W.QWidget):
         self.gain.setValue(int(ctx.store.settings.get("mic_gain", 100))); self.gain_val = label("", muted=True)
         gr = hbox(); gr.addWidget(label("Microphone volume", muted=True)); gr.addWidget(self.gain, 1); gr.addWidget(self.gain_val); v.addLayout(gr)
         self.gain.setToolTip("100% = the microphone level. Raise it above 100% if the other stations hear you too quietly.")
+        self.sig = checkbox("Play a sound when a station connects or disconnects")        # EchoLink stations (a rising / a falling double tone)
+        self.sig.setChecked(bool(ctx.store.settings.get("sound_signals", True))); self.sig.toggled.connect(self._sig_toggled); v.addWidget(self.sig)
         self.info = label("", muted=True); self.info.setWordWrap(True); v.addWidget(self.info)
         self._busy = False
         self.b_ref.clicked.connect(lambda: self.reload(True)); self.b_tm.clicked.connect(self._test_mic); self.b_ts.clicked.connect(self._test_spk)
@@ -74,6 +76,9 @@ class AudioBlock(W.QWidget):
         m, s = self.selected(); st = self.ctx.store.settings
         st["mic"], st["speakers"] = m, s; self.ctx.store.save_settings(); bus().changed.emit()
         self.info.setText("Audio devices are used from the next connection on.")
+
+    def _sig_toggled(self, on):
+        self.ctx.store.settings["sound_signals"] = bool(on); self.ctx.store.save_settings()
 
     def _gain_text(self, v): self.gain_val.setText(f"{v}%")
 

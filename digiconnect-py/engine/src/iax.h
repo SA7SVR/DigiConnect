@@ -76,6 +76,12 @@ private:
 	QTimer *m_regtimer;
 	uint8_t m_iseq;
 	uint8_t m_oseq;
+	bool m_rxactive = false;                 // the node is sending voice right now (reported to the application as 'someone is talking')
+	qint64 m_lastrx = 0, m_laststream = 0;
+	uint32_t m_rxstream = 0;
+	int m_textlogged = 0;
+	void note_rx();
+	void log_text_frame(const QByteArray &buf);
 	QQueue<int16_t> m_audioq;
 	bool m_tx;
 	uint32_t m_rxjitter;

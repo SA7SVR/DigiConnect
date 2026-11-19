@@ -44,6 +44,8 @@ class Ctx(QtCore.QObject):
         self._asl_done.connect(self._on_asl_done)
         self.asl_links: dict[str, dict] = {}; self._asl_links_asked: dict[str, float] = {}
         self.el_stations: list[dict] = []; self.el_status = ""; self.el_signed_in = False; self.el_busy = False; self.el_last = 0.0; self.el_result: dict = {}
+        self.el_peers: dict[str, dict] = {}          # call sign of the station we are connected to -> {peer, name}: who the station says it is (callsign and name from its own answer)
+        self._sig_up: set = set()                    # links of EchoLink / AllStar that are connected now (to play the Connected / Disconnected signal once per change)
         self.el_nodes: dict[str, dict] = {}          # call sign of the station we are connected to -> {lines, calls}: what it told us (who is connected)
         self._el_done.connect(self._on_el_done)
         self._asl_links_done.connect(self._on_asl_links)
@@ -74,6 +76,8 @@ class Ctx(QtCore.QObject):
         if hasattr(self.engine, "asl_password"): self.engine.asl_password = self.asl_password
         self.el_password = (self.store.settings.get("el_pw") or "") if self.store.settings.get("el_remember", True) else ""
         if hasattr(self.engine, "nodetext"): self.engine.nodetext.connect(self._on_nodetext)
+        if hasattr(self.engine, "peer"): self.engine.peer.connect(self._on_peer)
+        self.changed.connect(self._signals_sync)
         if hasattr(self.engine, "status"):
             self.engine.status.connect(self._on_status); self.engine.heard.connect(self._on_heard)
             self.engine.volume_refresh.connect(lambda: self.__dict__.pop("_vol_cache", None))
@@ -200,13 +204,16 @@ class Ctx(QtCore.QObject):
             self.rules.stop_listening(r.handle); self.engine.stop_rx(r.handle)
         else:
             if not self.policy.allows(t.net): self._closed(t.net); return
-            o = self.rules.listen(t)
-            if not o.ok:
-                self.toast.emit("Maximum of 4 DMR receivers reached. Stop one before adding another."); return
-            for h in o.removed: self.engine.stop_rx(h)
-            self.engine_msg = self.engine.start_rx(o.handle, t) or ""
-            self._reject_if_failed(t, o.handle, rx=True)
+            self._start_listen(t)
         self.changed.emit()
+
+    def _start_listen(self, t):
+        o = self.rules.listen(t)
+        if not o.ok:
+            self.toast.emit("Maximum of 4 DMR receivers reached. Stop one before adding another."); return
+        for h in o.removed: self.engine.stop_rx(h)
+        self.engine_msg = self.engine.start_rx(o.handle, t) or ""
+        self._reject_if_failed(t, o.handle, rx=True)
 
     def toggle_tx(self):
         t = self.selected
@@ -220,6 +227,8 @@ class Ctx(QtCore.QObject):
             if o.ok:
                 self.engine_msg = self.engine.connect_tx(t) or ""
                 self._reject_if_failed(t, None, rx=False)
+                if t.net in ("EchoLink", "AllStar") and self.rules.tx_connected and not self.rules.is_listening(t):
+                    self._start_listen(t)               # a call to one station carries both directions: connecting is also listening ("Stop listening" is then ready)
         self.changed.emit()
 
     def ptt_down(self, latch=False):
@@ -371,6 +380,35 @@ class Ctx(QtCore.QObject):
         from . import echolink
         if self.el_signed_in and not self.el_busy and _t.monotonic() - self.el_last > echolink.STAY_ONLINE_EVERY and self._el_in_use():
             self.el_sign_in("BUSY" if self.rules.ptt else "ONLINE", want_list=False, silent=True)
+
+    def engine_connected(self, net: str, ident: str) -> bool:
+        """True when the engine reports the link to this station / node as connected (the station really answered)."""
+        links = getattr(self.engine, "links", None)
+        if not isinstance(links, dict): return False
+        ln = links.get(f"{net}:{ident}")
+        return ln is not None and getattr(ln, "state", "") == "connected"
+
+    def _on_peer(self, ln, e: dict):
+        """The EchoLink station told who it is (its callsign and name): kept for the panel, which shows 'Connected to ...'."""
+        if ln.target.net != "EchoLink": return
+        call = str(e.get("peer") or "").strip(); name = str(e.get("peername") or "").strip()
+        if not call: return
+        self.el_peers[ln.target.id.upper()] = dict(peer=call, name=name)
+        from . import diag; diag.log(f"EchoLink {ln.target.id}: the station says it is {call} {name}")
+        self.el_changed.emit(); self.changed.emit()
+
+    def _signals_sync(self):
+        """Plays the Connected / Disconnected signal when an EchoLink station or AllStarLink node has REALLY answered or REALLY gone (what the engine reports as
+        connected), whoever ended it: the other side, a timeout, or the user."""
+        from . import signals
+        links = getattr(self.engine, "links", None)
+        if not isinstance(links, dict): return
+        up = {k for k, ln in links.items() if getattr(ln, "state", "") == "connected" and getattr(getattr(ln, "target", None), "net", "") in signals.NETWORKS}
+        new, gone = up - self._sig_up, self._sig_up - up
+        self._sig_up = up
+        if not signals.enabled(self.store): return
+        if new: signals.play("connected", self.store.settings.get("speakers") or "")
+        elif gone: signals.play("disconnected", self.store.settings.get("speakers") or "")
 
     def _on_nodetext(self, ln, text: str):
         if ln.target.net != "EchoLink": return

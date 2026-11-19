@@ -812,6 +812,7 @@ void IAX::process_udp()
 			m_audioq.append(ulaw_decode(buf.data()[12+i]));
 		}
 		send_voice_frame(zeropcm);
+		note_rx();
 		if(!m_txtimer->isActive()){
 			m_txtimer->start(19);
 		}
@@ -819,6 +820,7 @@ void IAX::process_udp()
 	else if( (buf.data()[0] & 0x80) &&
 		(buf.data()[10] == AST_FRAME_TEXT) )
 	{
+		log_text_frame(buf);
 		++m_rxframes;
 		m_dcallno = (((buf.data()[0] & 0x7f) << 8) | ((uint8_t)buf.data()[1]));
 		m_iseq = buf.data()[8] + 1;
@@ -853,6 +855,7 @@ void IAX::process_udp()
 			for(int i = 0; i < buf.size() - 4; ++i){
 				m_audioq.append(ulaw_decode(buf.data()[4+i]));
 			}
+			note_rx();
 		}
 	}
 	emit update(m_modeinfo);
@@ -878,9 +881,42 @@ void IAX::connected() {
 	m_modeinfo.sw_vocoder_loaded = true;
 }
 
+void IAX::note_rx()
+{
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
+	if(!m_rxactive){
+		m_rxactive = true; m_laststream = 0;
+		m_modeinfo.src = m_node.isEmpty() ? QString("node") : ("Node " + m_node);          // voice frames carry no callsign: what is known for certain is the node the sound comes from
+		m_modeinfo.streamid = ++m_rxstream;
+		m_modeinfo.stream_state = STREAM_NEW; emit update(m_modeinfo);
+	}
+	m_lastrx = now;
+	if(now - m_laststream > 300){
+		m_laststream = now;
+		m_modeinfo.stream_state = STREAMING; emit update(m_modeinfo);
+	}
+}
+
+// What the node sends in TEXT frames (link lists, talker information, ...) is written to the log, so it can be read in Diagnostics: only what really
+// arrives is ever shown to the user.
+void IAX::log_text_frame(const QByteArray &buf)
+{
+	if(m_textlogged >= 40 || buf.size() <= 12) return;
+	++m_textlogged;
+	QByteArray t = buf.mid(12, 160);
+	QString s;
+	for(char ch : t) s.append((ch >= 32 && ch < 127) ? QChar(ch) : QChar('.'));
+	emit update_log(QString("IAX text frame %1 bytes: %2").arg(buf.size() - 12).arg(s));
+}
+
 void IAX::process_rx_data()
 {
 	int16_t pcm[160];
+	if(m_rxactive && QDateTime::currentMSecsSinceEpoch() - m_lastrx > 500){
+		m_rxactive = false;
+		m_modeinfo.stream_state = STREAM_END; emit update(m_modeinfo);
+		m_modeinfo.stream_state = STREAM_IDLE;
+	}
 
 	if(m_audioq.size() > 160){
 		for(int i = 0; i < 160; ++i){

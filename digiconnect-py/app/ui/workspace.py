@@ -199,9 +199,12 @@ class Workspace(W.QWidget):
         self.el_list.clear(); self.el_msgs.setText("")
         if not call or not self.ctx._el_in_use():
             self.el_head.setText(tr("Connect to a station to see who is connected to it.")); return
-        st = self.ctx.el_nodes.get(call)
-        if not st: self.el_head.setText(tr("Waiting for the station to tell who is connected …")); return
-        self.el_head.setText(tr("{} · {} connected").format(call, len(st.get("calls", []))))
+        st = self.ctx.el_nodes.get(call); pr = self.ctx.el_peers.get(call)
+        who = (pr["peer"] + ((" · " + pr["name"]) if pr.get("name") else "")) if pr else ""          # callsign and name as the station itself sent them
+        if not st:
+            self.el_head.setText(tr("Connected to {}").format(who or call) + " — " + tr("the station has not sent a list of connected stations")) if self.ctx.engine_connected("EchoLink", call) else self.el_head.setText(tr("Waiting for the station to tell who is connected …"))
+            return
+        self.el_head.setText(((tr("Connected to {}").format(who) + " · ") if who else "") + tr("{} · {} connected").format(call, len(st.get("calls", []))))
         for c in st.get("calls", []):
             country = countries.of_callsign(c)
             self.el_list.addItem(c + (f"  ·  {country}" if country else ""))
