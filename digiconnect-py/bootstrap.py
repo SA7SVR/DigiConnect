@@ -10,7 +10,7 @@ from pathlib import Path
 
 SHELL_VERSION = "2.2.0"          # raised only when something changes that an update cannot replace (Qt, Python, the shell files); then a full installer is needed
 ENGINE_VERSION = "2.4.0"        # version of the protocol engine (dcengine) inside this shell: raised whenever engine/ changes (a test checks it); an update can bring a newer engine (app/engine_update.py)
-BASE_VERSION = "2.4.0"            # version of the app/ code built into the shell (must equal app/version.py in the source tree; a test checks it)
+BASE_VERSION = "2.5.0"            # version of the app/ code built into the shell (must equal app/version.py in the source tree; a test checks it)
 
 
 def vtuple(v: str) -> tuple:

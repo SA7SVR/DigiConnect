@@ -1,0 +1,42 @@
+DigiConnect 2.5.0 — Release notes / Σημειώσεις έκδοσης / Versionsnoteringar / Note di rilascio
+================================================================================================
+
+ΕΛΛΗΝΙΚΑ
+--------
+ΝΕΑ ΣΤΗΝ 2.5.0 — ΤΗΛΕΦΩΝΟ VoIP (SIP)
+• ΝΕΟ: το κουμπί «VoIP» ανοίγει τηλέφωνο SIP μέσα στο DigiConnect. Βάζεις server, όνομα χρήστη (εσωτερικό) και κωδικό, πατάς Σύνδεση και καλείς συναδέλφους με αριθμό ή διπλό κλικ από τη λίστα «Άνθρωποι». Λειτουργεί με UDP, TCP και TLS (με έλεγχο πιστοποιητικού), ψηφιακή επαλήθευση (digest MD5/SHA-256) και ήχο G.711 (PCMU/PCMA).
+• Πλήκτρα DTMF (RFC 4733) και προς τις δύο κατευθύνσεις· ήχος κουδουνίσματος για εισερχόμενη κλήση και τόνος αναμονής όταν κουδουνίζει ο άλλος· σίγαση μικροφώνου· ενδείξεις στάθμης μικροφώνου/ηχείων· λίστα πρόσφατων κλήσεων (και αναπάντητων).
+• Η λίστα «Άνθρωποι» δείχνει ΜΟΝΟ ό,τι αναφέρει ο server (διαθέσιμος, κουδουνίζει, σε κλήση, εκτός). Όταν ο server δεν λέει τίποτα, γράφει «Αναμονή απάντησης από τον server» — τίποτα δεν επινοείται.
+• Ο κωδικός γράφεται από σένα και στέλνεται μόνο στον server σου· αποθηκεύεται σε αυτόν τον υπολογιστή μόνο αν το επιλέξεις. Μετά από λάθος κωδικό το πρόγραμμα ΔΕΝ ξαναδοκιμάζει μόνο του (για να μην τον μπλοκάρει το fail2ban).
+• Όρια της έκδοσης: μία κλήση τη φορά· χωρίς ακύρωση ηχούς (χρησιμοποίησε ακουστικά με μικρόφωνο)· χωρίς κρυπτογράφηση του ήχου (SRTP) και χωρίς Opus/G.722· δεν δημιουργεί λογαριασμούς — τους φτιάχνει ο διαχειριστής του server.
+• Δοκιμασμένο με πραγματικό Asterisk και με δοκιμαστικό server στο CI (σύνδεση, κλήσεις, DTMF, απόρριψη, ακύρωση, λάθος κωδικός). ΔΕΝ έχει δοκιμαστεί ακόμη με τον FreeSWITCH/FusionPBX της HELLAS Zone και με πραγματικές συσκευές ήχου των Windows.
+
+ENGLISH
+-------
+NEW IN 2.5.0 — VoIP (SIP) PHONE
+• NEW: the "VoIP" button opens a SIP phone inside DigiConnect. Enter the server, your username (extension) and password, press Sign in, and call colleagues by number or by double-clicking them in the "People" list. It works over UDP, TCP and TLS (with certificate check), digest authentication (MD5/SHA-256) and G.711 audio (PCMU/PCMA).
+• Keypad digits (RFC 4733) in both directions; a ring for an incoming call and a ring-back tone while the other side rings; mute; microphone and speaker level bars; a list of recent calls (missed ones too).
+• The "People" list shows ONLY what the server reports (available, ringing, on a call, offline). When the server says nothing, it says "Waiting for the server" — nothing is invented.
+• The password is typed by you and sent only to your server; it is stored on this computer only if you choose so. After a wrong password the program does NOT try again by itself (so fail2ban does not block you).
+• Limits of this version: one call at a time; no echo cancellation (use a headset); no audio encryption (SRTP) and no Opus/G.722; it does not create accounts — the server administrator does.
+• Tested against a real Asterisk and a test server in CI (sign in, calls, keypad, reject, cancel, wrong password). NOT yet tested with the HELLAS Zone FreeSWITCH/FusionPBX or with real Windows sound devices.
+
+SVENSKA
+-------
+NYTT I 2.5.0 — VoIP-TELEFON (SIP)
+• NYTT: knappen "VoIP" öppnar en SIP-telefon i DigiConnect. Ange server, användarnamn (anknytning) och lösenord, tryck Logga in och ring kollegor med nummer eller dubbelklick i listan "Personer". Fungerar över UDP, TCP och TLS (med certifikatkontroll), digest-autentisering (MD5/SHA-256) och G.711-ljud (PCMU/PCMA).
+• Knappsatssiffror (RFC 4733) åt båda håll; ringsignal vid inkommande samtal och rington medan den andra ringer; ljud av; nivåmätare för mikrofon och högtalare; lista över senaste samtal (även missade).
+• Listan "Personer" visar ENDAST vad servern rapporterar (tillgänglig, ringer, i samtal, offline). Säger servern inget står det "Väntar på servern" — inget påhittas.
+• Lösenordet skriver du själv och det skickas bara till din server; det sparas på den här datorn bara om du väljer det. Efter fel lösenord försöker programmet INTE igen av sig självt (så att fail2ban inte spärrar dig).
+• Begränsningar: ett samtal i taget; ingen ekoutjämning (använd headset); ingen ljudkryptering (SRTP) och ingen Opus/G.722; programmet skapar inga konton — det gör serverns administratör.
+• Testat mot en riktig Asterisk och en testserver i CI (inloggning, samtal, knappsats, avvisa, avbryta, fel lösenord). INTE ännu testat med HELLAS Zones FreeSWITCH/FusionPBX eller med riktiga ljudenheter i Windows.
+
+ITALIANO
+--------
+NOVITÀ DELLA 2.5.0 — TELEFONO VoIP (SIP)
+• NUOVO: il pulsante "VoIP" apre un telefono SIP dentro DigiConnect. Inserisci server, nome utente (interno) e password, premi Accedi e chiama i colleghi con il numero o con doppio clic nell'elenco "Persone". Funziona su UDP, TCP e TLS (con controllo del certificato), autenticazione digest (MD5/SHA-256) e audio G.711 (PCMU/PCMA).
+• Cifre della tastiera (RFC 4733) nei due sensi; squillo per la chiamata in arrivo e tono di richiamo mentre l'altro squilla; muto; indicatori di livello di microfono e altoparlanti; elenco delle chiamate recenti (anche perse).
+• L'elenco "Persone" mostra SOLO ciò che riferisce il server (disponibile, squilla, in chiamata, offline). Se il server non dice nulla, appare "In attesa del server" — nulla è inventato.
+• La password la scrivi tu e va solo al tuo server; è salvata su questo computer solo se lo scegli. Dopo una password errata il programma NON riprova da solo (così fail2ban non ti blocca).
+• Limiti: una chiamata alla volta; nessuna cancellazione dell'eco (usa una cuffia); nessuna cifratura audio (SRTP) né Opus/G.722; non crea account — lo fa l'amministratore del server.
+• Provato con un vero Asterisk e con un server di prova nel CI (accesso, chiamate, tastiera, rifiuto, annullamento, password errata). NON ancora provato con il FreeSWITCH/FusionPBX di HELLAS Zone né con vere schede audio di Windows.

@@ -1,4 +1,4 @@
-﻿DigiConnect 2.4.0 — HELLAS Zone (SA7SVR)
+﻿DigiConnect 2.5.0 — HELLAS Zone (SA7SVR)
 =====================================
 
 What it is
@@ -6,7 +6,10 @@ What it is
   (DMR, D-STAR, C4FM/YSF, NXDN, P25, M17) to listen and to talk.
   You connect to any server in the world from the public lists.
 
-What is new in this version (2.4.0)
+What is new in this version (2.5.0)
+  • NEW: the "VoIP" button is now a SIP telephone: sign in to your SIP server with your extension and password, see who is available (only what the server reports) and call colleagues. Use a headset (no echo cancellation yet).
+  • Not yet tested with the HELLAS Zone FreeSWITCH/FusionPBX server and real Windows sound devices.
+  New in 2.4.0:
   • NEW: automatic updates can now also bring a new protocol engine (the part with the protocols and the audio) without a new installer. The engine is downloaded first, checked and test-started; if it does not start, the program goes back to the one that came with the installer by itself.
   • NEW: the website explains the installation on Windows, Mac and Linux step by step (and the warning that appears the first time).
   • NEW EchoLink: the program waits 30 seconds for the station to answer (like the official program), then shows "Connected to <callsign · name>" next to Last heard (with or without a user list), plays a connect / disconnect tone (can be switched off in Settings > Audio) and "Stop listening" is ready at once. It has not been tried with a real station by the maker: please tell us what you see.
