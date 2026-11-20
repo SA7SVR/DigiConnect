@@ -104,7 +104,7 @@ class AccountSync(QtCore.QObject):
         s = self.st
         if ex.code == "unknown" and kind == "status":                                        # the server has no such request / account any more
             was = self.state(); s.update(voip_req_state="", voip_req_token="", voip_req_id=0, voip_block=False, voip_block_until=0, voip_block_reason=""); self._save(); self.state_changed.emit()
-            self.note.emit("The owner removed this account from the server. The details saved here stay as they are." if was == "linked" else "The server no longer has this request.")
+            self.note.emit("The owner released this account: the fields are unlocked and you can use any server. The details saved here stay as they are." if was == "linked" else "The server no longer has this request.")
         elif kind != "recover" and not (silent and not ex.code): self.note.emit(ex.text if ex.code else "The server cannot be reached now: " + ex.text)
 
     def _status(self, a: dict, silent: bool):

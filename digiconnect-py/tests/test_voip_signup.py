@@ -161,10 +161,19 @@ def test_a_program_that_lost_its_settings_gets_its_account_back_by_itself(base, 
     ctx3.voip_account.ensure_fresh(lambda: done.append(1)); assert wait(lambda: done) and st3.settings.get("voip_req_state", "") == "" and not st3.settings.get("voip_user")   # another installation gets nothing
 
 
-def test_an_account_the_owner_deleted_is_noticed_and_the_saved_details_stay(base, tmp_path):
+def test_an_account_the_owner_releases_unlocks_the_fields_and_the_user_may_use_any_server(base, tmp_path):
     st, pg, a, rid = linked(base, tmp_path)
-    a.post("voip", "voip_del", _tab="acc", rid=str(rid)); check(pg, st, lambda: st.settings.get("voip_req_state") == "")
-    assert "removed" in pg.req_lbl.text() and st.settings["voip_user"] == "2001" and pg.req_btn.isVisible() and not pg.user.isReadOnly()
+    assert pg.user.isReadOnly()
+    a.post("voip", "voip_release", _tab="acc", rid=str(rid)); check(pg, st, lambda: st.settings.get("voip_req_state") == "")
+    assert "released" in pg.req_lbl.text() and st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1"       # what he had stays, so he is not left empty
+    assert pg.req_btn.isVisible() and all(not w.isReadOnly() and w.property("locked") is False for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw)) and pg.transport.isEnabled()
+    pg.server.setText("sip.somewhere-else.org"); pg.server.editingFinished.emit(); pg.acc.check(True); W.QApplication.processEvents()
+    assert st.settings["voip_server"] == "sip.somewhere-else.org"                                                               # free again: nothing puts the owner's server back
+    assert base.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_rel'")[0]["n"] == 1
+    from app import i18n
+    i18n.set_language("el")
+    try: assert "απελευθέρωσε" in i18n.tr("The owner released this account: the fields are unlocked and you can use any server. The details saved here stay as they are.")
+    finally: i18n.set_language("en")
 
 
 def test_a_linked_program_has_no_way_to_point_the_account_somewhere_else(base, tmp_path):

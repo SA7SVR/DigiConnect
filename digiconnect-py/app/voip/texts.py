@@ -81,7 +81,7 @@ EL = {
     "Check the account now": "Έλεγχος του λογαριασμού τώρα", "Use another account": "Χρήση άλλου λογαριασμού",
     "This account comes from the owner of the server: the extension and the password are kept up to date by themselves.": "Ο λογαριασμός προέρχεται από τον ιδιοκτήτη του server: το εσωτερικό και ο κωδικός ενημερώνονται μόνοι τους.",
     "The account is no longer kept up to date from the server. You can enter another account.": "Ο λογαριασμός δεν ενημερώνεται πια από τον server. Μπορείς να βάλεις άλλον λογαριασμό.",
-    "The owner removed this account from the server. The details saved here stay as they are.": "Ο ιδιοκτήτης αφαίρεσε τον λογαριασμό από τον server. Τα στοιχεία που έχεις αποθηκευμένα εδώ μένουν ως έχουν.",
+    "The owner released this account: the fields are unlocked and you can use any server. The details saved here stay as they are.": "Ο ιδιοκτήτης απελευθέρωσε τον λογαριασμό: τα πεδία ξεκλείδωσαν και μπορείς να χρησιμοποιήσεις όποιον server θέλεις. Τα στοιχεία που έχεις αποθηκευμένα εδώ μένουν ως έχουν.",
     "The server no longer has this request.": "Ο server δεν έχει πια αυτή την αίτηση.",
     "The block was lifted. You can sign in again.": "Ο αποκλεισμός άρθηκε. Μπορείς να συνδεθείς ξανά.",
     "The owner changed the account details; they were updated here.": "Ο ιδιοκτήτης άλλαξε τα στοιχεία του λογαριασμού· ενημερώθηκαν εδώ.",

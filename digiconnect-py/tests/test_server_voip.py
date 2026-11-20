@@ -213,3 +213,12 @@ def test_a_person_who_asks_again_from_another_computer_is_offered_the_same_detai
     assert s["status"] == "approved" and s["ext"] == "2001" and s["password"] == "Secret-pass-1"
     assert srv.sql("SELECT COUNT(*) n FROM dc_voip_req WHERE call='SV1ABC' AND status='approved'")[0]["n"] == 1   # the old computer's record is replaced, not duplicated
     assert call(srv, action="status", id=r["id"], token=r["token"]) == {"ok": False, "err": "unknown"}           # and only the new computer holds the account now
+
+
+def test_release_is_available_for_a_blocked_account_too_and_leaves_a_trace_in_the_activity(srv):
+    a = open_requests(srv); r = call(srv, **REQ); approve(srv, a, r)
+    a.post("voip", "voip_block", _tab="acc", rid=str(r["id"]), hours="0", reason="x")
+    assert 'value="voip_release"' in a.page("voip", tab="acc")                                   # not hidden behind the block
+    a.post("voip", "voip_release", _tab="acc", rid=str(r["id"]))
+    assert not srv.sql("SELECT 1 FROM dc_voip_req") and call(srv, action="status", id=r["id"], token=r["token"]) == {"ok": False, "err": "unknown"}
+    assert "SV1ABC" in a.page("activity") and srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_rel'")[0]["n"] == 1

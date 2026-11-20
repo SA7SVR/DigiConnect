@@ -465,6 +465,10 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     }
   }
   if ($a === 'voip_unblock') { $rid = (int)($_POST['rid'] ?? 0); dc_q("UPDATE dc_voip_req SET blocked=0, block_until=0, block_reason='' WHERE id=?", [$rid]); flash('ok', L('Ο αποκλεισμός άρθηκε.', 'The block is lifted.')); }
+  if ($a === 'voip_release') {                                                                    // let the user go: the account leaves this server, the program unlocks its fields and the user may enter any server
+    $rid = (int)($_POST['rid'] ?? 0); $r = dc_one("SELECT * FROM dc_voip_req WHERE id=? AND status='approved'", [$rid]);
+    if ($r) { dc_q('DELETE FROM dc_voip_req WHERE id=?', [$rid]); dc_event('voip_rel', $r['call'] . '|' . $r['ext']); flash('ok', L('Ο λογαριασμός απελευθερώθηκε: το πρόγραμμα του χρήστη ξεκλειδώνει στον επόμενο έλεγχο. Απενεργοποίησε και το extension στο FusionPBX αν δεν θες να συνεχίσει να το χρησιμοποιεί.', 'The account is released: the user’s program unlocks at its next check. Also disable the extension in FusionPBX if you do not want it to be used any more.')); }
+  }
   if ($a === 'voip_del') { dc_q('DELETE FROM dc_voip_req WHERE id=?', [(int)($_POST['rid'] ?? 0)]); }
   // ---- site statistics: do not count my own visits ----
   if ($a === 'stats_ignore') {
@@ -1277,7 +1281,8 @@ elseif ($p === 'voip') {
       if ($bl) echo '<form method="post" class="r">' . $hid($r) . '<button class="btn pri" name="a" value="voip_unblock">' . L('Άρση αποκλεισμού', 'Lift block') . '</button></form>';
       else echo '<form method="post" class="r">' . $hid($r) . '<select name="hours"><option value="1">1 ' . L('ώρα', 'hour') . '</option><option value="24">1 ' . L('ημέρα', 'day') . '</option><option value="168">7 ' . L('ημέρες', 'days') . '</option><option value="0">' . L('μέχρι να τον άρω', 'until I lift it') . '</option></select>'
         . '<input name="reason" size="22" placeholder="' . h(L('Λόγος (τον βλέπει ο χρήστης)', 'Reason (the user sees it)')) . '"><button class="btn" name="a" value="voip_block">' . L('Αποκλεισμός', 'Block') . '</button>'
-        . '<span class="sp"></span><button class="btn danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή λογαριασμού;', 'Delete the account?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form>';
+        . '</form>';
+      echo '<form method="post" class="r">' . $hid($r) . '<span class="muted" style="font-size:12px">' . L('Αν θες να φύγει από τον server σου και να βάλει ό,τι θέλει:', 'To let the user leave your server and enter anything:') . '</span><button class="btn danger" name="a" value="voip_release" onclick="return confirm(\'' . L('Απελευθέρωση λογαριασμού; Ο λογαριασμός φεύγει από αυτόν τον server και το πρόγραμμα του χρήστη ξεκλειδώνει.', 'Release the account? It leaves this server and the user’s program unlocks.') . '\')">' . L('Απελευθέρωση', 'Release') . '</button></form>';
       echo '</div>';
     }
     if ($rows) echo '</div>';
@@ -1789,6 +1794,7 @@ function activity_rows($rows) {
       case 'voip_req':  $txt = '☎ ' . L('Αίτηση λογαριασμού VoIP: ', 'VoIP account request: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? '') . ' · <a href="?p=voip">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
       case 'voip_pw':   $txt = '☎ ' . L('Νέος κωδικός VoIP: ', 'New VoIP password: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'g'; break;
       case 'voip_blk':  $txt = '☎ ' . L('Αποκλεισμός VoIP: ', 'VoIP block: ') . '<b>' . h($d[0] ?? '') . '</b>'; $c = 'o'; break;
+      case 'voip_rel':  $txt = '☎ ' . L('Απελευθερώθηκε λογαριασμός VoIP: ', 'VoIP account released: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'o'; break;
       case 'voip_ok':   $txt = '☎ ' . L('Εγκρίθηκε λογαριασμός VoIP: ', 'VoIP account approved: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'g'; break;
       case 'inbox_reply': $txt = L('Απάντηση σε χρήστη: ', 'Reply to a user: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'b'; break;
       case 'chat_new':  $txt = '💬 ' . L('Νέα συνομιλία από τη σελίδα · ', 'New chat from the website · ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h(mb_substr((string)($d[2] ?? ''), 0, 80)) . ' · <a href="?p=chat&t=' . h($d[1] ?? '') . '">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
