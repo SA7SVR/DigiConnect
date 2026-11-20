@@ -138,7 +138,7 @@ def test_the_accounts_tab_tells_online_from_active_but_not_signed_in_from_offlin
     now = int(time.time())
     srv.sql("INSERT OR REPLACE INTO dc_installs(id,first_seen,last_seen,last_ping,voip,voip_ext) VALUES('inst-1',?,?,?,1,'2001')", now, now, now)
     assert "VoIP online" in a.page("voip", tab="acc")
-    srv.sql("UPDATE dc_installs SET voip=0"); acc = a.page("voip", tab="acc"); assert "not signed in" in acc or "δεν έχει συνδεθεί" in acc
+    srv.sql("UPDATE dc_installs SET voip=0"); acc = a.page("voip", tab="acc"); assert "αδρανής" in acc or "idle" in acc
     srv.sql("UPDATE dc_installs SET last_ping=?", now - 3600); assert "offline" in a.page("voip", tab="acc")
     srv.sql("UPDATE dc_installs SET voip=NULL"); assert "VoIP online" not in a.page("voip", tab="acc")     # an older program reports nothing: nothing is invented
 

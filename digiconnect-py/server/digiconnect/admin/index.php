@@ -1261,7 +1261,7 @@ elseif ($p === 'voip') {
       [$bl, $bu, $br] = dc_voip_blocked($r);
       $on = $r['i_ping'] !== null && (int)$r['i_ping'] >= time() - DC_ONLINE_S;
       $vstate = $r['inst'] === null || $r['inst'] === '' || $r['i_voip'] === null || $r['i_voip'] === '' ? '' : ($on ? ((int)$r['i_voip'] === 1 ? 'on' : 'wait') : 'off');
-      $vtxt = ['on' => 'VoIP online', 'wait' => L('ενεργός, δεν έχει συνδεθεί στο VoIP', 'active, not signed in to VoIP'), 'off' => 'offline', '' => L('άγνωστο (δεν έχει αναφερθεί)', 'unknown (not reported)')][$vstate];
+      $vtxt = ['on' => 'VoIP online', 'wait' => L('αδρανής', 'idle', 'inaktiv'), 'off' => 'offline', '' => L('άγνωστο (δεν έχει αναφερθεί)', 'unknown (not reported)')][$vstate];
       echo '<div class="it"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' · ☎ <b>' . h($r['ext']) . '</b> '
         . ($bl ? '<span class="pill o">' . L('αποκλεισμένος', 'blocked') . ($bu ? ' ' . L('έως', 'until') . ' ' . dc_dt($bu) : ' ' . L('μέχρι να άρεις', 'until lifted')) . '</span>' : '<span class="pill ok">' . L('ενεργός', 'active') . '</span>')
         . '<span class="sp"></span>' . ($vstate !== '' ? '<span class="vp ' . $vstate . '"><i></i>' . h($vtxt) . '</span>' : '<small class="muted">' . h($vtxt) . '</small>') . '</div>'
@@ -1663,7 +1663,7 @@ function voip_badge($r, bool $on): string {
   if (!array_key_exists('voip', $r) || $r['voip'] === null || $r['voip'] === '') return '';
   if (!$on) return '<div class="vp off"><i></i>☎ VoIP offline</div>';
   if ((int)$r['voip'] === 1) return '<div class="vp on"><i></i>☎ VoIP online' . ((string)($r['voip_ext'] ?? '') !== '' ? ' · ' . h($r['voip_ext']) : '') . '</div>';
-  return '<div class="vp wait"><i></i>☎ ' . L('VoIP: ενεργός, δεν έχει συνδεθεί', 'VoIP: active, not signed in') . '</div>';        // the program runs but is not signed in to the VoIP server
+  return '<div class="vp wait"><i></i>☎ VoIP ' . L('αδρανής', 'idle', 'inaktiv') . '</div>';        // the program runs but is not signed in to the VoIP server
 }
 function station_cards($rows) {
   if (!$rows) return '<p class="empty">' . L('Καμία εγκατάσταση ακόμη.','No installations yet.') . '</p>';
@@ -1730,7 +1730,7 @@ function rail_html() {
       . ($r['eq'] ? '<div class="r4">' . h($r['eq']) . '</div>' : '')
       . '<div class="r4">' . h($osn) . ($r['version'] ? ' · v' . h($r['version']) : '') . ' · ' . h(sprintf('DC-%05d', $r['rno'])) . '</div></div></a>';
   };
-  $o = '<div class="rail-h"><h3>' . L('Σταθμοί', 'Stations') . '</h3><span class="rn on"><i></i>' . count($on) . ' online</span><span class="rn">' . count($off) . ' offline</span><span class="rn vo" title="' . h(L('Συνδεδεμένοι στον VoIP server (όπως το αναφέρει το πρόγραμμα)', 'Signed in to the VoIP server (as the program reports it)')) . '"><i></i>☎ ' . count(array_filter($on, fn($r) => (string)($r['voip'] ?? '') === '1')) . ' VoIP</span>' . (($w = count(array_filter($on, fn($r) => (string)($r['voip'] ?? '') === '0'))) ? '<span class="rn" style="color:#d99a1c" title="' . h(L('Online στο DigiConnect αλλά όχι συνδεδεμένοι στο VoIP', 'Online in DigiConnect but not signed in to VoIP')) . '">☎ ' . $w . ' ' . L('χωρίς σύνδεση', 'not signed in') . '</span>' : '') . '</div>';
+  $o = '<div class="rail-h"><h3>' . L('Σταθμοί', 'Stations') . '</h3><span class="rn on"><i></i>' . count($on) . ' online</span><span class="rn">' . count($off) . ' offline</span><span class="rn vo" title="' . h(L('Συνδεδεμένοι στον VoIP server (όπως το αναφέρει το πρόγραμμα)', 'Signed in to the VoIP server (as the program reports it)')) . '"><i></i>☎ ' . count(array_filter($on, fn($r) => (string)($r['voip'] ?? '') === '1')) . ' VoIP</span>' . (($w = count(array_filter($on, fn($r) => (string)($r['voip'] ?? '') === '0'))) ? '<span class="rn" style="color:#d99a1c">☎ ' . $w . ' ' . L('αδρανής', 'idle', 'inaktiv') . '</span>' : '') . '</div>';
   $o .= '<div class="rail-s">' . L('Ανανεώνεται μόνο του κάθε 30″', 'Refreshes itself every 30″') . '</div>';
   if (!$on) $o .= '<div class="rail-e">' . L('Κανείς σε σύνδεση αυτή τη στιγμή.', 'Nobody online right now.') . '</div>';
   foreach ($on as $r) $o .= $card($r, true);

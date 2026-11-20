@@ -98,10 +98,10 @@ def test_the_stations_list_tells_signed_in_from_active_but_not_signed_in_from_of
     html = a.page("dashboard")
     green = re.findall(r'<div class="vp on"><i></i>☎ VoIP online · 2001</div>', html); amber = re.findall(r'<div class="vp wait"><i></i>☎ [^<]*</div>', html)
     assert len(green) >= 1 and len(amber) >= 1, html[html.find('class="rail"'):][:1500]
-    assert "δεν έχει συνδεθεί" in amber[0] or "not signed in" in amber[0]                                       # the program runs, but is not signed in to the VoIP server
+    assert "αδρανής" in amber[0] or "idle" in amber[0]                                       # the program runs, but is not signed in to the VoIP server
     assert 'class="vp off"' not in html                                                                        # nobody is offline here
     assert html.count('class="vp ') == len(re.findall(r'class="vp (?:on|wait|off)"', html))                    # the old program (SV3OLD) has no badge at all
-    assert "1 VoIP" in html and ("1 χωρίς σύνδεση" in html or "1 not signed in" in html)                      # the counts in the header of the list
+    assert "1 VoIP" in html and ("1 αδρανής" in html or "1 idle" in html)                      # the counts in the header of the list
     assert not re.search(r"(Fatal error|Warning:|Notice:|Deprecated:|Uncaught)", html)
 
 
