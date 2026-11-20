@@ -15,6 +15,13 @@ HOST = EU.host()
 FAKE = EU.EXE
 
 
+@pytest.fixture(autouse=True)
+def fake_engines_are_not_signed(monkeypatch):
+    """These tests pack FAKE engines (a few bytes): the macOS signature gate would refuse them all. The gate itself is tested below; the real engine is packed, signed and
+    installed by tools/test_engine_pkg.py in the build."""
+    monkeypatch.setattr(EU, "mac_signature_ok", lambda exe: True)
+
+
 def make_dir(tmp_path, name="eng", body=b"fake engine"):
     d = tmp_path / name; d.mkdir(); (d / FAKE).write_bytes(body); (d / "lib.dat").write_bytes(b"x" * 1000)
     return d
@@ -265,3 +272,17 @@ def test_the_diagnostics_say_which_engine_runs(tmp_path, monkeypatch):
     assert "Engine version: 9.0.0 (from an update)" in diagnostics.report()
     EU.mark_bad("9.0.0", up)
     r = diagnostics.report(); assert "(the installer)" in r and "dropped after a failed start: 9.0.0" in r
+
+
+def test_on_a_mac_an_engine_whose_signature_the_system_refuses_is_not_used(monkeypatch, tmp_path):
+    monkeypatch.undo()                                                                                    # the real mac_signature_ok, with the system tool replaced
+    f = tmp_path / "e.app" / "Contents" / "MacOS" / "dcengine"; f.parent.mkdir(parents=True); f.write_bytes(b"x")
+    calls = []
+    class R:
+        def __init__(self, rc): self.returncode = rc
+    monkeypatch.setattr(EU.sys, "platform", "darwin"); monkeypatch.setattr(EU.shutil, "which", lambda n: "/usr/bin/codesign")
+    monkeypatch.setattr(EU.subprocess, "run", lambda cmd, **k: calls.append(cmd) or R(1))
+    assert EU.mac_signature_ok(str(f)) is False and calls and str(tmp_path / "e.app") in calls[0]       # the whole .app is verified
+    monkeypatch.setattr(EU.subprocess, "run", lambda cmd, **k: R(0)); assert EU.mac_signature_ok(str(f)) is True
+    monkeypatch.setattr(EU.sys, "platform", "linux"); monkeypatch.setattr(EU.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("not asked on other systems")))
+    assert EU.mac_signature_ok(str(f)) is True

@@ -200,7 +200,7 @@ def test_every_text_of_the_voip_page_is_in_greek(tmp_path):
             texts_ = []
             if isinstance(w, (W.QLabel, W.QAbstractButton)): texts_.append(w.text())
             if isinstance(w, W.QLineEdit): texts_.append(w.placeholderText())
-            if isinstance(w, W.QComboBox): texts_ += [w.itemText(i) for i in range(w.count())]
+            if isinstance(w, W.QComboBox) and w not in (pg.mic_dev, pg.spk_dev): texts_ += [w.itemText(i) for i in range(w.count())]       # the sound devices are named by the system, not by us
             if isinstance(w, W.QAbstractSpinBox): texts_.append(w.specialValueText())
             texts_.append(w.toolTip())
             for t in texts_:

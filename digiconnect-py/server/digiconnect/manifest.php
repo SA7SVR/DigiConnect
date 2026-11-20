@@ -38,7 +38,7 @@ $out['msgs'] = $in ? dc_messages_for($id, (int)$in['first_seen']) : [];
 
 $rel = dc_opt('paused', '0') === '1' ? null : dc_active_release($id ?: null);
 if ($rel) {
-  $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? '') . rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
+  $base = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? '') . rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
   $newer = ($v === '' || version_compare($rel['version'], $v, '>'));
   $out['latest'] = $rel['version'];
   $out['update'] = $newer ? 'available' : 'uptodate';

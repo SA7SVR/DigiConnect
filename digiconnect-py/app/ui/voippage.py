@@ -168,7 +168,8 @@ class VoipPage(W.QWidget):
         self.people = W.QListWidget(); self.people.setIconSize(QtCore.QSize(14, 14)); self.people.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); self.people.setTextElideMode(Qt.TextElideMode.ElideRight); ev.addWidget(self.people, 3)
         self.people_note = label("", muted=True); self.people_note.setWordWrap(True); ev.addWidget(self.people_note)
         ev.addWidget(label("RECENT CALLS", section=True)); self.hist = W.QListWidget(); self.hist.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff); ev.addWidget(self.hist, 2)
-        br = hbox(s=6); self.add = button("Add"); self.edit = button("Edit"); self.rm = button("Remove"); br.addWidget(self.add, 1); br.addWidget(self.edit, 1); br.addWidget(self.rm, 1); ev.addLayout(br)     # fixed at the very bottom of the panel
+        br = hbox(s=6); self.add = button("Add"); self.edit = button("Edit"); self.rm = button("Remove"); br.addWidget(self.add, 1); br.addWidget(self.edit, 1); br.addWidget(self.rm, 1); ev.addLayout(br)
+        for b in (self.add, self.edit, self.rm): b.setSizePolicy(W.QSizePolicy.Policy.Ignored, b.sizePolicy().verticalPolicy())      # the three share the width equally whatever their texts are (on Windows the fonts made them differ)     # fixed at the very bottom of the panel
         # wiring
         self.vm_btn.clicked.connect(self._voicemail); self.sign.clicked.connect(self._sign); self.call_btn.clicked.connect(self._call); self.hang.clicked.connect(self.ph.hangup); self.answer.clicked.connect(self.ph.answer); self.decline.clicked.connect(self.ph.reject)
         self.mute.toggled.connect(self.ph.set_muted); self.number.returnPressed.connect(self._call)

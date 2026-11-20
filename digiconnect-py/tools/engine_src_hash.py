@@ -13,7 +13,7 @@ RECORD = ROOT / "tests" / "engine_src.sha256"
 
 def compute() -> str:
     h = hashlib.sha256()
-    for p in sorted((ROOT / "engine").rglob("*")):
+    for p in sorted((ROOT / "engine").rglob("*"), key=lambda q: q.relative_to(ROOT / "engine").parts):      # the same order on every system (Windows sorts paths without regard to case)
         rel = p.relative_to(ROOT / "engine").as_posix()
         if not p.is_file() or rel.startswith("tests/") or "/." in "/" + rel: continue
         h.update(rel.encode() + b"\0"); h.update(p.read_bytes().replace(b"\r\n", b"\n")); h.update(b"\0")
