@@ -77,6 +77,7 @@ EL = {
     "I agree that my name and callsign are sent to the HELLAS Zone server only to answer this request": "Συμφωνώ να σταλούν το όνομα και το διακριτικό μου στον server του HELLAS Zone μόνο για να απαντηθεί αυτή η αίτηση",
     "Your request is waiting for the owner of the server. This page checks by itself every few minutes.": "Η αίτησή σου περιμένει τον ιδιοκτήτη του server. Η σελίδα ελέγχει μόνη της κάθε λίγα λεπτά.",
     "This account is blocked by the owner of the server": "Ο λογαριασμός έχει αποκλειστεί από τον ιδιοκτήτη του server",
+    "Set by the owner of the server": "Ορίστηκε από τον ιδιοκτήτη του server",
     "Check the account now": "Έλεγχος του λογαριασμού τώρα", "Use another account": "Χρήση άλλου λογαριασμού",
     "This account comes from the owner of the server: the extension and the password are kept up to date by themselves.": "Ο λογαριασμός προέρχεται από τον ιδιοκτήτη του server: το εσωτερικό και ο κωδικός ενημερώνονται μόνοι τους.",
     "The account is no longer kept up to date from the server. You can enter another account.": "Ο λογαριασμός δεν ενημερώνεται πια από τον server. Μπορείς να βάλεις άλλον λογαριασμό.",

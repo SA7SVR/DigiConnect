@@ -83,7 +83,6 @@ class VoipPage(W.QWidget):
         self.reg = label("Not signed in", muted=True); self.reg.setWordWrap(True); v.addWidget(self.reg)
         self.req_btn = button("I don't have an account: request one"); self.req_chk = button("Check the request"); self.req_lbl = label("", muted=True); self.req_lbl.setWordWrap(True)
         v.addWidget(self.req_btn); v.addWidget(self.req_chk); v.addWidget(self.req_lbl)
-        self.unlink_btn = button("Use another account"); v.addWidget(self.unlink_btn); self.unlink_btn.clicked.connect(self._unlink)
         self.req_btn.clicked.connect(self._req_dialog); self.req_chk.clicked.connect(lambda: self._req_check(False))
         self.acc = ctx.voip_account                                                    # keeps the account in step with the server (also when this page is closed)
         self.acc.note.connect(self._note); self.acc.account_changed.connect(self._load_from_settings); self.acc.state_changed.connect(self._req_refresh)
@@ -240,21 +239,19 @@ class VoipPage(W.QWidget):
 
     def _req_refresh(self):
         st = self.ctx.store.settings; state = self.acc.state(); pend = state == "pending"; linked = state == "linked"
-        self.req_btn.setVisible(not pend and not linked); self.req_chk.setVisible(pend or linked); self.unlink_btn.setVisible(linked)
+        self.req_btn.setVisible(not pend and not linked); self.req_chk.setVisible(pend or linked)
         self.req_chk.setText(tr("Check the request") if pend else tr("Check the account now"))
         self.req_btn.setText(tr("Request an account again") if state == "rejected" else tr("I don't have an account: request one"))
-        for w in (self.server, self.port, self.user, self.auth_user, self.domain, self.pw): w.setReadOnly(linked)       # the owner's server decides these: an edit would be overwritten at the next check
-        self.transport.setEnabled(not linked)
+        for w in (self.server, self.port, self.user, self.auth_user, self.domain, self.pw, self.transport):           # the owner's server decides these: grey, and an edit would be overwritten at the next check anyway
+            if isinstance(w, W.QLineEdit): w.setReadOnly(linked)
+            else: w.setEnabled(not linked)
+            w.setProperty("locked", linked); w.setToolTip(tr("Set by the owner of the server") if linked else ""); w.style().unpolish(w); w.style().polish(w)
         if not self.req_lbl.text():
             if pend: self.req_lbl.setText(tr("Your request is waiting for the owner of the server. This page checks by itself every few minutes."))
             elif linked: self.req_lbl.setText(tr("This account comes from the owner of the server: the extension and the password are kept up to date by themselves."))
         b = self.acc.blocked()
         if linked and b[0]: self.req_lbl.setText("⚠  " + self.acc.block_text())
         self.req_lbl.setVisible(bool(self.req_lbl.text()))
-
-    def _unlink(self):
-        st = self.ctx.store.settings; st.update(voip_req_state="", voip_req_token="", voip_req_id=0, voip_block=False, voip_block_until=0, voip_block_reason="", voip_auto=False); self.ctx.store.save_settings()
-        self.req_lbl.setText(tr("The account is no longer kept up to date from the server. You can enter another account.")); self._req_refresh()
 
     def _load_from_settings(self):
         """The account in the settings was replaced by what the server sent: the fields show it."""

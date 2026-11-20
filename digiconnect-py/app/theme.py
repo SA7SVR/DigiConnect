@@ -124,6 +124,7 @@ QPushButton[kind="star"] {{ background:transparent; border:none; font-size:{font
 QLineEdit, QComboBox, QDateEdit, QDateTimeEdit, QPlainTextEdit, QSpinBox {{
   background:{c['field']}; border:1px solid {c['border']}; border-radius:9px; padding:8px 10px; selection-background-color:{c['accent2']}; selection-color:#ffffff; }}
 QLineEdit:focus, QComboBox:focus, QPlainTextEdit:focus {{ border-color:{c['accent']}; }}
+QLineEdit[locked="true"], QComboBox[locked="true"], QLineEdit[locked="true"]:focus {{ background:{c['bg']}; color:{c['muted']}; border:1px dashed {c['border']}; }}
 QComboBox::drop-down {{ border:none; width:22px; }}
 QComboBox QAbstractItemView {{ background:{c['panel']}; border:1px solid {c['border']}; selection-background-color:{c['accent2']}; selection-color:#ffffff; }}
 QCheckBox::indicator {{ width:16px; height:16px; border-radius:4px; border:1px solid {c['border']}; background:{c['field']}; }}

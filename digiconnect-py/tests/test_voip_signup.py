@@ -86,8 +86,10 @@ def test_a_request_is_approved_and_the_account_fills_in_and_stays_linked_with_th
     assert st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1" and st.settings["voip_transport"] == "tls"
     assert st.settings["voip_req_token"] and base.sql("SELECT pw FROM dc_voip_req")[0]["pw"] == "Secret-pass-1"      # the link stays, and the password stays on the server
     assert st.settings["voip_auto"] is True and st.settings["voip_remember"] is True                                  # it signs in by itself when the program starts
-    assert "2001" in pg.req_lbl.text() and not pg.req_btn.isVisible() and pg.req_chk.isVisible() and pg.unlink_btn.isVisible()
+    assert "2001" in pg.req_lbl.text() and not pg.req_btn.isVisible() and pg.req_chk.isVisible()
     assert pg.user.isReadOnly() and pg.pw.isReadOnly() and not pg.transport.isEnabled()                              # the server decides these
+    for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw, pg.transport): assert w.property("locked") is True and w.toolTip() == "Set by the owner of the server"      # shown grey
+    assert not pg.name.isReadOnly() and pg.name.property("locked") in (None, False) and pg.remember.isEnabled() and pg.auto.isEnabled()                                    # what the user may still change stays normal
 
 
 def linked(base, tmp_path, ext="2001", pw="Secret-pass-1"):
@@ -165,11 +167,12 @@ def test_an_account_the_owner_deleted_is_noticed_and_the_saved_details_stay(base
     assert "removed" in pg.req_lbl.text() and st.settings["voip_user"] == "2001" and pg.req_btn.isVisible() and not pg.user.isReadOnly()
 
 
-def test_use_another_account_unlinks_the_program_from_the_server(base, tmp_path):
+def test_a_linked_program_has_no_way_to_point_the_account_somewhere_else(base, tmp_path):
     st, pg, a, rid = linked(base, tmp_path)
-    pg.unlink_btn.click(); W.QApplication.processEvents()
-    assert st.settings["voip_req_state"] == "" and st.settings["voip_req_token"] == "" and st.settings["voip_auto"] is False and not pg.user.isReadOnly() and pg.req_btn.isVisible()
-    assert base.sql("SELECT COUNT(*) n FROM dc_voip_req")[0]["n"] == 1                                               # the account itself stays on the server
+    assert not hasattr(pg, "unlink_btn") and not [b for b in pg.findChildren(W.QPushButton) if b.text() == "Use another account"]     # no button that unlocks the fields
+    for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw): w.setText("evil.example.org"); w.editingFinished.emit()   # even a forced edit does not stick:
+    pg.acc.check(True); assert wait(lambda: st.settings["voip_server"] == "pbx.example.org"), st.settings["voip_server"]               # the next check puts the owner's details back
+    assert st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1" and pg.server.text() == "pbx.example.org"
 
 
 def test_a_rejection_shows_the_reason_and_allows_a_new_request(base, tmp_path):
