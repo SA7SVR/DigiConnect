@@ -149,8 +149,7 @@ class MainWindow(W.QMainWindow):
         self.qdrawer.saved.connect(self.log.reload); self.settings.applied.connect(self.apply_settings); self.ctx.dmr_server_changed.connect(self.settings.sync_server)
         self.ctx.changed.connect(self._sync_chrome)
         self.ctx.phone.call_changed.connect(self._phone_call)
-        if self.ctx.store.settings.get("voip_auto") and self.ctx.store.settings.get("voip_user") and self.ctx.store.settings.get("voip_pw") and self.ctx.store.settings.get("voip_remember", True):
-            QtCore.QTimer.singleShot(2500, lambda: self.ctx.phone.sign_in())          # only when the user asked for it and the password is saved
+        self.ctx.voip_account.start(); QtCore.QTimer.singleShot(2500, self._voip_start)
         t = QtCore.QTimer(self); t.timeout.connect(self._clock); t.start(1000)
         QtGui.QShortcut(QtGui.QKeySequence("F4"), self, activated=self._mute_all)
         QtGui.QShortcut(QtGui.QKeySequence("F2"), self, activated=self._f2)
@@ -340,6 +339,13 @@ class MainWindow(W.QMainWindow):
     def toggle_theme(self):
         s = self.ctx.store.settings; s["theme"] = "light" if theme.current == "dark" else "dark"; self.ctx.store.save_settings()
         self.apply_settings(); self.settings.sync_theme()
+
+    def _voip_start(self):
+        """At start-up: take the newest details of the VoIP account from the server (a new password, a block), then sign in if the user wants that. If the server cannot be reached the saved ones are used."""
+        def go():
+            st = self.ctx.store.settings
+            if st.get("voip_auto") and st.get("voip_user") and st.get("voip_pw") and st.get("voip_remember", True): self.ctx.phone.sign_in()      # only when the user asked for it and the password is saved
+        self.ctx.voip_account.ensure_fresh(go)
 
     def _clock(self):
         from datetime import timezone; u = datetime.now(timezone.utc); l = datetime.now()

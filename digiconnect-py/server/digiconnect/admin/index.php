@@ -434,9 +434,10 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     if (!$r) flash('bad', L('Η αίτηση δεν βρέθηκε.', 'Request not found.'));
     elseif ($ext === '' || strlen($pw) < 6 || strlen($pw) > 64 || preg_match('/[\x00-\x1f]/', $pw)) flash('bad', L('Γράψε εσωτερικό και κωδικό (6–64 χαρακτήρες).', 'Enter the extension and a password (6–64 characters).'));
     else {
-      dc_q("UPDATE dc_voip_req SET status='approved', ext=?, pw=?, reason='', decided_t=?, delivered_t=NULL WHERE id=?", [$ext, $pw, time(), $rid]);
+      dc_q('DELETE FROM dc_voip_req WHERE call=? AND id<>? AND status=\'approved\'', [$r['call'], $rid]);       // the same person asks again: the new account replaces the old one
+      dc_q("UPDATE dc_voip_req SET status='approved', ext=?, pw=?, pw_t=?, reason='', decided_t=?, delivered_t=NULL, blocked=0, block_until=0, block_reason='' WHERE id=?", [$ext, $pw, time(), time(), $rid]);
       dc_event('voip_ok', $r['call'] . '|' . $ext);
-      flash('ok', L('Εγκρίθηκε. Τα στοιχεία θα τα πάρει το πρόγραμμα του χρήστη' . '.' . ' ΣΗΜΑΝΤΙΚΟ: φτιάξε το ίδιο extension με τον ίδιο κωδικό στο FusionPBX.', 'Approved. The user’s program will receive the details' . '.' . ' IMPORTANT: create the same extension with the same password in FusionPBX.'));
+      flash('ok', L('Εγκρίθηκε. Το πρόγραμμα του χρήστη θα πάρει μόνο του εσωτερικό και κωδικό. ΣΗΜΑΝΤΙΚΟ: φτιάξε το ίδιο extension με τον ίδιο κωδικό στο FusionPBX.', 'Approved. The user’s program will receive the extension and password by itself. IMPORTANT: create the same extension with the same password in FusionPBX.'));
     }
   }
   if ($a === 'voip_reject') {
@@ -446,6 +447,24 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
       flash('ok', L('Η αίτηση απορρίφθηκε.', 'Request rejected.'));
     }
   }
+  if ($a === 'voip_pw') {                                                                         // a new password for an account (the user lost it, or it was changed in FusionPBX): the program receives it by itself
+    $rid = (int)($_POST['rid'] ?? 0); $r = dc_one("SELECT * FROM dc_voip_req WHERE id=? AND status='approved'", [$rid]); $pw = (string)($_POST['pw'] ?? '');
+    $ext = preg_replace('/[^0-9A-Za-z*#_.-]/', '', (string)($_POST['ext'] ?? ''));
+    if (!$r) flash('bad', L('Ο λογαριασμός δεν βρέθηκε.', 'Account not found.'));
+    elseif ($ext === '' || strlen($pw) < 6 || strlen($pw) > 64 || preg_match('/[\x00-\x1f]/', $pw)) flash('bad', L('Γράψε εσωτερικό και κωδικό (6–64 χαρακτήρες).', 'Enter the extension and a password (6–64 characters).'));
+    else {
+      dc_q('UPDATE dc_voip_req SET ext=?, pw=?, pw_t=?, delivered_t=NULL WHERE id=?', [$ext, $pw, time(), $rid]); dc_event('voip_pw', $r['call'] . '|' . $ext);
+      flash('ok', L('Αποθηκεύτηκε. Το πρόγραμμα του χρήστη θα το πάρει μόνο του. Άλλαξέ το και στο FusionPBX.', 'Saved. The user’s program will receive it by itself. Change it in FusionPBX too.'));
+    }
+  }
+  if ($a === 'voip_block') {                                                                      // stop one person (for a time, or until you lift it) without closing VoIP for everybody
+    $rid = (int)($_POST['rid'] ?? 0); $r = dc_one("SELECT * FROM dc_voip_req WHERE id=? AND status='approved'", [$rid]); $h = max(0, min(24 * 365, (int)($_POST['hours'] ?? 0)));
+    if ($r) {
+      dc_q('UPDATE dc_voip_req SET blocked=1, block_until=?, block_reason=? WHERE id=?', [$h > 0 ? time() + $h * 3600 : 0, substr(trim((string)($_POST['reason'] ?? '')), 0, 200), $rid]); dc_event('voip_blk', $r['call'] . '|' . $h);
+      flash('ok', L('Ο λογαριασμός αποκλείστηκε. Για πλήρη αποκλεισμό απενεργοποίησε και το extension στο FusionPBX.', 'The account is blocked. To block it completely, also disable the extension in FusionPBX.'));
+    }
+  }
+  if ($a === 'voip_unblock') { $rid = (int)($_POST['rid'] ?? 0); dc_q("UPDATE dc_voip_req SET blocked=0, block_until=0, block_reason='' WHERE id=?", [$rid]); flash('ok', L('Ο αποκλεισμός άρθηκε.', 'The block is lifted.')); }
   if ($a === 'voip_del') { dc_q('DELETE FROM dc_voip_req WHERE id=?', [(int)($_POST['rid'] ?? 0)]); }
   // ---- site statistics: do not count my own visits ----
   if ($a === 'stats_ignore') {
@@ -490,7 +509,7 @@ $p = $_GET['p'] ?? 'dashboard';
 $PAGES = ['dashboard' => L('Επισκόπηση','Overview','Översikt'), 'stats' => L('Στατιστικά','Statistics','Statistik'), 'releases' => L('Εκδόσεις','Releases','Versioner'),
   'installs' => L('Εγκαταστάσεις','Installations','Installationer'), 'demos' => L('Demo','Demo','Demo'), 'downloads' => L('Λήψεις / Εγγραφές','Downloads / Sign-ups','Nedladdningar'),
   'licenses' => L('Άδειες / Κωδικοί','Licences / Codes','Licenser'), 'modes' => L('Modes / Πολιτικές','Modes / Policies','Lägen / Regler'), 'payments' => L('Πληρωμές','Payments','Betalningar'), 'servers' => L('Servers / Λίστες','Servers / Host lists','Servrar'), 'messages' => L('Ανακοινώσεις','Announcements','Meddelanden till alla'), 'inbox' => L('Αναφορές','Reports','Rapporter'), 'chat' => L('Συνομιλίες','Chats','Chattar'),
-  'voip' => L('VoIP αιτήσεις','VoIP requests','VoIP-förfrågningar'), 'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'backups' => L('Αντίγραφα βάσης','Database backups','Säkerhetskopior'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
+  'voip' => L('VoIP λογαριασμοί','VoIP accounts','VoIP-konton'), 'activity' => L('Δραστηριότητα','Activity','Aktivitet'), 'backups' => L('Αντίγραφα βάσης','Database backups','Säkerhetskopior'), 'settings' => L('Ρυθμίσεις','Settings','Inställningar')];
 if (!isset($PAGES[$p])) $p = 'dashboard';
 
 if (!$auth) { login_page($login_err ?? ''); exit; }
@@ -572,7 +591,7 @@ $SUB = ['stats' => L('Νέες εγκαταστάσεις και λήψεις α
   'messages' => L('Μήνυμα σε όλους ή σε μία εγκατάσταση — εμφανίζεται μέσα στο πρόγραμμα.','A message to everyone or one installation — it shows inside the program.'),
   'demos' => L('Ποιος δοκιμάζει το πρόγραμμα, πόσο χρόνο έχει ακόμη και αν το χρησιμοποίησε.','Who is trying the program, how much time is left and whether it was used.'),
   'inbox' => L('Αναφορές διαγνωστικών και μηνύματα από τη φόρμα του site· οι συζητήσεις με χρήστες είναι στις Συνομιλίες.','Diagnostics reports and messages from the website form; conversations with users are in Chats.'),
-  'voip' => L('Αιτήσεις για λογαριασμό VoIP από το πρόγραμμα: φτιάχνεις το extension στο FusionPBX, γράφεις εδώ εσωτερικό και κωδικό, και το πρόγραμμα του χρήστη τα παίρνει μόνο του.','VoIP account requests from the program: create the extension in FusionPBX, enter the extension and password here, and the user’s program receives them by itself.'),
+  'voip' => L('Λογαριασμοί VoIP: οι αιτήσεις από το πρόγραμμα, όσοι έχουν πάρει λογαριασμό και οι ρυθμίσεις. Γράφεις εσωτερικό και κωδικό και το πρόγραμμα του χρήστη τα παίρνει μόνο του.','VoIP account requests from the program: create the extension in FusionPBX, enter the extension and password here, and the user’s program receives them by itself.'),
   'chat' => L('Ζωντανές συνομιλίες από τη σελίδα του DigiConnect.','Live chats from the DigiConnect website.'),
   'activity' => L('Όλα όσα έγιναν, με τη σειρά.','Everything that happened, in order.'),
   'backups' => L('Αυτόματα αντίγραφα ολόκληρης της βάσης κάθε ώρα — λήψη και επαναφορά με ένα κουμπί.','Automatic copies of the whole database every hour — download and restore with one button.'),
@@ -1199,35 +1218,73 @@ elseif ($p === 'inbox') {
 /* ===================== VoIP ACCOUNT REQUESTS ===================== */
 elseif ($p === 'voip') {
   $V = dc_voip_settings();
-  $rows = dc_q("SELECT * FROM dc_voip_req ORDER BY (status='new') DESC, t DESC LIMIT 200")->fetchAll();
-  echo '<section class="card"><h2>' . L('Αιτήσεις', 'Requests') . '</h2>';
-  if (!$rows) echo '<div class="muted">' . L('Δεν υπάρχουν αιτήσεις ακόμη.', 'No requests yet.') . '</div>';
-  foreach ($rows as $r) {
-    $pill = $r['status'] === 'new' ? '<span class="pill o">' . L('νέα', 'new') . '</span>' : ($r['status'] === 'approved' ? '<span class="pill ok">' . L('εγκρίθηκε', 'approved') . '</span>' . ((string)$r['pw'] !== '' ? ' <span class="pill">' . L('περιμένει παράδοση', 'waiting to be delivered') . '</span>' : ' <span class="pill ok">' . L('παραδόθηκε', 'delivered') . '</span>') : '<span class="pill">' . L('απορρίφθηκε', 'rejected') . '</span>');
-    echo '<div class="card" style="margin:10px 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' ' . $pill . '<span class="space"></span><small class="muted">' . dc_dt($r['t']) . '</small></div>'
-      . '<div class="muted" style="font-size:12px;margin:2px 0 6px">' . ($r['want'] !== '' ? L('ζητά εσωτερικό', 'wants extension') . ' <b>' . h($r['want']) . '</b> · ' : '') . h($r['ip']) . '</div>'
-      . ($r['body'] !== '' ? '<div style="white-space:pre-wrap;margin:4px 0 8px;user-select:text">' . h($r['body']) . '</div>' : '');
-    if ($r['status'] === 'new') {
-      echo '<form method="post" class="form" style="margin-top:6px">' . csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="rid" value="' . (int)$r['id'] . '">'
-        . '<label>' . L('Εσωτερικό (ίδιο με αυτό που φτιάχνεις στο FusionPBX)', 'Extension (the same as the one you create in FusionPBX)') . '<input name="ext" value="' . h($r['want']) . '"></label>'
-        . '<label>' . L('Κωδικός (πρότεινα έναν· βάλε τον ίδιο στο FusionPBX)', 'Password (suggested; use the same in FusionPBX)') . '<input name="pw" value="' . h(dc_voip_password()) . '" style="font-family:monospace"></label>'
-        . '<div style="display:flex;gap:6px;margin-top:6px"><button class="btn pri sm" name="a" value="voip_approve">' . L('Έγκριση', 'Approve') . '</button></div>'
-        . '<label style="margin-top:8px">' . L('Λόγος απόρριψης (προαιρετικό)', 'Reason for rejecting (optional)') . '<input name="reason"></label>'
-        . '<div style="display:flex;gap:6px;margin-top:6px"><button class="btn sm" name="a" value="voip_reject">' . L('Απόρριψη', 'Reject') . '</button></div></form>';
-    } elseif ($r['status'] === 'approved') {
-      echo '<div class="muted" style="font-size:12px">' . L('Εσωτερικό', 'Extension') . ': <b>' . h($r['ext']) . '</b> · ' . L('ο κωδικός σβήνεται από τον server μόλις το πρόγραμμα τον παραλάβει', 'the password is erased from this server as soon as the program has received it') . '</div>';
-    } elseif ($r['reason'] !== '') echo '<div class="muted" style="font-size:12px">' . h($r['reason']) . '</div>';
-    echo '<form method="post" style="margin-top:6px">' . csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="rid" value="' . (int)$r['id'] . '"><button class="btn sm danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή;', 'Delete?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form></div>';
+  $tab = in_array($_GET['tab'] ?? '', ['acc', 'req', 'set'], true) ? $_GET['tab'] : '';
+  $nNew = (int)dc_scalar("SELECT COUNT(*) FROM dc_voip_req WHERE status='new'"); $nAcc = (int)dc_scalar("SELECT COUNT(*) FROM dc_voip_req WHERE status='approved'");
+  if ($tab === '') $tab = $nNew > 0 ? 'req' : 'acc';
+  $tabs = ['req' => L('Αιτήσεις', 'Requests') . ($nNew ? ' (' . $nNew . ')' : ''), 'acc' => L('Λογαριασμοί', 'Accounts') . ' (' . $nAcc . ')', 'set' => L('Ρυθμίσεις', 'Settings')];
+  echo '<style>.vq input,.vq select{padding:3px 7px;font-size:12px;width:auto;min-width:0}.vq .btn{padding:3px 10px;font-size:12px}.vq .r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}.vq .r small{color:var(--muted,#888)}'
+    . '.vq .it{border:1px solid var(--line,#8884);border-radius:8px;padding:8px 10px;margin:8px 0}.vq .hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.vq .sp{flex:1}.vq .vp{margin:0}.vq .vp.wait{color:#d99a1c}.vq .vp.wait i{background:#d99a1c}</style>';
+  echo '<script>function vqgen(b){var a="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789",u=new Uint32Array(14),o="";crypto.getRandomValues(u);for(var i=0;i<14;i++)o+=a[u[i]%a.length];var f=b.form.pw;f.value=o;f.type="text";f.focus();f.select()}</script>';
+  echo '<div class="vq" style="display:flex;gap:6px;margin-bottom:10px">';
+  foreach ($tabs as $k => $t) echo '<a class="btn sm' . ($tab === $k ? ' pri' : '') . '" href="?p=voip&amp;tab=' . $k . '">' . h($t) . '</a>';
+  echo '</div>';
+  $hid = function ($r) { return csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="rid" value="' . (int)$r['id'] . '">'; };
+
+  if ($tab === 'req') {
+    $rows = dc_q("SELECT * FROM dc_voip_req WHERE status IN ('new','rejected') ORDER BY (status='new') DESC, t DESC LIMIT 200")->fetchAll();
+    echo '<section class="card vq"><h2>' . L('Αιτήσεις', 'Requests') . '</h2>';
+    if (!$rows) echo '<div class="muted">' . L('Δεν υπάρχουν αιτήσεις.', 'No requests.') . '</div>';
+    foreach ($rows as $r) {
+      $known = dc_one("SELECT ext FROM dc_voip_req WHERE status='approved' AND call=? ORDER BY decided_t DESC", [$r['call']]);
+      echo '<div class="it"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' ' . ($r['status'] === 'new' ? '<span class="pill o">' . L('νέα', 'new') . '</span>' : '<span class="pill">' . L('απορρίφθηκε', 'rejected') . '</span>')
+        . ($known ? ' <span class="pill">' . L('έχει ήδη λογαριασμό', 'already has an account') . ' ' . h($known['ext']) . '</span>' : '') . '<span class="sp"></span><small class="muted">' . dc_dt($r['t']) . '</small></div>'
+        . '<div class="muted" style="font-size:12px">' . ($r['want'] !== '' ? L('ζητά εσωτερικό', 'wants extension') . ' <b>' . h($r['want']) . '</b> · ' : '') . h($r['ip']) . '</div>'
+        . ($r['body'] !== '' ? '<div style="white-space:pre-wrap;margin:4px 0;font-size:13px;user-select:text">' . h($r['body']) . '</div>' : '');
+      if ($r['status'] === 'new') {
+        echo '<form method="post" class="r">' . $hid($r) . '<small>' . L('Εσωτερικό', 'Extension') . '</small><input name="ext" size="6" value="' . h($known ? $known['ext'] : $r['want']) . '">'
+          . '<small>' . L('Κωδικός', 'Password') . '</small><input name="pw" size="16" value="' . h(dc_voip_password()) . '" style="font-family:monospace">'
+          . '<button class="btn" type="button" onclick="vqgen(this)" title="' . h(L('Φτιάχνει έναν τυχαίο κωδικό', 'Makes a random password')) . '">🔑 ' . L('Δημιουργία κωδικού', 'Generate password') . '</button><button class="btn pri" name="a" value="voip_approve">' . L('Έγκριση', 'Approve') . '</button></form>'
+          . '<form method="post" class="r">' . $hid($r) . '<input name="reason" size="26" placeholder="' . h(L('Λόγος απόρριψης (προαιρετικό)', 'Reason (optional)')) . '"><button class="btn" name="a" value="voip_reject">' . L('Απόρριψη', 'Reject') . '</button>'
+          . '<button class="btn danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή;', 'Delete?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form>';
+      } else {
+        echo ($r['reason'] !== '' ? '<div class="muted" style="font-size:12px">' . h($r['reason']) . '</div>' : '')
+          . '<form method="post" class="r">' . $hid($r) . '<button class="btn danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή;', 'Delete?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form>';
+      }
+      echo '</div>';
+    }
+    echo '</section>';
+  } elseif ($tab === 'acc') {
+    $rows = dc_q("SELECT v.*, i.last_ping AS i_ping, i.voip AS i_voip, i.voip_ext AS i_vx, i.version AS i_ver FROM dc_voip_req v LEFT JOIN dc_installs i ON i.id = v.inst WHERE v.status='approved' ORDER BY v.call LIMIT 500")->fetchAll();
+    echo '<section class="card vq"><h2>' . L('Λογαριασμοί VoIP', 'VoIP accounts') . '</h2><div class="help" style="margin-bottom:6px">' . L('Όσοι έχουν πάρει λογαριασμό. Ο κωδικός μένει μόνιμα στον λογαριασμό και το πρόγραμμα τον παίρνει μόνο του· αν αλλάξεις τον κωδικό εδώ, τον παίρνει αυτόματα. Ο αποκλεισμός σταματά μόνο το πρόγραμμα DigiConnect· για πλήρη αποκλεισμό απενεργοποίησε και το extension στο FusionPBX.', 'Everyone who has received an account. The password stays with the account and the program fetches it by itself; a new password set here reaches the program automatically. A block stops only the DigiConnect program; to block completely, also disable the extension in FusionPBX.') . '</div>';
+    if (!$rows) echo '<div class="muted">' . L('Κανείς δεν έχει πάρει ακόμη λογαριασμό.', 'Nobody has received an account yet.') . '</div>';
+    foreach ($rows as $r) {
+      [$bl, $bu, $br] = dc_voip_blocked($r);
+      $on = $r['i_ping'] !== null && (int)$r['i_ping'] >= time() - DC_ONLINE_S;
+      $vstate = $r['inst'] === null || $r['inst'] === '' || $r['i_voip'] === null || $r['i_voip'] === '' ? '' : ($on ? ((int)$r['i_voip'] === 1 ? 'on' : 'wait') : 'off');
+      $vtxt = ['on' => 'VoIP online', 'wait' => L('ενεργός, δεν έχει συνδεθεί στο VoIP', 'active, not signed in to VoIP'), 'off' => 'offline', '' => L('άγνωστο (δεν έχει αναφερθεί)', 'unknown (not reported)')][$vstate];
+      echo '<div class="it"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' · ☎ <b>' . h($r['ext']) . '</b> '
+        . ($bl ? '<span class="pill o">' . L('αποκλεισμένος', 'blocked') . ($bu ? ' ' . L('έως', 'until') . ' ' . dc_dt($bu) : ' ' . L('μέχρι να άρεις', 'until lifted')) . '</span>' : '<span class="pill ok">' . L('ενεργός', 'active') . '</span>')
+        . '<span class="sp"></span>' . ($vstate !== '' ? '<span class="vp ' . $vstate . '"><i></i>' . h($vtxt) . '</span>' : '<small class="muted">' . h($vtxt) . '</small>') . '</div>'
+        . '<div class="muted" style="font-size:12px">' . L('Εγκρίθηκε', 'Approved') . ' ' . dc_dt($r['decided_t']) . ' · ' . L('το πρόγραμμα τον πήρε', 'program fetched it') . ': ' . ((int)$r['delivered_t'] > 0 ? dc_dt($r['delivered_t']) : L('όχι ακόμη', 'not yet'))
+        . ((int)$r['pw_t'] > (int)$r['decided_t'] ? ' · ' . L('νέος κωδικός', 'new password') . ' ' . dc_dt($r['pw_t']) : '') . ($bl && $br !== '' ? ' · ' . h($br) : '') . '</div>'
+        . '<form method="post" class="r">' . $hid($r) . '<small>' . L('Εσωτερικό', 'Extension') . '</small><input name="ext" size="6" value="' . h($r['ext']) . '"><small>' . L('Κωδικός', 'Password') . '</small><input name="pw" size="16" value="' . h($r['pw']) . '" style="font-family:monospace">'
+        . '<button class="btn pri" name="a" value="voip_pw">' . L('Αποθήκευση', 'Save') . '</button><button class="btn" type="button" onclick="vqgen(this)" title="' . h(L('Φτιάχνει έναν τυχαίο κωδικό· μετά πάτα Αποθήκευση', 'Makes a random password; then press Save')) . '">🔑 ' . L('Δημιουργία κωδικού', 'Generate password') . '</button></form>';
+      if ($bl) echo '<form method="post" class="r">' . $hid($r) . '<button class="btn pri" name="a" value="voip_unblock">' . L('Άρση αποκλεισμού', 'Lift block') . '</button></form>';
+      else echo '<form method="post" class="r">' . $hid($r) . '<select name="hours"><option value="1">1 ' . L('ώρα', 'hour') . '</option><option value="24">1 ' . L('ημέρα', 'day') . '</option><option value="168">7 ' . L('ημέρες', 'days') . '</option><option value="0">' . L('μέχρι να τον άρω', 'until I lift it') . '</option></select>'
+        . '<input name="reason" size="22" placeholder="' . h(L('Λόγος (τον βλέπει ο χρήστης)', 'Reason (the user sees it)')) . '"><button class="btn" name="a" value="voip_block">' . L('Αποκλεισμός', 'Block') . '</button>'
+        . '<span class="sp"></span><button class="btn danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή λογαριασμού;', 'Delete the account?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form>';
+      echo '</div>';
+    }
+    echo '</section>';
+  } else {
+    echo '<section class="card vq"><h2>☎ ' . L('Ρυθμίσεις', 'Settings') . '</h2><div class="help" style="margin-bottom:10px">' . L('Όταν είναι ανοιχτές οι αιτήσεις, το πρόγραμμα δείχνει το κουμπί «Δεν έχω λογαριασμό». Τα στοιχεία του server στέλνονται στον χρήστη μόνο όταν εγκρίνεις την αίτησή του. Το VoIP για όλους ανοιγοκλείνει από τις Λειτουργίες (Modes).', 'When requests are open, the program shows the button “I don’t have an account”. The server details are sent to a user only when you approve the request. VoIP for everybody is switched in Modes.') . '</div>'
+      . '<form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="a" value="voip_set">'
+      . '<label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="voip_on" value="1" style="width:auto"' . ($V['on'] ? ' checked' : '') . '> ' . L('Δέχομαι αιτήσεις', 'Accept requests') . '</label>'
+      . '<div class="r"><small>' . L('Server SIP', 'SIP server') . '</small><input name="voip_server" size="26" value="' . h($V['server']) . '"><small>Port</small><input name="voip_port" type="number" size="6" style="width:80px" value="' . (int)$V['port'] . '">'
+      . '<small>' . L('Μεταφορά', 'Transport') . '</small><select name="voip_transport">' . implode('', array_map(function ($t) use ($V) { return '<option value="' . $t . '"' . ($V['transport'] === $t ? ' selected' : '') . '>' . strtoupper($t) . '</option>'; }, ['udp', 'tcp', 'tls'])) . '</select>'
+      . '<small>Domain</small><input name="voip_domain" size="22" placeholder="' . h(L('μόνο αν διαφέρει', 'only if different')) . '" value="' . h($V['domain']) . '"></div>'
+      . '<div><button class="btn pri">' . L('Αποθήκευση', 'Save') . '</button></div></form></section>';
   }
-  echo '</section>';
-  echo '<section class="card"><h2>☎ ' . L('Ρυθμίσεις', 'Settings') . '</h2><div class="help" style="margin-bottom:10px">' . L('Όταν είναι ανοιχτές οι αιτήσεις, το πρόγραμμα δείχνει το κουμπί «Δεν έχω λογαριασμό». Τα στοιχεία του server στέλνονται στον χρήστη μόνο όταν εγκρίνεις την αίτησή του.', 'When requests are open, the program shows the button “I don’t have an account”. The server details are sent to a user only when you approve the request.') . '</div>'
-    . '<form method="post" class="form">' . csrf() . '<input type="hidden" name="p" value="voip"><input type="hidden" name="a" value="voip_set">'
-    . '<label><input type="checkbox" name="voip_on" value="1"' . ($V['on'] ? ' checked' : '') . '> ' . L('Δέχομαι αιτήσεις', 'Accept requests') . '</label>'
-    . '<label>' . L('Server SIP (π.χ. sip.foxhost.org)', 'SIP server (e.g. sip.foxhost.org)') . '<input name="voip_server" value="' . h($V['server']) . '"></label>'
-    . '<label>Port<input name="voip_port" type="number" value="' . (int)$V['port'] . '"></label>'
-    . '<label>' . L('Μεταφορά', 'Transport') . '<select name="voip_transport">' . implode('', array_map(function ($t) use ($V) { return '<option value="' . $t . '"' . ($V['transport'] === $t ? ' selected' : '') . '>' . strtoupper($t) . '</option>'; }, ['udp', 'tcp', 'tls'])) . '</select></label>'
-    . '<label>Domain (' . L('μόνο αν διαφέρει από τον server', 'only if different from the server') . ')<input name="voip_domain" value="' . h($V['domain']) . '"></label>'
-    . '<button class="btn pri sm">' . L('Αποθήκευση', 'Save') . '</button></form></section>';
 }
 
 /* ===================== LIVE CHATS ===================== */
@@ -1604,8 +1661,9 @@ echo '<script>(function(){var b=document.getElementById("thm");if(b){function ma
 // VoIP: what the program reports about its own sign-in to the VoIP server (green = signed in, red = not). A program that reports nothing (older version) shows nothing: nothing is guessed.
 function voip_badge($r, bool $on): string {
   if (!array_key_exists('voip', $r) || $r['voip'] === null || $r['voip'] === '') return '';
-  $ok = $on && (int)$r['voip'] === 1;
-  return '<div class="vp ' . ($ok ? 'on' : 'off') . '"><i></i>☎ VoIP ' . ($ok ? 'online' . ((string)($r['voip_ext'] ?? '') !== '' ? ' · ' . h($r['voip_ext']) : '') : 'offline') . '</div>';
+  if (!$on) return '<div class="vp off"><i></i>☎ VoIP offline</div>';
+  if ((int)$r['voip'] === 1) return '<div class="vp on"><i></i>☎ VoIP online' . ((string)($r['voip_ext'] ?? '') !== '' ? ' · ' . h($r['voip_ext']) : '') . '</div>';
+  return '<div class="vp wait"><i></i>☎ ' . L('VoIP: ενεργός, δεν έχει συνδεθεί', 'VoIP: active, not signed in') . '</div>';        // the program runs but is not signed in to the VoIP server
 }
 function station_cards($rows) {
   if (!$rows) return '<p class="empty">' . L('Καμία εγκατάσταση ακόμη.','No installations yet.') . '</p>';
@@ -1672,7 +1730,7 @@ function rail_html() {
       . ($r['eq'] ? '<div class="r4">' . h($r['eq']) . '</div>' : '')
       . '<div class="r4">' . h($osn) . ($r['version'] ? ' · v' . h($r['version']) : '') . ' · ' . h(sprintf('DC-%05d', $r['rno'])) . '</div></div></a>';
   };
-  $o = '<div class="rail-h"><h3>' . L('Σταθμοί', 'Stations') . '</h3><span class="rn on"><i></i>' . count($on) . ' online</span><span class="rn">' . count($off) . ' offline</span><span class="rn vo" title="' . h(L('Συνδεδεμένοι στον VoIP server (όπως το αναφέρει το πρόγραμμα)', 'Signed in to the VoIP server (as the program reports it)')) . '"><i></i>☎ ' . count(array_filter($on, fn($r) => (string)($r['voip'] ?? '') === '1')) . ' VoIP</span></div>';
+  $o = '<div class="rail-h"><h3>' . L('Σταθμοί', 'Stations') . '</h3><span class="rn on"><i></i>' . count($on) . ' online</span><span class="rn">' . count($off) . ' offline</span><span class="rn vo" title="' . h(L('Συνδεδεμένοι στον VoIP server (όπως το αναφέρει το πρόγραμμα)', 'Signed in to the VoIP server (as the program reports it)')) . '"><i></i>☎ ' . count(array_filter($on, fn($r) => (string)($r['voip'] ?? '') === '1')) . ' VoIP</span>' . (($w = count(array_filter($on, fn($r) => (string)($r['voip'] ?? '') === '0'))) ? '<span class="rn" style="color:#d99a1c" title="' . h(L('Online στο DigiConnect αλλά όχι συνδεδεμένοι στο VoIP', 'Online in DigiConnect but not signed in to VoIP')) . '">☎ ' . $w . ' ' . L('χωρίς σύνδεση', 'not signed in') . '</span>' : '') . '</div>';
   $o .= '<div class="rail-s">' . L('Ανανεώνεται μόνο του κάθε 30″', 'Refreshes itself every 30″') . '</div>';
   if (!$on) $o .= '<div class="rail-e">' . L('Κανείς σε σύνδεση αυτή τη στιγμή.', 'Nobody online right now.') . '</div>';
   foreach ($on as $r) $o .= $card($r, true);
@@ -1723,6 +1781,8 @@ function activity_rows($rows) {
       case 'licence':   $txt = L('Άδεια ', 'Licence ') . ($d[0] === 'default' || $d[0] === 'reset' ? '<b>' . h($d[0] === 'reset' ? L('προεπιλογή σε υπάρχουσες', 'default applied to existing') : L('νέα προεπιλογή', 'new default')) . '</b> · ' . h($d[1] ?? '') : $who($d[0]) . ' → <b>' . h($d[1] ?? '') . '</b>' . (!empty($d[2]) ? ' → ' . h($d[2]) : '') . (!empty($d[3]) ? ' · <span class="muted">' . h($d[3]) . '</span>' : '')); $c = 'b'; break;
       case 'inbox':     $txt = '✉ ' . L('Μήνυμα από χρήστη: ', 'Message from a user: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[2] ?? '') . ' · <a href="?p=inbox">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
       case 'voip_req':  $txt = '☎ ' . L('Αίτηση λογαριασμού VoIP: ', 'VoIP account request: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? '') . ' · <a href="?p=voip">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
+      case 'voip_pw':   $txt = '☎ ' . L('Νέος κωδικός VoIP: ', 'New VoIP password: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'g'; break;
+      case 'voip_blk':  $txt = '☎ ' . L('Αποκλεισμός VoIP: ', 'VoIP block: ') . '<b>' . h($d[0] ?? '') . '</b>'; $c = 'o'; break;
       case 'voip_ok':   $txt = '☎ ' . L('Εγκρίθηκε λογαριασμός VoIP: ', 'VoIP account approved: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'g'; break;
       case 'inbox_reply': $txt = L('Απάντηση σε χρήστη: ', 'Reply to a user: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'b'; break;
       case 'chat_new':  $txt = '💬 ' . L('Νέα συνομιλία από τη σελίδα · ', 'New chat from the website · ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h(mb_substr((string)($d[2] ?? ''), 0, 80)) . ' · <a href="?p=chat&t=' . h($d[1] ?? '') . '">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
@@ -1838,7 +1898,7 @@ input,select,textarea{font:inherit;color:var(--text);background:var(--bg);border
 @media (min-width:1280px){body{grid-template-columns:230px minmax(0,1280px) 320px;justify-content:start}.rail{display:block;position:sticky;top:0;height:100vh;overflow:auto;padding:18px 12px;border-left:1px solid var(--line2);background:var(--bg2)}}
 .rail-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.rail-h h3{margin:0 auto 0 0;font-size:16px;color:var(--text);font-weight:700}
 .rn{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:5px}.rn i,.rs i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
-.vp{font-size:12px;margin-top:3px;display:flex;align-items:center;gap:6px;color:var(--bad,#d9534f)}.vp i{width:8px;height:8px;border-radius:50%;background:var(--bad,#d9534f);display:inline-block}.vp.on{color:var(--rx)}.vp.on i{background:var(--rx)}.rn.vo i{background:var(--rx)}.rn.on{color:var(--rx);font-weight:600}.rn.on i,.rs.on i{background:var(--rx);animation:rpulse 2s infinite}
+.vp{font-size:12px;margin-top:3px;display:flex;align-items:center;gap:6px;color:var(--bad,#d9534f)}.vp i{width:8px;height:8px;border-radius:50%;background:var(--bad,#d9534f);display:inline-block}.vp.on{color:var(--rx)}.vp.on i{background:var(--rx)}.vp.wait{color:#d99a1c}.vp.wait i{background:#d99a1c}.rn.vo i{background:var(--rx)}.rn.on{color:var(--rx);font-weight:600}.rn.on i,.rs.on i{background:var(--rx);animation:rpulse 2s infinite}
 @keyframes rpulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--rx) 55%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
 .rail-s{font-size:11px;color:var(--muted);margin:2px 0 10px}.rail-e{color:var(--muted);font-size:13px;padding:10px 0}
 .rail-t{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 6px;padding-top:10px;border-top:1px solid var(--line)}

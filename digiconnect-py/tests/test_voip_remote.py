@@ -92,14 +92,16 @@ def test_the_server_stores_what_the_program_reports_and_never_guesses(srv):
     ping(srv, voip=1, vx="<b>20;01</b>"); assert srv.sql("SELECT voip_ext FROM dc_installs")[0]["voip_ext"] == "b2001b"
 
 
-def test_the_stations_list_shows_green_for_signed_in_and_red_for_not(srv):
+def test_the_stations_list_tells_signed_in_from_active_but_not_signed_in_from_offline(srv):
     lic(srv).register(PERSON); a = Admin(srv.base)
     ping(srv, "inst-1", voip=1, vx="2001"); ping(srv, "inst-2", voip=0, call="SV2XYZ"); ping(srv, "inst-3", call="SV3OLD")
     html = a.page("dashboard")
-    green = re.findall(r'<div class="vp on"><i></i>☎ VoIP online · 2001</div>', html); red = re.findall(r'<div class="vp off"><i></i>☎ VoIP offline</div>', html)
-    assert len(green) >= 1 and len(red) >= 1, html[html.find('class="rail"'):][:1500]
-    assert html.count('class="vp ') == len(re.findall(r'class="vp (?:on|off)"', html))                          # the old program (SV3OLD) has no badge at all
-    assert "1 VoIP" in html                                                                                    # the count in the header of the list
+    green = re.findall(r'<div class="vp on"><i></i>☎ VoIP online · 2001</div>', html); amber = re.findall(r'<div class="vp wait"><i></i>☎ [^<]*</div>', html)
+    assert len(green) >= 1 and len(amber) >= 1, html[html.find('class="rail"'):][:1500]
+    assert "δεν έχει συνδεθεί" in amber[0] or "not signed in" in amber[0]                                       # the program runs, but is not signed in to the VoIP server
+    assert 'class="vp off"' not in html                                                                        # nobody is offline here
+    assert html.count('class="vp ') == len(re.findall(r'class="vp (?:on|wait|off)"', html))                    # the old program (SV3OLD) has no badge at all
+    assert "1 VoIP" in html and ("1 χωρίς σύνδεση" in html or "1 not signed in" in html)                      # the counts in the header of the list
     assert not re.search(r"(Fatal error|Warning:|Notice:|Deprecated:|Uncaught)", html)
 
 

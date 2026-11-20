@@ -65,7 +65,7 @@ function dc_db(): PDO {
     CREATE TABLE IF NOT EXISTS dc_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, txn TEXT UNIQUE, status TEXT, amount REAL, currency TEXT, payer_email TEXT, payer_name TEXT, memo TEXT, custom TEXT, install TEXT, code TEXT, matched_by TEXT, note TEXT, raw TEXT);
     CREATE TABLE IF NOT EXISTS dc_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, install TEXT, call TEXT, email TEXT, name TEXT, os TEXT, version TEXT, topic TEXT, subject TEXT, body TEXT, ip TEXT, lang TEXT, src TEXT, status TEXT DEFAULT 'new', reply TEXT, reply_t INT, read_t INT);
     CREATE INDEX IF NOT EXISTS i_dc_inbox_t ON dc_inbox(t);
-    CREATE TABLE IF NOT EXISTS dc_voip_req (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, tok TEXT, name TEXT, call TEXT, want TEXT, body TEXT, ip TEXT, lang TEXT, status TEXT DEFAULT 'new', ext TEXT, pw TEXT, reason TEXT, decided_t INT, delivered_t INT);
+    CREATE TABLE IF NOT EXISTS dc_voip_req (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, tok TEXT, name TEXT, call TEXT, want TEXT, body TEXT, ip TEXT, lang TEXT, status TEXT DEFAULT 'new', ext TEXT, pw TEXT, reason TEXT, decided_t INT, delivered_t INT, inst TEXT, pw_t INT, blocked INT DEFAULT 0, block_until INT DEFAULT 0, block_reason TEXT);
     CREATE INDEX IF NOT EXISTS i_dc_voip_t ON dc_voip_req(t);
     CREATE TABLE IF NOT EXISTS dc_visits (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, ip TEXT, page TEXT, lang TEXT, ua TEXT, ref TEXT, bot INT DEFAULT 0, br TEXT, os TEXT, dev TEXT);
     CREATE INDEX IF NOT EXISTS i_dc_vis_t ON dc_visits(t);
@@ -354,6 +354,12 @@ function dc_voip_settings(): array {
   return ['on' => dc_kv('voip_on', '0') === '1', 'server' => trim((string)dc_kv('voip_server', '')), 'port' => (int)(dc_kv('voip_port', '5060') ?: 5060),
           'transport' => in_array(dc_kv('voip_transport', 'udp'), ['udp', 'tcp', 'tls'], true) ? dc_kv('voip_transport', 'udp') : 'udp', 'domain' => trim((string)dc_kv('voip_domain', '')),
           'per_ip' => 5];
+}
+// is this account blocked right now? A block with an end time lifts itself; one without an end time stays until the owner lifts it. -> [blocked, until, reason]
+function dc_voip_blocked(array $r): array {
+  if ((int)($r['blocked'] ?? 0) !== 1) return [false, 0, ''];
+  $u = (int)($r['block_until'] ?? 0); if ($u > 0 && $u <= time()) return [false, 0, ''];
+  return [true, $u, (string)($r['block_reason'] ?? '')];
 }
 function dc_voip_password(int $n = 14): string {   // a suggestion for the new extension's password: letters and digits without look-alikes
   $a = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; $o = ''; for ($i = 0; $i < $n; $i++) $o .= $a[random_int(0, strlen($a) - 1)]; return $o;

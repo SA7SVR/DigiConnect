@@ -1,5 +1,5 @@
 """Asking the owner of the VoIP server for an account. The program sends the request to the licence server (voip_request.php), the owner approves it in the panel,
-and the program fetches the extension and the password from there (once: it confirms, the server wipes the password). Everything is a real HTTPS call; the
+and the program fetches the extension and the password from there. The password stays with the account on the server, so a lost or changed password never needs typing: the program asks again at every sign-in. Everything is a real HTTPS call; the
 functions block, so the page runs them on a worker thread. Nothing is invented: an error is the server's own error code or the network's own message."""
 import json, urllib.error, urllib.request
 from urllib.parse import urlencode
@@ -34,17 +34,19 @@ def is_open(base: str = "") -> bool:
     return bool(_post(base or BASE, action="info").get("open"))
 
 
-def submit(name: str, call: str, want: str = "", msg: str = "", lang: str = "", base: str = "") -> tuple[int, str]:
-    """Sends the request; returns (id, token). The token is the only proof that the request is yours: keep it."""
-    m = _post(base or BASE, action="submit", name=name, call=call, want=want, msg=msg, lang=lang, consent="1", website="")
+def submit(name: str, call: str, want: str = "", msg: str = "", lang: str = "", base: str = "", inst: str = "") -> tuple[int, str]:
+    """Sends the request; returns (id, token). The token is the only proof that the account is yours: keep it."""
+    m = _post(base or BASE, action="submit", name=name, call=call, want=want, msg=msg, lang=lang, consent="1", website="", inst=inst)
     return int(m.get("id", 0)), str(m.get("token", ""))
 
 
-def status(rid: int, token: str, base: str = "") -> dict:
-    """{'status': 'new'|'approved'|'rejected', ...}; when approved and not yet delivered: ext, password, server, port, transport, domain."""
-    return _post(base or BASE, action="status", id=rid, token=token)
+def status(rid: int, token: str, base: str = "", inst: str = "") -> dict:
+    """{'status': 'new'|'approved'|'rejected', ...}; when approved: ext, password, server, port, transport, domain, blocked, block_until, block_reason.
+    Asked again every time the program signs in, so a new password or a block set by the owner arrives by itself."""
+    return _post(base or BASE, action="status", id=rid, token=token, inst=inst)
 
 
-def ack(rid: int, token: str, base: str = ""):
-    """The details are saved on this computer: the server may erase the password."""
-    _post(base or BASE, action="ack", id=rid, token=token)
+def recover(call: str, inst: str, base: str = "") -> tuple[int, str]:
+    """The program lost its local data (new install, wiped settings) but this installation was given an account: the server gives a new token for it."""
+    m = _post(base or BASE, action="recover", call=call, inst=inst)
+    return int(m.get("id", 0)), str(m.get("token", ""))

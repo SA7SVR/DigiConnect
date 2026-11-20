@@ -17,6 +17,8 @@ def no_background_downloads(monkeypatch):
     from app.context import Ctx
     monkeypatch.setattr(Ctx, "refresh_hosts", lambda self, force=False: None)
     monkeypatch.setattr(Ctx, "refresh_asl", lambda self, force=False: None)
+    from app.voip import account
+    monkeypatch.setattr(account, "AUTO", False)                 # no automatic look-up of the VoIP account on the real network
 
 
 _STATUS = [0]

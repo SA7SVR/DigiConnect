@@ -14,8 +14,6 @@ PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
 
 
 class VoipPage(W.QWidget):
-    signup_done = QtCore.Signal(str, object)           # (what was asked, ('ok', answer) | ('err', SignupError)) - from the worker thread to the window
-
     def __init__(self, ctx):
         super().__init__(); self.ctx = ctx; self.ph = ctx.phone; s = ctx.store.settings
         top = vbox(self, s=10)                           # a notice when the owner's server has closed the phone, and the page itself
@@ -85,8 +83,10 @@ class VoipPage(W.QWidget):
         self.reg = label("Not signed in", muted=True); self.reg.setWordWrap(True); v.addWidget(self.reg)
         self.req_btn = button("I don't have an account: request one"); self.req_chk = button("Check the request"); self.req_lbl = label("", muted=True); self.req_lbl.setWordWrap(True)
         v.addWidget(self.req_btn); v.addWidget(self.req_chk); v.addWidget(self.req_lbl)
-        self.req_btn.clicked.connect(self._req_dialog); self.req_chk.clicked.connect(lambda: self._req_check(False)); self.signup_done.connect(self._on_signup)
-        self.req_timer = QtCore.QTimer(self); self.req_timer.setInterval(300000); self.req_timer.timeout.connect(lambda: self._req_check(True)); self.req_timer.start()
+        self.unlink_btn = button("Use another account"); v.addWidget(self.unlink_btn); self.unlink_btn.clicked.connect(self._unlink)
+        self.req_btn.clicked.connect(self._req_dialog); self.req_chk.clicked.connect(lambda: self._req_check(False))
+        self.acc = ctx.voip_account                                                    # keeps the account in step with the server (also when this page is closed)
+        self.acc.note.connect(self._note); self.acc.account_changed.connect(self._load_from_settings); self.acc.state_changed.connect(self._req_refresh)
         v.addWidget(note("The password is entered here by you and sent only to your server. Use a headset: the program has no echo cancellation, so with open speakers the other side hears itself.")); v.addStretch()
         # -- Network
         v = add_tab("Network")
@@ -144,7 +144,7 @@ class VoipPage(W.QWidget):
         v.addWidget(note("The account (server, username, password), the people and the call list are not touched. Used from the next sign-in.")); v.addStretch()
         self._tab(0); self._loading = False; self._req_refresh(); self.refresh_gate()
         self.ctx.policy_changed.connect(self.refresh_gate); self.ctx.changed.connect(self.refresh_gate)
-        if s.get("voip_req_state") in ("pending", "ack"): QtCore.QTimer.singleShot(2500, lambda: self._req_check(True))
+        QtCore.QTimer.singleShot(1500, lambda: self.acc.ensure_fresh(lambda: None))      # a waiting request / the linked account is looked at now (a lost link is found again)
         self._fill_devices(False)
         # ---------------- phone
         ph = panel("card"); pv = vbox(ph, m=(16, 14, 16, 14), s=8); root.addWidget(ph, 4)
@@ -235,20 +235,35 @@ class VoipPage(W.QWidget):
         open_donate(self.ctx.policy.paid_link("VoIP"))
 
     # ---- asking the owner of the server for an account (see voip/signup.py)
-    def _run(self, kind: str, fn):
-        def work():
-            try: res = ("ok", fn())
-            except signup.SignupError as ex: res = ("err", ex)
-            except Exception as ex: res = ("err", signup.SignupError("", str(ex)))
-            try: self.signup_done.emit(kind, res)
-            except RuntimeError: pass                                                      # the window was closed meanwhile
-        threading.Thread(target=work, daemon=True, name="voip-signup").start()
+    def _note(self, text: str):
+        self.req_lbl.setText(tr(text)); self._req_refresh()
 
     def _req_refresh(self):
-        st = self.ctx.store.settings; state = st.get("voip_req_state", ""); pend = state in ("pending", "ack")
-        self.req_btn.setVisible(not pend); self.req_chk.setVisible(pend); self.req_lbl.setVisible(bool(self.req_lbl.text()) or pend)
-        self.req_btn.setText(tr("Request an account again") if state in ("rejected", "done") else tr("I don't have an account: request one"))
-        if pend and not self.req_lbl.text(): self.req_lbl.setText(tr("Your request is waiting for the owner of the server. This page checks by itself every few minutes."))
+        st = self.ctx.store.settings; state = self.acc.state(); pend = state == "pending"; linked = state == "linked"
+        self.req_btn.setVisible(not pend and not linked); self.req_chk.setVisible(pend or linked); self.unlink_btn.setVisible(linked)
+        self.req_chk.setText(tr("Check the request") if pend else tr("Check the account now"))
+        self.req_btn.setText(tr("Request an account again") if state == "rejected" else tr("I don't have an account: request one"))
+        for w in (self.server, self.port, self.user, self.auth_user, self.domain, self.pw): w.setReadOnly(linked)       # the owner's server decides these: an edit would be overwritten at the next check
+        self.transport.setEnabled(not linked)
+        if not self.req_lbl.text():
+            if pend: self.req_lbl.setText(tr("Your request is waiting for the owner of the server. This page checks by itself every few minutes."))
+            elif linked: self.req_lbl.setText(tr("This account comes from the owner of the server: the extension and the password are kept up to date by themselves."))
+        b = self.acc.blocked()
+        if linked and b[0]: self.req_lbl.setText("⚠  " + self.acc.block_text())
+        self.req_lbl.setVisible(bool(self.req_lbl.text()))
+
+    def _unlink(self):
+        st = self.ctx.store.settings; st.update(voip_req_state="", voip_req_token="", voip_req_id=0, voip_block=False, voip_block_until=0, voip_block_reason="", voip_auto=False); self.ctx.store.save_settings()
+        self.req_lbl.setText(tr("The account is no longer kept up to date from the server. You can enter another account.")); self._req_refresh()
+
+    def _load_from_settings(self):
+        """The account in the settings was replaced by what the server sent: the fields show it."""
+        a = self.ctx.store.settings; self._loading = True
+        try:
+            self.user.setText(str(a.get("voip_user", ""))); self.pw.setText(str(a.get("voip_pw", ""))); self.server.setText(str(a.get("voip_server", "")))
+            self.port.setText(str(a.get("voip_port") or 5060)); self.transport.setCurrentText(str(a.get("voip_transport", "udp")).upper()); self.domain.setText(str(a.get("voip_domain", ""))); self.auth_user.setText(str(a.get("voip_auth_user", "")))
+            self.remember.setChecked(bool(a.get("voip_remember", True))); self.auto.setChecked(bool(a.get("voip_auto", False)))
+        finally: self._loading = False
 
     def _req_dialog(self):
         st = self.ctx.store.settings
@@ -272,50 +287,15 @@ class VoipPage(W.QWidget):
             f = dict(name=n.text().strip(), call=cs.text().strip(), want=want.text().strip(), msg=msg.toPlainText().strip(), lang=("el" if str(st.get("language", "")).lower().startswith(("el", "gr")) else "en"))
             def done(kind, res):
                 if kind != "submit": return
-                self.signup_done.disconnect(done)
+                self.acc.finished.disconnect(done)
                 if res[0] == "ok": d.accept()
-                else: err.setText(tr(res[1].text)); send.setEnabled(True)
-            self.signup_done.connect(done); self._run("submit", lambda: signup.submit(**f))
+                else: err.setText(tr(res[1].text) if res[1].code else tr("The server cannot be reached now:") + " " + res[1].text); send.setEnabled(True)
+            self.acc.finished.connect(done); self.req_lbl.setText(""); self.acc.submit(**f)
         send.clicked.connect(go); d.exec()
 
     def _req_check(self, silent: bool):
-        st = self.ctx.store.settings; state = st.get("voip_req_state", "")
-        if state not in ("pending", "ack") or not st.get("voip_req_token"): return
         if not silent: self.req_lbl.setText(tr("Checking…")); self.req_lbl.show()
-        rid, tok = int(st.get("voip_req_id", 0)), st["voip_req_token"]
-        self._run("ack" if state == "ack" else "status", (lambda: signup.ack(rid, tok)) if state == "ack" else (lambda: signup.status(rid, tok)))
-
-    def _on_signup(self, kind: str, res):
-        st = self.ctx.store.settings; ok, val = res
-        if kind == "submit":
-            if ok == "ok": st.update(voip_req_id=val[0], voip_req_token=val[1], voip_req_state="pending", voip_req_reason=""); self.ctx.store.save_settings(); self.req_lbl.setText(tr("The request was sent. You will receive the account here as soon as the owner approves it.")); self._req_refresh()
-            return
-        if ok == "err":
-            if val.code == "unknown" and st.get("voip_req_state") in ("pending", "ack"):                                        # the server has no such request any more
-                st.update(voip_req_state="", voip_req_token="", voip_req_id=0); self.ctx.store.save_settings()
-            self.req_lbl.setText(tr(val.text) if val.code else tr("The server cannot be reached now:") + " " + val.text); self._req_refresh(); return
-        if kind == "ack":
-            st.update(voip_req_state="done", voip_req_token="", voip_req_id=0); self.ctx.store.save_settings(); self._req_refresh(); return
-        state = val.get("status")
-        if state == "rejected":
-            st.update(voip_req_state="rejected", voip_req_token="", voip_req_reason=val.get("reason", "")); self.ctx.store.save_settings()
-            self.req_lbl.setText(tr("The owner did not approve the request.") + (" " + val["reason"] if val.get("reason") else "")); self._req_refresh()
-        elif state == "approved" and val.get("password"):
-            self._load_account(val); st["voip_req_state"] = "ack"; self.ctx.store.save_settings()                                 # saved here first: only then the server is told to erase it
-            self.req_lbl.setText(tr("The account was approved and filled in: extension {}. Press Sign in.").format(val.get("ext", ""))); self._req_refresh(); self._req_check(True)
-        elif state == "approved":
-            st.update(voip_req_state="", voip_req_token="", voip_req_id=0); self.ctx.store.save_settings()
-            self.req_lbl.setText(tr("The request was approved, but the password was already handed over. Ask the owner for it.")); self._req_refresh()
-        else: self.req_lbl.setText(tr("Your request is still waiting for the owner of the server.")); self._req_refresh()
-
-    def _load_account(self, a: dict):
-        """What the server sent when the request was approved goes into the Account tab and is saved."""
-        self._loading = True
-        try:
-            self.user.setText(str(a.get("ext", ""))); self.pw.setText(str(a.get("password", ""))); self.server.setText(str(a.get("server", "")) or self.server.text())
-            self.port.setText(str(a.get("port") or 5060)); self.transport.setCurrentText(str(a.get("transport", "udp")).upper()); self.domain.setText(str(a.get("domain", "")))
-        finally: self._loading = False
-        self.save_account()
+        self.acc.check(silent)
 
     def _changed(self):
         if getattr(self, "_loading", True): return
@@ -340,7 +320,7 @@ class VoipPage(W.QWidget):
 
     def _defaults(self):
         from ..store import DEFAULTS
-        keep = ("voip_server", "voip_port", "voip_transport", "voip_user", "voip_auth_user", "voip_domain", "voip_pw", "voip_name", "voip_remember", "voip_auto", "voip_contacts", "voip_history", "voip_req_id", "voip_req_token", "voip_req_state", "voip_req_reason")
+        keep = ("voip_server", "voip_port", "voip_transport", "voip_user", "voip_auth_user", "voip_domain", "voip_pw", "voip_name", "voip_remember", "voip_auto", "voip_contacts", "voip_history", "voip_req_id", "voip_req_token", "voip_req_state", "voip_req_reason", "voip_block", "voip_block_until", "voip_block_reason")
         s = self.ctx.store.settings
         for k, v in DEFAULTS.items():
             if k.startswith("voip_") and k not in keep: s[k] = v if not isinstance(v, (list, dict)) else type(v)(v)
@@ -364,7 +344,8 @@ class VoipPage(W.QWidget):
 
     def _sign(self):
         if self.ph.reg_state in ("registered", "registering"): self.ph.sign_out(); return
-        self.save_account(); self.ph.sign_in(self.pw.text())
+        def go(): self.save_account(); self.ph.sign_in(self.pw.text())
+        self.acc.ensure_fresh(go)                                                      # first the newest details from the server (a new password, a block); if it cannot be reached the saved ones are used
 
     def _on_reg(self, state: str, text: str):
         names = {"registered": "Signed in", "registering": "Signing in…", "failed": "Not signed in", "unregistered": "Not signed in"}

@@ -17,8 +17,8 @@ class Admin:
     def page(self, p, **q):
         return self.op.open(self.base + "?" + urllib.parse.urlencode(dict(p=p, **q))).read().decode()
 
-    def post(self, p, a, **f):
-        tok = re.search(r'name="csrf" value="([0-9a-f]+)"', self.page(p)).group(1)
+    def post(self, p, a, _tab=None, **f):
+        tok = re.search(r'name="csrf" value="([0-9a-f]+)"', self.page(p, **({"tab": _tab} if _tab else {}))).group(1)
         return self.op.open(self.base, urllib.parse.urlencode(dict(csrf=tok, p=p, a=a, **f), doseq=True).encode()).read().decode()
 
 

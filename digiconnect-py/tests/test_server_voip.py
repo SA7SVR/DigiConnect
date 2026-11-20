@@ -1,6 +1,6 @@
 """VoIP account requests, run against the real PHP code: the endpoint the program calls (voip_request.php) and the panel page where the owner approves.
 Nothing is simulated: the requests are real HTTP calls to the PHP server, the answers are what it really returns."""
-import json, re, urllib.parse, urllib.request, urllib.error
+import json, re, time, urllib.parse, urllib.request, urllib.error
 import pytest
 from test_license import srv, shutil  # noqa: F401
 from test_server_payments import Admin
@@ -18,7 +18,7 @@ def call(srv, **f):
 
 def open_requests(srv, a=None, **kw):
     a = a or Admin(srv.base)
-    a.post("voip", "voip_set", voip_on="1", voip_server=kw.get("server", "sip.example.org"), voip_port=str(kw.get("port", 5060)), voip_transport=kw.get("transport", "udp"), voip_domain=kw.get("domain", ""))
+    a.post("voip", "voip_set", _tab="set", voip_on="1", voip_server=kw.get("server", "sip.example.org"), voip_port=str(kw.get("port", 5060)), voip_transport=kw.get("transport", "udp"), voip_domain=kw.get("domain", ""))
     return a
 
 
@@ -64,37 +64,109 @@ def test_one_open_request_per_callsign_and_a_limit_per_address(srv):
     assert call(srv, **dict(REQ, call="SV1ZZZ"))["err"] == "too_many"                           # the 6th from one address within 24 h
 
 
-def test_the_owner_approves_the_program_gets_the_details_once_and_the_password_is_wiped(srv):
+def approve(srv, a, r, ext="2001", pw="Secret-pass-1"):
+    a.post("voip", "voip_approve", _tab="set", rid=str(r["id"]), ext=ext, pw=pw)
+
+
+def test_the_owner_approves_and_the_program_gets_the_details_and_the_password_stays_with_the_account(srv):
     a = open_requests(srv, server="sip.example.org", port=5061, transport="tls", domain="pbx.example.org")
     r = call(srv, **REQ)
-    page = a.page("voip")
+    page = a.page("voip", tab="req")
     assert "SV1ABC" in page and "Nikos P" in page and not re.search(r"(Fatal error|Parse error|Warning:|Notice:|Deprecated:|Uncaught)", page)
     rid = str(r["id"])
-    a.post("voip", "voip_approve", rid=rid, ext="2001", pw="short")                              # too short: refused
+    a.post("voip", "voip_approve", _tab="set", rid=rid, ext="2001", pw="short")                              # too short: refused
     assert srv.sql("SELECT status FROM dc_voip_req")[0]["status"] == "new"
-    a.post("voip", "voip_approve", rid=rid, ext="2001", pw="Secret-pass-1")
-    s = call(srv, action="status", id=r["id"], token=r["token"])
-    assert s == {"ok": True, "status": "approved", "delivered": False, "ext": "2001", "password": "Secret-pass-1", "server": "sip.example.org", "port": 5061, "transport": "tls", "domain": "pbx.example.org"}
-    assert call(srv, action="ack", id=r["id"], token=r["token"]) == {"ok": True}
-    again = call(srv, action="status", id=r["id"], token=r["token"])
-    assert again["status"] == "approved" and again["delivered"] is True and again["password"] == "" and again["ext"] == "2001"
-    assert srv.sql("SELECT pw FROM dc_voip_req")[0]["pw"] == ""                                  # the password is gone from the server
-    assert "Secret-pass-1" not in a.page("voip") and "Secret-pass-1" not in a.page("activity")
+    approve(srv, a, r)
+    want = {"ok": True, "status": "approved", "ext": "2001", "password": "Secret-pass-1", "server": "sip.example.org", "port": 5061, "transport": "tls", "domain": "pbx.example.org", "blocked": False, "block_until": 0, "block_reason": ""}
+    assert call(srv, action="status", id=r["id"], token=r["token"]) == want
+    assert call(srv, action="status", id=r["id"], token=r["token"]) == want                      # asked again (any time the program signs in): the same answer, nothing was wiped
+    assert call(srv, action="ack", id=r["id"], token=r["token"]) == {"ok": False, "err": "action"}   # the old "erase after receiving" step is gone
+    assert srv.sql("SELECT pw FROM dc_voip_req")[0]["pw"] == "Secret-pass-1" and srv.sql("SELECT delivered_t FROM dc_voip_req")[0]["delivered_t"]
     assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_ok'")[0]["n"] == 1
+    for t in ("req", "acc", "set"): assert "Secret-pass-1" not in a.page("voip", tab=t) or t == "acc"   # the password is typed/seen only in the accounts tab where the owner manages it
+    assert "Secret-pass-1" not in a.page("activity")
     assert call(srv, **dict(REQ, call="SV1ABC"))["ok"]                                          # nothing is pending any more: the same callsign may ask again
+
+
+def test_a_new_password_set_in_the_panel_reaches_the_program_by_itself(srv):
+    a = open_requests(srv); r = call(srv, **REQ); approve(srv, a, r)
+    a.post("voip", "voip_pw", _tab="set", rid=str(r["id"]), ext="2005", pw="Brand-new-pw-2")
+    s = call(srv, action="status", id=r["id"], token=r["token"])
+    assert s["password"] == "Brand-new-pw-2" and s["ext"] == "2005"
+    a.post("voip", "voip_pw", _tab="set", rid=str(r["id"]), ext="2005", pw="abc")                           # too short: refused, the old one stays
+    assert call(srv, action="status", id=r["id"], token=r["token"])["password"] == "Brand-new-pw-2"
+    assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_pw'")[0]["n"] == 1
+
+
+def test_one_account_can_be_blocked_for_a_time_or_until_lifted_without_closing_voip_for_everybody(srv):
+    a = open_requests(srv); r = call(srv, **REQ); approve(srv, a, r); rid = str(r["id"])
+    q = lambda: call(srv, action="status", id=r["id"], token=r["token"])
+    assert q()["blocked"] is False
+    a.post("voip", "voip_block", _tab="set", rid=rid, hours="0", reason="Misuse")                           # until lifted
+    s = q(); assert s["blocked"] is True and s["block_reason"] == "Misuse" and s["block_until"] == 0 and s["password"] == "Secret-pass-1"
+    a.post("voip", "voip_unblock", _tab="set", rid=rid); assert q()["blocked"] is False
+    a.post("voip", "voip_block", _tab="set", rid=rid, hours="24", reason="Cool down")                       # for a day
+    s = q(); assert s["blocked"] is True and abs(s["block_until"] - (time.time() + 86400)) < 120
+    srv.sql("UPDATE dc_voip_req SET block_until=?", int(time.time()) - 5)                    # the time has passed: it lifts itself
+    assert q()["blocked"] is False
+    assert call(srv, action="info")["open"] is True                                             # the global switch was never touched
+
+
+def test_a_program_that_lost_its_token_gets_its_account_back_by_installation_and_callsign(srv):
+    a = open_requests(srv); r = call(srv, **dict(REQ, inst="inst-77")); approve(srv, a, r)
+    n = call(srv, action="recover", inst="inst-77", call="SV1ABC")
+    assert n["ok"] and n["id"] == r["id"] and n["token"] != r["token"]
+    assert call(srv, action="status", id=n["id"], token=n["token"])["password"] == "Secret-pass-1"
+    assert call(srv, action="status", id=r["id"], token=r["token"]) == {"ok": False, "err": "unknown"}   # the old token no longer works
+    assert call(srv, action="recover", inst="other-install", call="SV1ABC") == {"ok": False, "err": "unknown"}   # another installation cannot take the account
+    assert call(srv, action="recover", inst="inst-77", call="SV9ZZZ") == {"ok": False, "err": "unknown"}
+
+
+def test_the_panel_has_tabs_and_the_accounts_tab_lists_who_has_an_account(srv):
+    a = open_requests(srv); r = call(srv, **dict(REQ, inst="inst-1")); r2 = call(srv, **dict(REQ, call="SM0XYZ", name="Anna S"))
+    assert "SM0XYZ" in a.page("voip", tab="req") and "tab=acc" in a.page("voip") and "tab=set" in a.page("voip")
+    approve(srv, a, r)
+    acc = a.page("voip", tab="acc")
+    assert "SV1ABC" in acc and "Nikos P" in acc and "2001" in acc and "SM0XYZ" not in acc          # only those who got an account
+    assert "SM0XYZ" in a.page("voip", tab="req") and "SV1ABC" not in a.page("voip", tab="req")      # open requests only
+    a.post("voip", "voip_block", _tab="set", rid=str(r["id"]), hours="0", reason="x"); assert "μέχρι να άρεις" in a.page("voip", tab="acc") or "until lifted" in a.page("voip", tab="acc")
+    assert not re.search(r"(Fatal error|Parse error|Warning:|Notice:|Deprecated:|Uncaught)", a.page("voip", tab="acc") + a.page("voip", tab="set"))
+
+
+def test_the_accounts_tab_tells_online_from_active_but_not_signed_in_from_offline(srv):
+    a = open_requests(srv); r = call(srv, **dict(REQ, inst="inst-1")); approve(srv, a, r)
+    now = int(time.time())
+    srv.sql("INSERT OR REPLACE INTO dc_installs(id,first_seen,last_seen,last_ping,voip,voip_ext) VALUES('inst-1',?,?,?,1,'2001')", now, now, now)
+    assert "VoIP online" in a.page("voip", tab="acc")
+    srv.sql("UPDATE dc_installs SET voip=0"); acc = a.page("voip", tab="acc"); assert "not signed in" in acc or "δεν έχει συνδεθεί" in acc
+    srv.sql("UPDATE dc_installs SET last_ping=?", now - 3600); assert "offline" in a.page("voip", tab="acc")
+    srv.sql("UPDATE dc_installs SET voip=NULL"); assert "VoIP online" not in a.page("voip", tab="acc")     # an older program reports nothing: nothing is invented
+
+
+def test_voip_accounts_and_settings_are_in_the_backup_and_come_back_with_a_restore(srv):
+    a = open_requests(srv, server="sip.example.org"); r = call(srv, **REQ); approve(srv, a, r)
+    a.post("voip", "voip_block", _tab="set", rid=str(r["id"]), hours="0", reason="Misuse")
+    a.post("backups", "backup_now"); good = sorted((srv.root / "data" / "backups").glob("digiconnect-*-manual-*.sqlite"))[-1].name
+    a.post("voip", "voip_del", _tab="set", rid=str(r["id"])); srv.sql("UPDATE dc_kv SET v='0' WHERE k='voip_on'")
+    assert not srv.sql("SELECT 1 FROM dc_voip_req")
+    a.post("backups", "backup_restore", file=good, confirm="RESTORE")
+    row = srv.sql("SELECT * FROM dc_voip_req")[0]
+    assert row["call"] == "SV1ABC" and row["pw"] == "Secret-pass-1" and row["ext"] == "2001" and row["blocked"] == 1 and row["block_reason"] == "Misuse"
+    assert srv.sql("SELECT v FROM dc_kv WHERE k='voip_on'")[0]["v"] == "1" and srv.sql("SELECT v FROM dc_kv WHERE k='voip_server'")[0]["v"] == "sip.example.org"
+    assert call(srv, action="status", id=r["id"], token=r["token"])["status"] == "approved"             # the program's token still works after a restore
 
 
 def test_a_rejected_request_says_so_and_never_carries_a_password(srv):
     a = open_requests(srv)
     r = call(srv, **REQ)
-    a.post("voip", "voip_reject", rid=str(r["id"]), reason="No licence found")
+    a.post("voip", "voip_reject", _tab="set", rid=str(r["id"]), reason="No licence found")
     assert call(srv, action="status", id=r["id"], token=r["token"]) == {"ok": True, "status": "rejected", "reason": "No licence found"}
 
 
 def test_deleting_a_request_makes_its_token_useless(srv):
     a = open_requests(srv)
     r = call(srv, **REQ)
-    a.post("voip", "voip_del", rid=str(r["id"]))
+    a.post("voip", "voip_del", _tab="set", rid=str(r["id"]))
     assert call(srv, action="status", id=r["id"], token=r["token"])["err"] == "unknown"
 
 
@@ -114,7 +186,7 @@ def test_no_e_mail_is_asked_for_stored_or_sent(srv):
     call(srv, **dict(REQ, email="nikos@example.org"))                                            # even if a client sent one, it is ignored
     r = srv.sql("SELECT * FROM dc_voip_req")[0]
     assert "nikos@example.org" not in json.dumps(r) and "email" not in r
-    html = a.page("voip")
+    html = a.page("voip", tab="req") + a.page("voip", tab="acc")
     assert "mailto:" not in html and "nikos@example.org" not in html
-    a.post("voip", "voip_approve", rid=str(r["id"]), ext="2001", pw="Secret-pass-1")
+    a.post("voip", "voip_approve", _tab="set", rid=str(r["id"]), ext="2001", pw="Secret-pass-1")
     assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='mail'")[0]["n"] == 0            # not even an attempt to send a mail

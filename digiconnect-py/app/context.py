@@ -67,7 +67,9 @@ class Ctx(QtCore.QObject):
         self.last_heard: list[dict] = []        # newest first
         from .voip.phone import Phone
         self.phone = Phone(self.store)                 # the VoIP telephone (SIP): does nothing until the user signs in
-        self.phone.blocked = lambda: "" if self.policy.allows("VoIP") else self.policy.reason("VoIP")      # the owner's server can close the phone
+        from .voip.account import AccountSync
+        self.voip_account = AccountSync(self)         # keeps the account the owner gave us in step with the server (new password, block)
+        self.phone.blocked = lambda: (self.policy.reason("VoIP") if not self.policy.allows("VoIP") else self.voip_account.block_text())      # the owner's server can close the phone for everybody, or block this one account
         from .callbook import Callbook
         self.callbook = Callbook(self.store.root)   # DMR ID -> callsign, name, country (RadioID), remembered on this computer
         self.talking: dict[tuple, dict] = {}    # (network, target id) -> the station that is talking there right now
