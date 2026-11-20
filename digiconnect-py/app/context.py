@@ -30,7 +30,7 @@ class Ctx(QtCore.QObject):
     _asl_links_done = Signal(str, object)
     el_changed = Signal()               # EchoLink: signed in / out, the station list arrived, or a station sent text (who is connected)
     _el_done = Signal(object)
-    _station_done = Signal(int, object)   # a callbook lookup (DMR ID -> callsign) finished
+    _station_done = Signal(int, object, str)   # a callbook lookup (DMR/NXDN ID -> callsign) finished; the str says which registry it was
 
     def __init__(self, store: Store | None = None, engine=None):
         super().__init__()
@@ -569,20 +569,22 @@ class Ctx(QtCore.QObject):
             self.talking.pop(key, None)
         self.changed.emit()
 
-    # ---- who is talking: DMR gives only the DMR ID, the callbook turns it into a callsign ----------------
+    # ---- who is talking: DMR/NXDN give only a numeric ID, the callbook turns it into a callsign ----------------
     def _talker(self, ln, e: dict):
-        """(text shown, DMR ID or 0). Other modes send the callsign themselves; DMR sends only the ID (the engine's 'callsign' field is OUR own)."""
+        """(text shown, numeric ID or 0). Other modes send the callsign themselves; DMR/NXDN send only the ID (the engine's 'callsign' field is OUR own)."""
         srcid = int(e.get("srcid") or 0)
         src = (e.get("src") or "").strip()
         net = ln.target.net
         if net in ("NXDN", "P25") and srcid and (not src or src.isdigit()):
-            # NXDN / P25 send only a number. Our own number is our own call sign; a number of 7+ digits is looked up in the RadioID database, which
-            # issues the same registered IDs (a short number, such as 31, is not a registered ID and is left as it is: nothing is guessed)
+            # NXDN and P25 send only a number. Our own number is our own call sign. For the rest: P25 amateur IDs conventionally reuse the
+            # licensee's DMR ID (7+ digits, looked up in RadioID's DMR registry); NXDN has its own, separate RadioID registry, where IDs are
+            # usually short (self- or manually-assigned, not 7-digit) - so NXDN is looked up whatever its length, P25 only when DMR-length.
             s = self.store.settings; own = str(s.get("nxdn_id" if net == "NXDN" else "dmr_id") or "").strip()
             if own.isdigit() and int(own) == srcid and (s.get("callsign") or "").strip(): return s["callsign"].strip().upper(), srcid
-            if srcid >= 1000000:
-                info = self.callbook.cached(srcid)
-                if info is None: self._ask_station(srcid)
+            cb_net = "NXDN" if net == "NXDN" else "DMR"
+            if cb_net == "NXDN" or srcid >= 1000000:
+                info = self.callbook.cached(srcid, cb_net)
+                if info is None: self._ask_station(srcid, cb_net)
                 return (info["call"] if info else (src or str(srcid))), srcid
         if net == "DMR" and srcid:
             info = self.callbook.cached(srcid)
@@ -591,30 +593,33 @@ class Ctx(QtCore.QObject):
         if not src and srcid: return str(srcid), srcid
         return (src or e.get("callsign") or "?"), srcid
 
-    def _ask_station(self, did: int):
-        if self.callbook.needs_fetch(did):
-            self.callbook.ask(did, lambda d, info: (not self.closing) and self._station_done.emit(d, info))
+    def _ask_station(self, did: int, cb_net: str = "DMR"):
+        if self.callbook.needs_fetch(did, cb_net):
+            self.callbook.ask(did, lambda d, info: (not self.closing) and self._station_done.emit(d, info, cb_net), cb_net)
 
-    def _on_station(self, did: int, info):
-        """The callbook answered: the ID on the cards / in Last heard becomes the callsign."""
+    def _on_station(self, did: int, info, cb_net: str = "DMR"):
+        """The callbook answered: the ID on the cards / in Last heard becomes the callsign. Only entries of the SAME registry are
+        touched (an NXDN answer never relabels a DMR/P25 entry that happens to share the same number, and vice versa)."""
         if not info: self.changed.emit(); return
+        want_nxdn = cb_net == "NXDN"
         for h in self.last_heard:
-            if h.get("srcid") == did and h["src"] == str(did):
+            if h.get("srcid") == did and h["src"] == str(did) and (h.get("net") == "NXDN") == want_nxdn:
                 h["src"] = info["call"]; h["stream_src"] = info["call"]
                 mine = (self.store.settings.get("callsign") or "").strip().upper(); h["me"] = bool(mine) and mine in info["call"].upper().split("/")
-        for t in self.talking.values():
-            if t.get("srcid") == did: t["src"] = info["call"]; t["stream_src"] = info["call"]
+        for k, t in self.talking.items():
+            if t.get("srcid") == did and (k[0] == "NXDN") == want_nxdn: t["src"] = info["call"]; t["stream_src"] = info["call"]
         self.changed.emit()
 
-    def station_info(self, did: int) -> dict | None:
-        """What the callbook knows about a DMR ID (None: unknown / not answered yet)."""
-        return self.callbook.cached(did) if did else None
+    def station_info(self, did: int, cb_net: str = "DMR") -> dict | None:
+        """What the callbook knows about a DMR or NXDN ID (None: unknown / not answered yet)."""
+        return self.callbook.cached(did, cb_net) if did else None
 
     def talker(self, t: Target) -> dict | None:
         """The station talking on this target right now: dict(src, srcid, name, country...) or None."""
         tk = self.talking.get((t.net, t.id))
         if not tk: return None
-        out = dict(tk); info = self.station_info(tk.get("srcid") or 0)
+        out = dict(tk); cb_net = "NXDN" if t.net == "NXDN" else "DMR"
+        info = self.station_info(tk.get("srcid") or 0, cb_net)
         if info: out.update(name=info["name"], country=info["country"], city=info["city"], state=info["state"])
         return out
 

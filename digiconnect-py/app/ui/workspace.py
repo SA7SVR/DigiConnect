@@ -398,7 +398,8 @@ class Workspace(W.QWidget):
         """Who is on the air on this network right now (callsign, DMR ID, site) and a bar while they talk."""
         live = [v for (n, _), v in self.ctx.talking.items() if n == self.net]
         if live:
-            v = live[0]; info = self.ctx.station_info(v.get("srcid") or 0) or {}
+            v = live[0]; cb_net = "NXDN" if self.net == "NXDN" else "DMR"
+            info = self.ctx.station_info(v.get("srcid") or 0, cb_net) or {}
             self.now_call.setText(v.get("src") or "?"); self.now_call.setStyleSheet("font-size:17px;font-weight:700;")
             bits = [f"{tr(id_label(self.net))} {v['srcid']}"] if v.get("srcid") else []
             site = ", ".join(x for x in (info.get("name"), info.get("city"), info.get("country")) if x)
@@ -417,7 +418,8 @@ class Workspace(W.QWidget):
         rows = rows[:40]
         self.lh_tbl.setRowCount(len(rows))
         for r, h in enumerate(rows):
-            info = self.ctx.station_info(h.get("srcid") or 0) if h.get("srcid") else None
+            cb_net = "NXDN" if h.get("net") == "NXDN" else "DMR"
+            info = self.ctx.station_info(h.get("srcid") or 0, cb_net) if h.get("srcid") else None
             country = (info or {}).get("country") or countries.of_callsign(h.get("src") or "") or "—"          # callbook answer first; else the country of the call sign's prefix (never guessed from anything else)
             vals = [h["src"] + (" (you)" if h.get("me") else ""), str(h.get("srcid") or "—"), country,
                     f"{h['ts']:%H:%M:%S}", duration(h)]

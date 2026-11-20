@@ -72,7 +72,8 @@ class StationPanel(W.QFrame):
         for h in self.ctx.last_heard:
             t = mine.get((h["net"], h["target"]))
             if t is not None:
-                st = dict(src=h["src"], srcid=h.get("srcid") or 0); info = self.ctx.station_info(st["srcid"])
+                st = dict(src=h["src"], srcid=h.get("srcid") or 0); cb_net = "NXDN" if h["net"] == "NXDN" else "DMR"
+                info = self.ctx.station_info(st["srcid"], cb_net)
                 if info: st.update(name=info["name"], country=info["country"], city=info["city"], state=info["state"])
                 return "Last station heard", "pink", t, st
         t = r.selected if r.selected is not None and r.is_listening(r.selected) else r.rx[0].target
@@ -90,7 +91,7 @@ class StationPanel(W.QFrame):
         for w in (self.call, self.name, self.rows, self.src): w.setVisible(st is not None)
         self.lvl.setVisible(st is not None and state == "Traffic detected")
         if st is None: return
-        self.cur = st; self.call.setText(st["src"]); self.call.setStyleSheet(f"font-size:30px;font-weight:800;color:{C[tone]};"); self.name.setText(st.get("name") or "")
+        self.cur, self.cur_net = st, ("NXDN" if t.net == "NXDN" else "DMR"); self.call.setText(st["src"]); self.call.setStyleSheet(f"font-size:30px;font-weight:800;color:{C[tone]};"); self.name.setText(st.get("name") or "")
         rows = []
         if t.net == "EchoLink":
             from .. import countries
@@ -112,13 +113,14 @@ class StationPanel(W.QFrame):
         if place: rows.append((tr("City"), place))
         self.rows.setText("<table cellspacing='4'>" + "".join(f"<tr><td style='color:{C['muted']}'>{k}&nbsp;&nbsp;</td><td><b>{v}</b></td></tr>" for k, v in rows) + "</table>"); self.rows.setMinimumHeight(28 * len(rows) + 6)
         if st.get("name") or st.get("country"): self.src.setText(tr("Source:") + " RadioID")
-        elif t.net == "DMR" and st.get("srcid"): self.src.setText(tr("Not found in RadioID yet (or no internet): only the DMR ID is shown. Nothing is invented."))
+        elif t.net in ("DMR", "NXDN") and st.get("srcid"): self.src.setText(tr("Not found in RadioID yet (or no internet): only the ID is shown. Nothing is invented."))
         else: self.src.setText("")
 
     def _refresh(self):
         c = self.cur
         if c and c.get("srcid"):
-            self.ctx.callbook.mem.pop(int(c["srcid"]), None); self.ctx._ask_station(int(c["srcid"]))
+            cb_net = getattr(self, "cur_net", "DMR")
+            self.ctx.callbook.forget(int(c["srcid"]), cb_net); self.ctx._ask_station(int(c["srcid"]), cb_net)
 
     def _qso(self):
         c = self.cur
