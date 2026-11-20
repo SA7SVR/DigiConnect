@@ -200,3 +200,16 @@ def test_both_lists_have_a_search_box_and_scroll_inside_themselves(srv):
         assert f'data-q="' in html and who in html.lower()                                         # what the search looks at: callsign, name, extension, status ...
     assert "<small id=\"vqcnt\">1 / 1</small>" in acc and "<small id=\"vqcnt\">1 / 1</small>" in req
     assert 'id="vqs"' not in a.page("voip", tab="set")                                           # the settings tab has no list
+
+
+def test_a_person_who_asks_again_from_another_computer_is_offered_the_same_details_and_gets_them_back(srv):
+    a = open_requests(srv); r = call(srv, **dict(REQ, inst="old-pc")); approve(srv, a, r)                          # the first computer
+    r2 = call(srv, **dict(REQ, inst="new-pc"))                                                                    # a new computer: it has another installation id, the automatic recovery cannot know it
+    assert call(srv, action="recover", inst="new-pc", call="SV1ABC") == {"ok": False, "err": "unknown"}          # an unverified callsign never gets a password by itself
+    req = a.page("voip", tab="req")
+    assert 'value="Secret-pass-1"' in req and 'value="2001"' in req and ("same details offered" in req or "προτείνονται τα ίδια στοιχεία" in req)     # one press on Approve gives the same details
+    a.post("voip", "voip_approve", _tab="set", rid=str(r2["id"]), ext="2001", pw="Secret-pass-1")
+    s = call(srv, action="status", id=r2["id"], token=r2["token"])
+    assert s["status"] == "approved" and s["ext"] == "2001" and s["password"] == "Secret-pass-1"
+    assert srv.sql("SELECT COUNT(*) n FROM dc_voip_req WHERE call='SV1ABC' AND status='approved'")[0]["n"] == 1   # the old computer's record is replaced, not duplicated
+    assert call(srv, action="status", id=r["id"], token=r["token"]) == {"ok": False, "err": "unknown"}           # and only the new computer holds the account now

@@ -1239,14 +1239,14 @@ elseif ($p === 'voip') {
     echo '<section class="card vq"><h2>' . L('Αιτήσεις', 'Requests') . '</h2>';
     if (!$rows) echo '<div class="muted">' . L('Δεν υπάρχουν αιτήσεις.', 'No requests.') . '</div>'; else echo $search(count($rows));
     foreach ($rows as $r) {
-      $known = dc_one("SELECT ext FROM dc_voip_req WHERE status='approved' AND call=? ORDER BY decided_t DESC", [$r['call']]);
+      $known = dc_one("SELECT ext, pw FROM dc_voip_req WHERE status='approved' AND call=? ORDER BY decided_t DESC", [$r['call']]);      // the same person asks again (new computer, wiped settings): the same details are offered
       echo '<div class="it" data-q="' . h($r['call'] . ' ' . $r['name'] . ' ' . $r['want'] . ' ' . $r['ip'] . ' ' . $r['body'] . ' ' . ($r['status'] === 'new' ? 'νέα new' : 'απορρίφθηκε rejected')) . '"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' ' . ($r['status'] === 'new' ? '<span class="pill o">' . L('νέα', 'new') . '</span>' : '<span class="pill">' . L('απορρίφθηκε', 'rejected') . '</span>')
-        . ($known ? ' <span class="pill">' . L('έχει ήδη λογαριασμό', 'already has an account') . ' ' . h($known['ext']) . '</span>' : '') . '<span class="sp"></span><small class="muted">' . dc_dt($r['t']) . '</small></div>'
+        . ($known ? ' <span class="pill">' . L('έχει ήδη λογαριασμό', 'already has an account') . ' ' . h($known['ext']) . ' · ' . L('προτείνονται τα ίδια στοιχεία', 'same details offered') . '</span>' : '') . '<span class="sp"></span><small class="muted">' . dc_dt($r['t']) . '</small></div>'
         . '<div class="muted" style="font-size:12px">' . ($r['want'] !== '' ? L('ζητά εσωτερικό', 'wants extension') . ' <b>' . h($r['want']) . '</b> · ' : '') . h($r['ip']) . '</div>'
         . ($r['body'] !== '' ? '<div style="white-space:pre-wrap;margin:4px 0;font-size:13px;user-select:text">' . h($r['body']) . '</div>' : '');
       if ($r['status'] === 'new') {
         echo '<form method="post" class="r">' . $hid($r) . '<small>' . L('Εσωτερικό', 'Extension') . '</small><input name="ext" size="6" value="' . h($known ? $known['ext'] : $r['want']) . '">'
-          . '<small>' . L('Κωδικός', 'Password') . '</small><input name="pw" size="16" value="' . h(dc_voip_password()) . '" style="font-family:monospace">'
+          . '<small>' . L('Κωδικός', 'Password') . '</small><input name="pw" size="16" value="' . h($known && (string)$known['pw'] !== '' ? $known['pw'] : dc_voip_password()) . '" style="font-family:monospace">'
           . '<button class="btn" type="button" onclick="vqgen(this)" title="' . h(L('Φτιάχνει έναν τυχαίο κωδικό', 'Makes a random password')) . '">🔑 ' . L('Δημιουργία κωδικού', 'Generate password') . '</button><button class="btn pri" name="a" value="voip_approve">' . L('Έγκριση', 'Approve') . '</button></form>'
           . '<form method="post" class="r">' . $hid($r) . '<input name="reason" size="26" placeholder="' . h(L('Λόγος απόρριψης (προαιρετικό)', 'Reason (optional)')) . '"><button class="btn" name="a" value="voip_reject">' . L('Απόρριψη', 'Reject') . '</button>'
           . '<button class="btn danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή;', 'Delete?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form>';
