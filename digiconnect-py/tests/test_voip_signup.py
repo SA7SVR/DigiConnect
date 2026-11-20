@@ -161,19 +161,34 @@ def test_a_program_that_lost_its_settings_gets_its_account_back_by_itself(base, 
     ctx3.voip_account.ensure_fresh(lambda: done.append(1)); assert wait(lambda: done) and st3.settings.get("voip_req_state", "") == "" and not st3.settings.get("voip_user")   # another installation gets nothing
 
 
-def test_an_account_the_owner_releases_unlocks_the_fields_and_the_user_may_use_any_server(base, tmp_path):
-    st, pg, a, rid = linked(base, tmp_path)
+def test_a_released_account_unlocks_for_a_while_and_the_owner_can_bring_the_user_back_with_one_press(base, tmp_path, monkeypatch):
+    st, pg, a, rid = linked(base, tmp_path); ph = pg.ph
     assert pg.user.isReadOnly()
-    a.post("voip", "voip_release", _tab="acc", rid=str(rid)); check(pg, st, lambda: st.settings.get("voip_req_state") == "")
-    assert "released" in pg.req_lbl.text() and st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1"       # what he had stays, so he is not left empty
-    assert pg.req_btn.isVisible() and all(not w.isReadOnly() and w.property("locked") is False for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw)) and pg.transport.isEnabled()
-    pg.server.setText("sip.somewhere-else.org"); pg.server.editingFinished.emit(); pg.acc.check(True); W.QApplication.processEvents()
-    assert st.settings["voip_server"] == "sip.somewhere-else.org"                                                               # free again: nothing puts the owner's server back
-    assert base.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_rel'")[0]["n"] == 1
+    a.post("voip", "voip_release", _tab="acc", rid=str(rid)); check(pg, st, lambda: st.settings.get("voip_released") is True)
+    assert st.settings["voip_req_state"] == "linked" and st.settings["voip_req_token"]                                   # the link stays: the account is still his, only unlocked
+    assert "another server for now" in pg.req_lbl.text() and st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1"   # what he had stays, so he is not left empty
+    assert pg.req_chk.isVisible() and not pg.req_btn.isVisible() and all(not w.isReadOnly() and w.property("locked") is False for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw)) and pg.transport.isEnabled()
+    pg.server.setText("sip.somewhere-else.org"); pg.user.setText("7777"); pg.server.editingFinished.emit(); pg.user.editingFinished.emit()
+    pg.acc.check(True); done = []; pg.acc.ensure_fresh(lambda: done.append(1)); assert wait(lambda: done)
+    assert st.settings["voip_server"] == "sip.somewhere-else.org" and st.settings["voip_user"] == "7777"                  # nothing puts the owner's details back while he is free
+    assert not pg.acc.blocked()[0]
+    # the owner brings him back
+    calls = []; ph.reg_state = "registered"; monkeypatch.setattr(ph, "sign_out", lambda *x, **k: calls.append("out")); monkeypatch.setattr(ph, "sign_in", lambda *x, **k: calls.append("in") or True)
+    a.post("voip", "voip_restore", _tab="acc", rid=str(rid)); check(pg, st, lambda: st.settings.get("voip_released") is False)
+    assert st.settings["voip_server"] == "pbx.example.org" and st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1"   # the owner's details are back
+    assert "put the account back" in pg.req_lbl.text() and pg.user.isReadOnly() and pg.user.property("locked") is True and not pg.transport.isEnabled()      # and locked again
+    assert calls == ["out", "in"]                                                                                         # a phone that was signed in elsewhere signs in to the owner's server
+    assert base.sql("SELECT COUNT(*) n FROM dc_events WHERE kind IN ('voip_rel','voip_res')")[0]["n"] == 2
     from app import i18n
     i18n.set_language("el")
-    try: assert "απελευθέρωσε" in i18n.tr("The owner released this account: the fields are unlocked and you can use any server. The details saved here stay as they are.")
+    try: assert "προσωρινά" in i18n.tr("The owner has let you use another server for now: the fields are unlocked and the details saved here stay as they are.") and "επανέφερε" in i18n.tr("The owner has put the account back: your details were replaced by the server's and locked.")
     finally: i18n.set_language("en")
+
+
+def test_an_account_the_owner_deleted_unlocks_the_fields_and_the_saved_details_stay(base, tmp_path):
+    st, pg, a, rid = linked(base, tmp_path)
+    a.post("voip", "voip_del", _tab="acc", rid=str(rid)); check(pg, st, lambda: st.settings.get("voip_req_state") == "")
+    assert "removed" in pg.req_lbl.text() and st.settings["voip_user"] == "2001" and pg.req_btn.isVisible() and not pg.user.isReadOnly() and st.settings["voip_released"] is False
 
 
 def test_a_linked_program_has_no_way_to_point_the_account_somewhere_else(base, tmp_path):

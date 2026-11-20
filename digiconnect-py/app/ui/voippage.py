@@ -238,8 +238,8 @@ class VoipPage(W.QWidget):
         self.req_lbl.setText(tr(text)); self._req_refresh()
 
     def _req_refresh(self):
-        st = self.ctx.store.settings; state = self.acc.state(); pend = state == "pending"; linked = state == "linked"
-        self.req_btn.setVisible(not pend and not linked); self.req_chk.setVisible(pend or linked)
+        st = self.ctx.store.settings; state = self.acc.state(); pend = state == "pending"; has = state == "linked"; linked = has and not self.acc.released()
+        self.req_btn.setVisible(not pend and not has); self.req_chk.setVisible(pend or has)
         self.req_chk.setText(tr("Check the request") if pend else tr("Check the account now"))
         self.req_btn.setText(tr("Request an account again") if state == "rejected" else tr("I don't have an account: request one"))
         for w in (self.server, self.port, self.user, self.auth_user, self.domain, self.pw, self.transport):           # the owner's server decides these: grey, and an edit would be overwritten at the next check anyway
@@ -249,6 +249,7 @@ class VoipPage(W.QWidget):
         if not self.req_lbl.text():
             if pend: self.req_lbl.setText(tr("Your request is waiting for the owner of the server. This page checks by itself every few minutes."))
             elif linked: self.req_lbl.setText(tr("This account comes from the owner of the server: the extension and the password are kept up to date by themselves."))
+            elif has: self.req_lbl.setText(tr("The owner has let you use another server for now: the fields are unlocked and the details saved here stay as they are."))
         b = self.acc.blocked()
         if linked and b[0]: self.req_lbl.setText("⚠  " + self.acc.block_text())
         self.req_lbl.setVisible(bool(self.req_lbl.text()))
@@ -317,7 +318,7 @@ class VoipPage(W.QWidget):
 
     def _defaults(self):
         from ..store import DEFAULTS
-        keep = ("voip_server", "voip_port", "voip_transport", "voip_user", "voip_auth_user", "voip_domain", "voip_pw", "voip_name", "voip_remember", "voip_auto", "voip_contacts", "voip_history", "voip_req_id", "voip_req_token", "voip_req_state", "voip_req_reason", "voip_block", "voip_block_until", "voip_block_reason")
+        keep = ("voip_released", "voip_server", "voip_port", "voip_transport", "voip_user", "voip_auth_user", "voip_domain", "voip_pw", "voip_name", "voip_remember", "voip_auto", "voip_contacts", "voip_history", "voip_req_id", "voip_req_token", "voip_req_state", "voip_req_reason", "voip_block", "voip_block_until", "voip_block_reason")
         s = self.ctx.store.settings
         for k, v in DEFAULTS.items():
             if k.startswith("voip_") and k not in keep: s[k] = v if not isinstance(v, (list, dict)) else type(v)(v)

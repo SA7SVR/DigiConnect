@@ -5,6 +5,7 @@
 //   action=status : id, token   ->  new | rejected | approved: ext, password, server, port, transport, domain, blocked, block_until, block_reason
 //   action=recover: inst, call  ->  a new token for the account that was given to this installation (the program lost its local data)  ->  {"ok":true,"id":N,"token":"..."}
 // The person's name and callsign are stored only to run the account. The token is shown to the program; only its hash is kept.
+// An approved account can be "released" by the administrator for a while (the program then unlocks its fields and keeps what it has) and restored later with one press.
 // The password of an approved account is typed by the administrator in the panel and STAYS with the account: the program asks again whenever it signs in, so a new password set in the panel
 // reaches the program by itself and nobody has to type it. It is sent only to the holder of the token.
 require __DIR__ . '/lib.php';
@@ -53,6 +54,10 @@ $id = (int)($_REQUEST['id'] ?? 0); $tok = $clip('token', 64);
 $r = $id > 0 && $tok !== '' ? dc_one('SELECT * FROM dc_voip_req WHERE id=?', [$id]) : null;
 if (!$r || !hash_equals((string)$r['tok'], hash('sha256', $tok))) $fail('unknown');
 if ($act !== 'status') $fail('action');
+if ($r['status'] === 'approved' && (int)($r['released'] ?? 0) === 1) {                            // the owner let this user go for now: nothing is sent, the program unlocks its fields and keeps what it has
+  dc_q('UPDATE dc_voip_req SET delivered_t=? WHERE id=?', [time(), $id]);
+  $out(['ok' => true, 'status' => 'approved', 'released' => true]);
+}
 if ($r['status'] === 'approved') {
   [$bl, $bu, $br] = dc_voip_blocked($r);
   dc_q('UPDATE dc_voip_req SET delivered_t=? WHERE id=?', [time(), $id]);                         // "the program fetched it" - shown in the panel

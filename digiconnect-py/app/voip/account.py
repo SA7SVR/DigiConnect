@@ -37,6 +37,8 @@ class AccountSync(QtCore.QObject):
 
     def inst(self) -> str: return str(self.st.get("install_id", ""))
 
+    def released(self) -> bool: return self.state() == "linked" and bool(self.st.get("voip_released"))
+
     def blocked(self):
         """(blocked now?, until (0 = until the owner lifts it), reason)"""
         if not self.st.get("voip_block"): return False, 0, ""
@@ -103,8 +105,8 @@ class AccountSync(QtCore.QObject):
     def _error(self, kind: str, ex, silent: bool):
         s = self.st
         if ex.code == "unknown" and kind == "status":                                        # the server has no such request / account any more
-            was = self.state(); s.update(voip_req_state="", voip_req_token="", voip_req_id=0, voip_block=False, voip_block_until=0, voip_block_reason=""); self._save(); self.state_changed.emit()
-            self.note.emit("The owner released this account: the fields are unlocked and you can use any server. The details saved here stay as they are." if was == "linked" else "The server no longer has this request.")
+            was = self.state(); s.update(voip_req_state="", voip_req_token="", voip_req_id=0, voip_block=False, voip_block_until=0, voip_block_reason="", voip_released=False); self._save(); self.state_changed.emit()
+            self.note.emit("The owner removed this account from the server: the fields are unlocked and you can use any server. The details saved here stay as they are." if was == "linked" else "The server no longer has this request.")
         elif kind != "recover" and not (silent and not ex.code): self.note.emit(ex.text if ex.code else "The server cannot be reached now: " + ex.text)
 
     def _status(self, a: dict, silent: bool):
@@ -115,11 +117,15 @@ class AccountSync(QtCore.QObject):
         if state != "approved":
             if not silent or self.state() == "pending": self.note.emit("Your request is still waiting for the owner of the server.")
             return
-        first = self.state() != "linked"; ph = self.ctx.phone
+        if a.get("released"):                                                                 # the owner let this user go for now: nothing is changed or taken back, the fields are free
+            was = bool(s.get("voip_released")); s.update(voip_req_state="linked", voip_released=True, voip_block=False, voip_block_until=0, voip_block_reason=""); self._save(); self.state_changed.emit()
+            if not was: self.note.emit("The owner has let you use another server for now: the fields are unlocked and the details saved here stay as they are.")
+            return
+        was_free = bool(s.get("voip_released")); first = self.state() != "linked"; ph = self.ctx.phone
         new = dict(voip_user=str(a.get("ext", "")), voip_pw=str(a.get("password", "")), voip_server=str(a.get("server", "")) or s.get("voip_server", ""), voip_port=int(a.get("port") or 5060),
                    voip_transport=str(a.get("transport", "udp")).lower(), voip_domain=str(a.get("domain", "")), voip_auth_user="")
         changed = any(s.get(k) != v for k, v in new.items()); was_in = ph.reg_state in ("registered", "registering")
-        s.update(new); s.update(voip_req_state="linked", voip_remember=True)
+        s.update(new); s.update(voip_req_state="linked", voip_remember=True, voip_released=False)
         if first: s["voip_auto"] = True                                                       # an account that came from the server signs in when the program starts (the box in Account can be unticked)
         bl_before = self.blocked()[0]
         s.update(voip_block=bool(a.get("blocked")), voip_block_until=int(a.get("block_until") or 0), voip_block_reason=str(a.get("block_reason", "")))
@@ -129,7 +135,7 @@ class AccountSync(QtCore.QObject):
         if bl and not bl_before:
             ph.hangup(); ph.sign_out(0.0); m = self.block_text(); self.ctx.note_problem(m); self.ctx.toast.emit(m); self.note.emit(m)
         elif bl_before and not bl: self.note.emit("The block was lifted. You can sign in again.")
+        elif was_free: self.note.emit("The owner has put the account back: your details were replaced by the server's and locked."); self.state_changed.emit()
         elif first: self.note.emit("The account was approved and filled in: extension {}. Press Sign in.".format(new["voip_user"]))
-        elif changed and not bl:
-            self.note.emit("The owner changed the account details; they were updated here.")
-            if was_in: ph.sign_out(0.0); ph.sign_in()                                       # signed in again with the new details, nobody types anything
+        elif changed and not bl: self.note.emit("The owner changed the account details; they were updated here.")
+        if changed and was_in and not bl: ph.sign_out(0.0); ph.sign_in()                    # a phone that was signed in is signed in again with the owner's new details; nobody types anything

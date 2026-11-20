@@ -19,7 +19,7 @@ DEFAULTS = dict(callsign="", locator="", module="D", equipment="", radio_message
                 voip_server="sip.foxhost.org", voip_port=5060, voip_transport="udp", voip_user="", voip_pw="", voip_name="", voip_remember=True, voip_auto=False, voip_tls_verify=True, voip_contacts=[], voip_history=[],
                 voip_auth_user="", voip_domain="", voip_proxy="", voip_local_port=0, voip_expires=300, voip_keepalive=True, voip_keepalive_secs=0, voip_stun="", voip_public_ip="", voip_rtp_lo=12000, voip_rtp_hi=12999, voip_tls_ca="",
                 voip_pcmu=True, voip_pcma=True, voip_codec_first="PCMU", voip_dtmf="auto", voip_mic="", voip_spk="", voip_mic_gain=100, voip_spk_vol=100, voip_ring_vol=50, voip_jitter_ms=60,
-                voip_ringtone="classic", voip_ring_file="", voip_auto_answer=False, voip_auto_secs=3, voip_dnd=False, voip_vm="", voip_ua="", voip_trace=False, voip_req_id=0, voip_req_token="", voip_req_state="", voip_req_reason="", voip_block=False, voip_block_until=0, voip_block_reason="")
+                voip_ringtone="classic", voip_ring_file="", voip_auto_answer=False, voip_auto_secs=3, voip_dnd=False, voip_vm="", voip_ua="", voip_trace=False, voip_req_id=0, voip_req_token="", voip_req_state="", voip_req_reason="", voip_block=False, voip_block_until=0, voip_block_reason="", voip_released=False)
 
 
 class Store:

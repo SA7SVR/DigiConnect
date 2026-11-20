@@ -465,9 +465,13 @@ if ($auth && $_SERVER['REQUEST_METHOD'] === 'POST' && dc_csrf_ok()) {
     }
   }
   if ($a === 'voip_unblock') { $rid = (int)($_POST['rid'] ?? 0); dc_q("UPDATE dc_voip_req SET blocked=0, block_until=0, block_reason='' WHERE id=?", [$rid]); flash('ok', L('Ο αποκλεισμός άρθηκε.', 'The block is lifted.')); }
-  if ($a === 'voip_release') {                                                                    // let the user go: the account leaves this server, the program unlocks its fields and the user may enter any server
-    $rid = (int)($_POST['rid'] ?? 0); $r = dc_one("SELECT * FROM dc_voip_req WHERE id=? AND status='approved'", [$rid]);
-    if ($r) { dc_q('DELETE FROM dc_voip_req WHERE id=?', [$rid]); dc_event('voip_rel', $r['call'] . '|' . $r['ext']); flash('ok', L('Ο λογαριασμός απελευθερώθηκε: το πρόγραμμα του χρήστη ξεκλειδώνει στον επόμενο έλεγχο. Απενεργοποίησε και το extension στο FusionPBX αν δεν θες να συνεχίσει να το χρησιμοποιεί.', 'The account is released: the user’s program unlocks at its next check. Also disable the extension in FusionPBX if you do not want it to be used any more.')); }
+  if ($a === 'voip_release' || $a === 'voip_restore') {                                           // let the user use another server for a while (the account stays here), and bring him back with one press
+    $rid = (int)($_POST['rid'] ?? 0); $r = dc_one("SELECT * FROM dc_voip_req WHERE id=? AND status='approved'", [$rid]); $rel = $a === 'voip_release' ? 1 : 0;
+    if ($r) {
+      dc_q('UPDATE dc_voip_req SET released=? WHERE id=?', [$rel, $rid]); dc_event($rel ? 'voip_rel' : 'voip_res', $r['call'] . '|' . $r['ext']);
+      flash('ok', $rel ? L('Ο χρήστης είναι ελεύθερος: το πρόγραμμά του ξεκλειδώνει στον επόμενο έλεγχο και μπορεί να βάλει όποιον server θέλει. Ο λογαριασμός μένει εδώ· με «Επαναφορά» ξανακλειδώνει.', 'The user is free: his program unlocks at its next check and he can use any server. The account stays here; “Restore” locks it again.')
+                      : L('Ο χρήστης επανήλθε στον server σου: το πρόγραμμά του παίρνει ξανά τα στοιχεία σου και κλειδώνει στον επόμενο έλεγχο.', 'The user is back on your server: his program takes your details again and locks at its next check.'));
+    }
   }
   if ($a === 'voip_del') { dc_q('DELETE FROM dc_voip_req WHERE id=?', [(int)($_POST['rid'] ?? 0)]); }
   // ---- site statistics: do not count my own visits ----
@@ -1272,6 +1276,7 @@ elseif ($p === 'voip') {
       $vstate = $r['inst'] === null || $r['inst'] === '' || $r['i_voip'] === null || $r['i_voip'] === '' ? '' : ($on ? ((int)$r['i_voip'] === 1 ? 'on' : 'wait') : 'off');
       $vtxt = ['on' => 'VoIP online', 'wait' => L('αδρανής', 'idle', 'inaktiv'), 'off' => 'offline', '' => L('άγνωστο (δεν έχει αναφερθεί)', 'unknown (not reported)')][$vstate];
       echo '<div class="it" data-q="' . h($r['call'] . ' ' . $r['name'] . ' ' . $r['ext'] . ' ' . ($bl ? 'αποκλεισμένος blocked' : 'ενεργός active') . ' ' . $vtxt) . '"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' · ☎ <b>' . h($r['ext']) . '</b> '
+        . ((int)$r['released'] === 1 ? '<span class="pill o">' . L('ελεύθερος (ξεκλειδωμένος)', 'released (unlocked)') . '</span> ' : '')
         . ($bl ? '<span class="pill o">' . L('αποκλεισμένος', 'blocked') . ($bu ? ' ' . L('έως', 'until') . ' ' . dc_dt($bu) : ' ' . L('μέχρι να άρεις', 'until lifted')) . '</span>' : '<span class="pill ok">' . L('ενεργός', 'active') . '</span>')
         . '<span class="sp"></span>' . ($vstate !== '' ? '<span class="vp ' . $vstate . '"><i></i>' . h($vtxt) . '</span>' : '<small class="muted">' . h($vtxt) . '</small>') . '</div>'
         . '<div class="muted" style="font-size:12px">' . L('Εγκρίθηκε', 'Approved') . ' ' . dc_dt($r['decided_t']) . ' · ' . L('το πρόγραμμα τον πήρε', 'program fetched it') . ': ' . ((int)$r['delivered_t'] > 0 ? dc_dt($r['delivered_t']) : L('όχι ακόμη', 'not yet'))
@@ -1282,7 +1287,10 @@ elseif ($p === 'voip') {
       else echo '<form method="post" class="r">' . $hid($r) . '<select name="hours"><option value="1">1 ' . L('ώρα', 'hour') . '</option><option value="24">1 ' . L('ημέρα', 'day') . '</option><option value="168">7 ' . L('ημέρες', 'days') . '</option><option value="0">' . L('μέχρι να τον άρω', 'until I lift it') . '</option></select>'
         . '<input name="reason" size="22" placeholder="' . h(L('Λόγος (τον βλέπει ο χρήστης)', 'Reason (the user sees it)')) . '"><button class="btn" name="a" value="voip_block">' . L('Αποκλεισμός', 'Block') . '</button>'
         . '</form>';
-      echo '<form method="post" class="r">' . $hid($r) . '<span class="muted" style="font-size:12px">' . L('Αν θες να φύγει από τον server σου και να βάλει ό,τι θέλει:', 'To let the user leave your server and enter anything:') . '</span><button class="btn danger" name="a" value="voip_release" onclick="return confirm(\'' . L('Απελευθέρωση λογαριασμού; Ο λογαριασμός φεύγει από αυτόν τον server και το πρόγραμμα του χρήστη ξεκλειδώνει.', 'Release the account? It leaves this server and the user’s program unlocks.') . '\')">' . L('Απελευθέρωση', 'Release') . '</button></form>';
+      echo '<form method="post" class="r">' . $hid($r) . ((int)$r['released'] === 1
+          ? '<span class="muted" style="font-size:12px">' . L('Ο χρήστης είναι ελεύθερος να συνδεθεί αλλού.', 'The user is free to use another server.') . '</span><button class="btn pri" name="a" value="voip_restore">' . L('Επαναφορά στον server μας', 'Restore to our server') . '</button>'
+          : '<span class="muted" style="font-size:12px">' . L('Προσωρινά να συνδεθεί αλλού:', 'Let him use another server for now:') . '</span><button class="btn" name="a" value="voip_release" onclick="return confirm(\'' . L('Ο λογαριασμός μένει στον server και μπορείς να τον επαναφέρεις. Συνέχεια;', 'The account stays on the server and you can restore it. Continue?') . '\')">' . L('Απελευθέρωση', 'Release') . '</button>')
+        . '<span class="sp"></span><button class="btn danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή λογαριασμού για πάντα;', 'Delete the account for good?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form>';
       echo '</div>';
     }
     if ($rows) echo '</div>';
@@ -1794,7 +1802,8 @@ function activity_rows($rows) {
       case 'voip_req':  $txt = '☎ ' . L('Αίτηση λογαριασμού VoIP: ', 'VoIP account request: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? '') . ' · <a href="?p=voip">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;
       case 'voip_pw':   $txt = '☎ ' . L('Νέος κωδικός VoIP: ', 'New VoIP password: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'g'; break;
       case 'voip_blk':  $txt = '☎ ' . L('Αποκλεισμός VoIP: ', 'VoIP block: ') . '<b>' . h($d[0] ?? '') . '</b>'; $c = 'o'; break;
-      case 'voip_rel':  $txt = '☎ ' . L('Απελευθερώθηκε λογαριασμός VoIP: ', 'VoIP account released: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'o'; break;
+      case 'voip_rel':  $txt = '☎ ' . L('Ελεύθερος (ξεκλειδωμένος) λογαριασμός VoIP: ', 'VoIP account released: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'o'; break;
+      case 'voip_res':  $txt = '☎ ' . L('Επαναφορά λογαριασμού VoIP στον server: ', 'VoIP account restored to the server: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'g'; break;
       case 'voip_ok':   $txt = '☎ ' . L('Εγκρίθηκε λογαριασμός VoIP: ', 'VoIP account approved: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'g'; break;
       case 'inbox_reply': $txt = L('Απάντηση σε χρήστη: ', 'Reply to a user: ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h($d[1] ?? ''); $c = 'b'; break;
       case 'chat_new':  $txt = '💬 ' . L('Νέα συνομιλία από τη σελίδα · ', 'New chat from the website · ') . '<b>' . h($d[0] ?? '') . '</b> · ' . h(mb_substr((string)($d[2] ?? ''), 0, 80)) . ' · <a href="?p=chat&t=' . h($d[1] ?? '') . '">' . L('άνοιγμα', 'open') . '</a>'; $c = 'o'; break;

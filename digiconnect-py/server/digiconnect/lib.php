@@ -65,7 +65,7 @@ function dc_db(): PDO {
     CREATE TABLE IF NOT EXISTS dc_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, txn TEXT UNIQUE, status TEXT, amount REAL, currency TEXT, payer_email TEXT, payer_name TEXT, memo TEXT, custom TEXT, install TEXT, code TEXT, matched_by TEXT, note TEXT, raw TEXT);
     CREATE TABLE IF NOT EXISTS dc_inbox (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, install TEXT, call TEXT, email TEXT, name TEXT, os TEXT, version TEXT, topic TEXT, subject TEXT, body TEXT, ip TEXT, lang TEXT, src TEXT, status TEXT DEFAULT 'new', reply TEXT, reply_t INT, read_t INT);
     CREATE INDEX IF NOT EXISTS i_dc_inbox_t ON dc_inbox(t);
-    CREATE TABLE IF NOT EXISTS dc_voip_req (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, tok TEXT, name TEXT, call TEXT, want TEXT, body TEXT, ip TEXT, lang TEXT, status TEXT DEFAULT 'new', ext TEXT, pw TEXT, reason TEXT, decided_t INT, delivered_t INT, inst TEXT, pw_t INT, blocked INT DEFAULT 0, block_until INT DEFAULT 0, block_reason TEXT);
+    CREATE TABLE IF NOT EXISTS dc_voip_req (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, tok TEXT, name TEXT, call TEXT, want TEXT, body TEXT, ip TEXT, lang TEXT, status TEXT DEFAULT 'new', ext TEXT, pw TEXT, reason TEXT, decided_t INT, delivered_t INT, inst TEXT, pw_t INT, blocked INT DEFAULT 0, block_until INT DEFAULT 0, block_reason TEXT, released INT DEFAULT 0);
     CREATE INDEX IF NOT EXISTS i_dc_voip_t ON dc_voip_req(t);
     CREATE TABLE IF NOT EXISTS dc_visits (id INTEGER PRIMARY KEY AUTOINCREMENT, t INT, ip TEXT, page TEXT, lang TEXT, ua TEXT, ref TEXT, bot INT DEFAULT 0, br TEXT, os TEXT, dev TEXT);
     CREATE INDEX IF NOT EXISTS i_dc_vis_t ON dc_visits(t);
