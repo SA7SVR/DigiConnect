@@ -190,3 +190,13 @@ def test_no_e_mail_is_asked_for_stored_or_sent(srv):
     assert "mailto:" not in html and "nikos@example.org" not in html
     a.post("voip", "voip_approve", _tab="set", rid=str(r["id"]), ext="2001", pw="Secret-pass-1")
     assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='mail'")[0]["n"] == 0            # not even an attempt to send a mail
+
+
+def test_both_lists_have_a_search_box_and_scroll_inside_themselves(srv):
+    a = open_requests(srv); r = call(srv, **dict(REQ, inst="inst-1")); call(srv, **dict(REQ, call="SM0XYZ", name="Άννα S")); approve(srv, a, r)
+    acc = a.page("voip", tab="acc"); req = a.page("voip", tab="req")
+    for html, who in ((acc, "sv1abc"), (req, "sm0xyz")):
+        assert 'id="vqs"' in html and 'oninput="vqfind(this)"' in html and 'id="vqlist"' in html and "overflow-y:auto" in html
+        assert f'data-q="' in html and who in html.lower()                                         # what the search looks at: callsign, name, extension, status ...
+    assert "<small id=\"vqcnt\">1 / 1</small>" in acc and "<small id=\"vqcnt\">1 / 1</small>" in req
+    assert 'id="vqs"' not in a.page("voip", tab="set")                                           # the settings tab has no list

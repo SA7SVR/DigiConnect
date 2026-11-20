@@ -1224,6 +1224,10 @@ elseif ($p === 'voip') {
   $tabs = ['req' => L('Αιτήσεις', 'Requests') . ($nNew ? ' (' . $nNew . ')' : ''), 'acc' => L('Λογαριασμοί', 'Accounts') . ' (' . $nAcc . ')', 'set' => L('Ρυθμίσεις', 'Settings')];
   echo '<style>.vq input,.vq select{padding:3px 7px;font-size:12px;width:auto;min-width:0}.vq .btn{padding:3px 10px;font-size:12px}.vq .r{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}.vq .r small{color:var(--muted,#888)}'
     . '.vq .it{border:1px solid var(--line,#8884);border-radius:8px;padding:8px 10px;margin:8px 0}.vq .hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.vq .sp{flex:1}.vq .vp{margin:0}.vq .vp.wait{color:#d99a1c}.vq .vp.wait i{background:#d99a1c}</style>';
+  echo '<style>.vq .lst{max-height:420px;min-height:240px;overflow-y:auto;padding-right:4px}.vq .vsb{display:flex;gap:8px;align-items:center;margin-bottom:6px}.vq .vsb input{flex:1;max-width:420px;height:34px;min-height:34px;box-sizing:border-box;padding:6px 12px;font-size:13px;line-height:20px}.vq .vsb{min-height:36px;flex-shrink:0}.vq .vsb small{color:var(--muted,#888)}</style>';
+  echo '<script>function vqfit(){var l=document.getElementById("vqlist");if(l)l.style.maxHeight=Math.max(260,innerHeight-l.getBoundingClientRect().top-150)+"px"}addEventListener("load",vqfit);addEventListener("resize",vqfit);function vqfind(i){var n=function(x){return x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")},q=n(i.value.trim()),l=document.querySelectorAll("#vqlist .it"),c=0;for(var k=0;k<l.length;k++){var ok=!q||n(l[k].getAttribute("data-q")||"").indexOf(q)>=0;l[k].style.display=ok?"":"none";if(ok)c++}var e=document.getElementById("vqcnt");if(e)e.textContent=c+" / "+l.length;var m=document.getElementById("vqnone");if(m)m.style.display=c?"none":""}</script>';
+  $search = function ($n) { return '<div class="vsb"><input type="search" id="vqs" placeholder="🔍 ' . h(L('Αναζήτηση: διακριτικό, όνομα, εσωτερικό…', 'Search: callsign, name, extension…', 'Sök: anropssignal, namn, anknytning…')) . '" oninput="vqfind(this)" autocomplete="off"><small id="vqcnt">' . $n . ' / ' . $n . '</small></div>'
+    . '<div id="vqnone" class="muted" style="display:none">' . L('Δεν βρέθηκε κανείς.', 'Nobody found.', 'Ingen hittades.') . '</div><div class="lst" id="vqlist">'; };
   echo '<script>function vqgen(b){var a="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789",u=new Uint32Array(14),o="";crypto.getRandomValues(u);for(var i=0;i<14;i++)o+=a[u[i]%a.length];var f=b.form.pw;f.value=o;f.type="text";f.focus();f.select()}</script>';
   echo '<div class="vq" style="display:flex;gap:6px;margin-bottom:10px">';
   foreach ($tabs as $k => $t) echo '<a class="btn sm' . ($tab === $k ? ' pri' : '') . '" href="?p=voip&amp;tab=' . $k . '">' . h($t) . '</a>';
@@ -1233,10 +1237,10 @@ elseif ($p === 'voip') {
   if ($tab === 'req') {
     $rows = dc_q("SELECT * FROM dc_voip_req WHERE status IN ('new','rejected') ORDER BY (status='new') DESC, t DESC LIMIT 200")->fetchAll();
     echo '<section class="card vq"><h2>' . L('Αιτήσεις', 'Requests') . '</h2>';
-    if (!$rows) echo '<div class="muted">' . L('Δεν υπάρχουν αιτήσεις.', 'No requests.') . '</div>';
+    if (!$rows) echo '<div class="muted">' . L('Δεν υπάρχουν αιτήσεις.', 'No requests.') . '</div>'; else echo $search(count($rows));
     foreach ($rows as $r) {
       $known = dc_one("SELECT ext FROM dc_voip_req WHERE status='approved' AND call=? ORDER BY decided_t DESC", [$r['call']]);
-      echo '<div class="it"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' ' . ($r['status'] === 'new' ? '<span class="pill o">' . L('νέα', 'new') . '</span>' : '<span class="pill">' . L('απορρίφθηκε', 'rejected') . '</span>')
+      echo '<div class="it" data-q="' . h($r['call'] . ' ' . $r['name'] . ' ' . $r['want'] . ' ' . $r['ip'] . ' ' . $r['body'] . ' ' . ($r['status'] === 'new' ? 'νέα new' : 'απορρίφθηκε rejected')) . '"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' ' . ($r['status'] === 'new' ? '<span class="pill o">' . L('νέα', 'new') . '</span>' : '<span class="pill">' . L('απορρίφθηκε', 'rejected') . '</span>')
         . ($known ? ' <span class="pill">' . L('έχει ήδη λογαριασμό', 'already has an account') . ' ' . h($known['ext']) . '</span>' : '') . '<span class="sp"></span><small class="muted">' . dc_dt($r['t']) . '</small></div>'
         . '<div class="muted" style="font-size:12px">' . ($r['want'] !== '' ? L('ζητά εσωτερικό', 'wants extension') . ' <b>' . h($r['want']) . '</b> · ' : '') . h($r['ip']) . '</div>'
         . ($r['body'] !== '' ? '<div style="white-space:pre-wrap;margin:4px 0;font-size:13px;user-select:text">' . h($r['body']) . '</div>' : '');
@@ -1252,17 +1256,18 @@ elseif ($p === 'voip') {
       }
       echo '</div>';
     }
+    if ($rows) echo '</div>';
     echo '</section>';
   } elseif ($tab === 'acc') {
     $rows = dc_q("SELECT v.*, i.last_ping AS i_ping, i.voip AS i_voip, i.voip_ext AS i_vx, i.version AS i_ver FROM dc_voip_req v LEFT JOIN dc_installs i ON i.id = v.inst WHERE v.status='approved' ORDER BY v.call LIMIT 500")->fetchAll();
     echo '<section class="card vq"><h2>' . L('Λογαριασμοί VoIP', 'VoIP accounts') . '</h2><div class="help" style="margin-bottom:6px">' . L('Όσοι έχουν πάρει λογαριασμό. Ο κωδικός μένει μόνιμα στον λογαριασμό και το πρόγραμμα τον παίρνει μόνο του· αν αλλάξεις τον κωδικό εδώ, τον παίρνει αυτόματα. Ο αποκλεισμός σταματά μόνο το πρόγραμμα DigiConnect· για πλήρη αποκλεισμό απενεργοποίησε και το extension στο FusionPBX.', 'Everyone who has received an account. The password stays with the account and the program fetches it by itself; a new password set here reaches the program automatically. A block stops only the DigiConnect program; to block completely, also disable the extension in FusionPBX.') . '</div>';
-    if (!$rows) echo '<div class="muted">' . L('Κανείς δεν έχει πάρει ακόμη λογαριασμό.', 'Nobody has received an account yet.') . '</div>';
+    if (!$rows) echo '<div class="muted">' . L('Κανείς δεν έχει πάρει ακόμη λογαριασμό.', 'Nobody has received an account yet.') . '</div>'; else echo $search(count($rows));
     foreach ($rows as $r) {
       [$bl, $bu, $br] = dc_voip_blocked($r);
       $on = $r['i_ping'] !== null && (int)$r['i_ping'] >= time() - DC_ONLINE_S;
       $vstate = $r['inst'] === null || $r['inst'] === '' || $r['i_voip'] === null || $r['i_voip'] === '' ? '' : ($on ? ((int)$r['i_voip'] === 1 ? 'on' : 'wait') : 'off');
       $vtxt = ['on' => 'VoIP online', 'wait' => L('αδρανής', 'idle', 'inaktiv'), 'off' => 'offline', '' => L('άγνωστο (δεν έχει αναφερθεί)', 'unknown (not reported)')][$vstate];
-      echo '<div class="it"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' · ☎ <b>' . h($r['ext']) . '</b> '
+      echo '<div class="it" data-q="' . h($r['call'] . ' ' . $r['name'] . ' ' . $r['ext'] . ' ' . ($bl ? 'αποκλεισμένος blocked' : 'ενεργός active') . ' ' . $vtxt) . '"><div class="hd"><b>' . h($r['call']) . '</b> · ' . h($r['name']) . ' · ☎ <b>' . h($r['ext']) . '</b> '
         . ($bl ? '<span class="pill o">' . L('αποκλεισμένος', 'blocked') . ($bu ? ' ' . L('έως', 'until') . ' ' . dc_dt($bu) : ' ' . L('μέχρι να άρεις', 'until lifted')) . '</span>' : '<span class="pill ok">' . L('ενεργός', 'active') . '</span>')
         . '<span class="sp"></span>' . ($vstate !== '' ? '<span class="vp ' . $vstate . '"><i></i>' . h($vtxt) . '</span>' : '<small class="muted">' . h($vtxt) . '</small>') . '</div>'
         . '<div class="muted" style="font-size:12px">' . L('Εγκρίθηκε', 'Approved') . ' ' . dc_dt($r['decided_t']) . ' · ' . L('το πρόγραμμα τον πήρε', 'program fetched it') . ': ' . ((int)$r['delivered_t'] > 0 ? dc_dt($r['delivered_t']) : L('όχι ακόμη', 'not yet'))
@@ -1275,6 +1280,7 @@ elseif ($p === 'voip') {
         . '<span class="sp"></span><button class="btn danger" name="a" value="voip_del" onclick="return confirm(\'' . L('Διαγραφή λογαριασμού;', 'Delete the account?') . '\')">' . L('Διαγραφή', 'Delete') . '</button></form>';
       echo '</div>';
     }
+    if ($rows) echo '</div>';
     echo '</section>';
   } else {
     echo '<section class="card vq"><h2>☎ ' . L('Ρυθμίσεις', 'Settings') . '</h2><div class="help" style="margin-bottom:10px">' . L('Όταν είναι ανοιχτές οι αιτήσεις, το πρόγραμμα δείχνει το κουμπί «Δεν έχω λογαριασμό». Τα στοιχεία του server στέλνονται στον χρήστη μόνο όταν εγκρίνεις την αίτησή του. Το VoIP για όλους ανοιγοκλείνει από τις Λειτουργίες (Modes).', 'When requests are open, the program shows the button “I don’t have an account”. The server details are sent to a user only when you approve the request. VoIP for everybody is switched in Modes.') . '</div>'
