@@ -238,7 +238,7 @@ jobs:
           set -e
           VER=$(python3 -c "import re;print(re.search(r'\"([0-9.]+)\"', open('app/version.py').read()).group(1))")
           P="DigiConnect-PACKAGE-$VER"; A="$GITHUB_WORKSPACE/arts"
-          mkdir -p "$P/1-PROGRAM/Windows/portable" "$P/1-PROGRAM/macOS/Intel" "$P/1-PROGRAM/macOS/AppleSilicon" "$P/1-PROGRAM/Linux" "$P/1-PROGRAM/Αναβάθμιση" "$P/2-SERVER" "$P/3-SOURCE "$P/4-REBUILD"
+          mkdir -p "$P/1-PROGRAM/Windows/portable" "$P/1-PROGRAM/macOS/Intel" "$P/1-PROGRAM/macOS/AppleSilicon" "$P/1-PROGRAM/Linux" "$P/1-PROGRAM/Αναβάθμιση" "$P/2-SERVER" "$P/3-SOURCE" "$P/4-REBUILD"
           find "$A" -type f | sed "s|$A/||"
           cp -r "$A/DigiConnect-Windows-Setup/." "$P/1-PROGRAM/Windows/"
           cp -r "$A/DigiConnect-Windows-portable/." "$P/1-PROGRAM/Windows/portable/"
