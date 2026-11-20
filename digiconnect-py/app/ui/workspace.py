@@ -189,7 +189,9 @@ class Workspace(W.QWidget):
             if r.get("error"): lines.append(tr("Problem") + ": " + tr(r["error"]))
             if r.get("list_raw"): lines += ["", tr("Start of the station list as the directory sent it") + ":", r["list_raw"][:1200]]
             box = W.QMessageBox(self); box.setWindowTitle(tr("EchoLink test")); box.setText(tr("Result of the EchoLink test") + (": OK" if r.get("ok") else ": " + tr("failed")))
-            box.setDetailedText("\n".join(lines)); box.setInformativeText("\n".join(lines[:4])); box.exec()
+            box.setDetailedText("\n".join(lines)); box.setInformativeText("\n".join(lines[:4]))
+            box.setStyleSheet("QLabel{color:#000;}QTextEdit,QPlainTextEdit{color:#000;background:#fff;}")  # native dialog: force dark text, the OS default came out too light to read
+            box.exec()
         self._hosts_loaded() if c.el_stations and len(self.entries) != len(c.el_stations) else None
 
     def _el_nodes_show(self):
