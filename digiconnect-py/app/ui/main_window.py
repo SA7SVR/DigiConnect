@@ -249,7 +249,7 @@ class MainWindow(W.QMainWindow):
     def _sync_chrome(self):
         k, ws = self.current, self.current.startswith("net:")
         self.head.setVisible(k == "favorites" or ws or k == "voip")
-        self.stop_top.setVisible(not (k == "favorites" or ws))          # the Stop all of the tab row is hidden with the row
+        self.stop_top.setVisible(not (k == "favorites" or ws or k == "voip"))          # the Stop all of the tab row is hidden with the row, and also on VoIP (which has its own)
         net = k[4:] if ws else None
         self.title.setText("My favorites" if k == "favorites" else ("VoIP phone" if k == "voip" else (f"Radio workspace  {net}" if ws else "")))
         self.title.setTextFormat(Qt.TextFormat.RichText)
