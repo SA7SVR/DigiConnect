@@ -16,7 +16,7 @@ PAD = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
 class VoipPage(W.QWidget):
     def __init__(self, ctx):
         super().__init__(); self.ctx = ctx; self.ph = ctx.phone; s = ctx.store.settings
-        top = vbox(self, s=10)                           # a notice when the administrator's server has closed the phone, and the page itself
+        top = vbox(self, s=10)                           # a notice when the Admin's server has closed the phone, and the page itself
         self.closed_note = panel("note"); _cv = vbox(self.closed_note, m=(12, 10, 12, 10), s=8); self.closed_txt = label(""); self.closed_txt.setWordWrap(True); _cv.addWidget(self.closed_txt)
         self.closed_btn = button("♥ Donate", "primary"); self.closed_btn.clicked.connect(self._pay_extra); _cv.addWidget(self.closed_btn, 0, Qt.AlignmentFlag.AlignLeft); top.addWidget(self.closed_note)
         self.body = W.QWidget(); outer = hbox(self.body, s=14); top.addWidget(self.body, 1)
@@ -65,7 +65,7 @@ class VoipPage(W.QWidget):
 
         # -- Account
         v = add_tab("Account")
-        self.acc_state = label("", muted=True); self.acc_state.setWordWrap(True); self.acc_state.setProperty("accstate", ""); v.addWidget(self.acc_state)     # the state of the account the administrator made: green = ready for use
+        self.acc_state = label("", muted=True); self.acc_state.setWordWrap(True); self.acc_state.setProperty("accstate", ""); v.addWidget(self.acc_state)     # the state of the account the Admin made: green = ready for use
         self.server = reg("voip_server", W.QLineEdit(str(s.get("voip_server", ""))), "text"); self.server.setPlaceholderText("sip.example.org")
         self.port = reg("voip_port", W.QLineEdit(str(s.get("voip_port", 5060))), "text"); self.port.setFixedWidth(80)
         self.transport = reg("voip_transport", combo(["UDP", "TCP", "TLS"]), "combo"); self.transport.setCurrentText(str(s.get("voip_transport", "udp")).upper())
@@ -219,7 +219,7 @@ class VoipPage(W.QWidget):
         if getattr(self, "_loading", True): return
         self.ctx.store.settings.update(self._read()); self.ctx.store.save_settings()
 
-    # ---- the administrator's server can close (or open) the phone for this installation
+    # ---- the Admin's server can close (or open) the phone for this installation
     def refresh_gate(self):
         pol = self.ctx.policy; closed = not pol.allows("VoIP")
         self.closed_note.setVisible(closed); self.body.setEnabled(not closed)
@@ -234,7 +234,7 @@ class VoipPage(W.QWidget):
         from .license_dialog import open_donate
         open_donate(self.ctx.policy.paid_link("VoIP"))
 
-    # ---- asking the administrator for an account (see voip/signup.py)
+    # ---- asking the Admin for an account (see voip/signup.py)
     def _note(self, text: str):
         self.req_lbl.setText(tr(text)); self._req_refresh()
 
@@ -243,26 +243,26 @@ class VoipPage(W.QWidget):
         self.req_btn.setVisible(not pend and not has); self.req_chk.setVisible(pend or has)
         self.req_chk.setText(tr("Check the request") if pend else tr("Check the account now"))
         self.req_btn.setText(tr("Request an account again") if state == "rejected" else tr("I don't have an account: request one"))
-        for w in (self.server, self.port, self.user, self.auth_user, self.domain, self.pw, self.transport):           # the administrator's server decides these: grey, and an edit would be overwritten at the next check anyway
+        for w in (self.server, self.port, self.user, self.auth_user, self.domain, self.pw, self.transport):           # the Admin's server decides these: grey, and an edit would be overwritten at the next check anyway
             if isinstance(w, W.QLineEdit): w.setReadOnly(linked)
             else: w.setEnabled(not linked)
-            w.setProperty("locked", linked); w.setToolTip(tr("Set by the administrator") if linked else ""); w.style().unpolish(w); w.style().polish(w)
+            w.setProperty("locked", linked); w.setToolTip(tr("Set by the Admin") if linked else ""); w.style().unpolish(w); w.style().polish(w)
         if not self.req_lbl.text():
-            if pend: self.req_lbl.setText(tr("Your request is waiting for the administrator. This page checks by itself every few minutes."))
-            elif linked: self.req_lbl.setText(tr("This account comes from the administrator: the extension and the password are kept up to date by themselves."))
-            elif has: self.req_lbl.setText(tr("The administrator has let you use another server for now: the fields are unlocked and the details saved here stay as they are."))
+            if pend: self.req_lbl.setText(tr("Your request is waiting for the Admin. This page checks by itself every few minutes."))
+            elif linked: self.req_lbl.setText(tr("This account comes from the Admin: the extension and the password are kept up to date by themselves."))
+            elif has: self.req_lbl.setText(tr("The Admin has let you use another server for now: the fields are unlocked and the details saved here stay as they are."))
         b = self.acc.blocked()
         if linked and b[0]: self.req_lbl.setText("⚠  " + self.acc.block_text())
         self.req_lbl.setVisible(bool(self.req_lbl.text()))
         self._acc_state_refresh(state, linked, b[0])
 
     def _acc_state_refresh(self, state: str, linked: bool, blocked: bool):
-        """One line at the top of Account: green when the account made by the administrator is ready for use, red when it is blocked or refused, amber while it waits."""
+        """One line at the top of Account: green when the account made by the Admin is ready for use, red when it is blocked or refused, amber while it waits."""
         ext = str(self.ctx.store.settings.get("voip_user", ""))
-        if state == "linked" and not linked: tone, txt = "muted", tr("Another server is in use for now (the administrator has let you go)")
-        elif linked and blocked: tone, txt = "red", tr("The account is blocked by the administrator")
+        if state == "linked" and not linked: tone, txt = "muted", tr("Another server is in use for now (the Admin has let you go)")
+        elif linked and blocked: tone, txt = "red", tr("The account is blocked by the Admin")
         elif linked: tone, txt = "green", tr("Your account is ready for use") + (" — " + tr("extension") + " " + ext if ext else "")
-        elif state == "pending": tone, txt = "amber", tr("Your request is waiting for the administrator")
+        elif state == "pending": tone, txt = "amber", tr("Your request is waiting for the Admin")
         elif state == "rejected": tone, txt = "red", tr("The request was not approved")
         else: tone, txt = "", ""
         self.acc_state.setText(("●  " + txt) if txt else ""); self.acc_state.setVisible(bool(txt))
@@ -282,7 +282,7 @@ class VoipPage(W.QWidget):
         d = W.QDialog(self); d.setWindowTitle(tr("Request a VoIP account")); v = vbox(d, m=(16, 14, 16, 14), s=8); d.setMinimumWidth(480)
         def note(text):
             l = label(text, muted=True); l.setWordWrap(True); return l
-        v.addWidget(note("Your request goes to the administrator of the HELLAS Zone VoIP server, who creates the account and approves it. When he does, this program receives the extension and the password by itself."))
+        v.addWidget(note("Your request goes to the Admin of the HELLAS Zone VoIP server, who creates the account and approves it. When he does, this program receives the extension and the password by itself."))
         n = W.QLineEdit(st.get("voip_name") or st.get("op_name", "")); cs = W.QLineEdit(st.get("callsign", "")); want = W.QLineEdit(); msg = W.QPlainTextEdit(); msg.setFixedHeight(70)
         want.setPlaceholderText(tr("optional")); v.addWidget(field("Your name", n)); v.addWidget(field("Callsign", cs)); v.addWidget(field("Extension you would like (optional)", want)); v.addWidget(field("Message (optional)", msg))
         ok = checkbox(""); okt = label("I agree that my name and callsign are sent to the HELLAS Zone server only to answer this request"); okt.setWordWrap(True)

@@ -1,4 +1,4 @@
-"""VoIP account requests, run against the real PHP code: the endpoint the program calls (voip_request.php) and the panel page where the administrator approves.
+"""VoIP account requests, run against the real PHP code: the endpoint the program calls (voip_request.php) and the panel page where the Admin approves.
 Nothing is simulated: the requests are real HTTP calls to the PHP server, the answers are what it really returns."""
 import json, re, time, urllib.parse, urllib.request, urllib.error
 import pytest
@@ -40,7 +40,7 @@ def test_a_request_is_stored_with_a_secret_token_that_only_the_sender_knows(srv)
     assert call(srv, action="status", id=r["id"], token=r["token"]) == {"ok": True, "status": "new", "reason": ""}
     assert call(srv, action="status", id=r["id"], token="0" * 32) == {"ok": False, "err": "unknown"}
     assert call(srv, action="status", id=r["id"] + 5, token=r["token"]) == {"ok": False, "err": "unknown"}
-    assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_req'")[0]["n"] == 1      # the administrator is alerted
+    assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_req'")[0]["n"] == 1      # the Admin is alerted
 
 
 @pytest.mark.parametrize("bad,err", [(dict(name=""), "name"), (dict(call="hello world"), "call"), (dict(call=""), "call"), (dict(consent="0"), "consent")])
@@ -83,7 +83,7 @@ def test_the_owner_approves_and_the_program_gets_the_details_and_the_password_st
     assert call(srv, action="ack", id=r["id"], token=r["token"]) == {"ok": False, "err": "action"}   # the old "erase after receiving" step is gone
     assert srv.sql("SELECT pw FROM dc_voip_req")[0]["pw"] == "Secret-pass-1" and srv.sql("SELECT delivered_t FROM dc_voip_req")[0]["delivered_t"]
     assert srv.sql("SELECT COUNT(*) n FROM dc_events WHERE kind='voip_ok'")[0]["n"] == 1
-    for t in ("req", "acc", "set"): assert "Secret-pass-1" not in a.page("voip", tab=t) or t == "acc"   # the password is typed/seen only in the accounts tab where the administrator manages it
+    for t in ("req", "acc", "set"): assert "Secret-pass-1" not in a.page("voip", tab=t) or t == "acc"   # the password is typed/seen only in the accounts tab where the Admin manages it
     assert "Secret-pass-1" not in a.page("activity")
     assert call(srv, **dict(REQ, call="SV1ABC"))["ok"]                                          # nothing is pending any more: the same callsign may ask again
 

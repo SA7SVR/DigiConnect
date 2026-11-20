@@ -1,4 +1,4 @@
-"""Asking for a VoIP account, end to end: the program's page talks over real HTTP to the real PHP server (voip_request.php + the panel where the administrator approves)."""
+"""Asking for a VoIP account, end to end: the program's page talks over real HTTP to the real PHP server (voip_request.php + the panel where the Admin approves)."""
 import time
 import pytest
 from app.qt import QtWidgets as W
@@ -88,7 +88,7 @@ def test_a_request_is_approved_and_the_account_fills_in_and_stays_linked_with_th
     assert st.settings["voip_auto"] is True and st.settings["voip_remember"] is True                                  # it signs in by itself when the program starts
     assert "2001" in pg.req_lbl.text() and not pg.req_btn.isVisible() and pg.req_chk.isVisible()
     assert pg.user.isReadOnly() and pg.pw.isReadOnly() and not pg.transport.isEnabled()                              # the server decides these
-    for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw, pg.transport): assert w.property("locked") is True and w.toolTip() == "Set by the administrator"      # shown grey
+    for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw, pg.transport): assert w.property("locked") is True and w.toolTip() == "Set by the Admin"      # shown grey
     assert not pg.name.isReadOnly() and pg.name.property("locked") in (None, False) and pg.remember.isEnabled() and pg.auto.isEnabled()                                    # what the user may still change stays normal
 
 
@@ -139,7 +139,7 @@ def test_a_block_for_a_time_lifts_itself_and_the_global_switch_is_a_separate_thi
     a.post("voip", "voip_block", _tab="acc", rid=str(rid), hours="1", reason="Pause"); check(pg, st, lambda: st.settings.get("voip_block") is True)
     until = st.settings["voip_block_until"]; assert abs(until - (time.time() + 3600)) < 120 and pg.acc.blocked()[0]
     st.settings["voip_block_until"] = int(time.time()) - 1; assert not pg.acc.blocked()[0] and pg.ph.blocked() == ""     # the time has passed: no server answer is needed
-    assert pg.ctx.policy.allows("VoIP")                                                                                  # the administrator's other switches were not touched
+    assert pg.ctx.policy.allows("VoIP")                                                                                  # the Admin's other switches were not touched
 
 
 def test_blocked_text_is_in_greek(base, tmp_path):
@@ -170,18 +170,18 @@ def test_a_released_account_unlocks_for_a_while_and_the_owner_can_bring_the_user
     assert pg.req_chk.isVisible() and not pg.req_btn.isVisible() and all(not w.isReadOnly() and w.property("locked") is False for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw)) and pg.transport.isEnabled()
     pg.server.setText("sip.somewhere-else.org"); pg.user.setText("7777"); pg.server.editingFinished.emit(); pg.user.editingFinished.emit()
     pg.acc.check(True); done = []; pg.acc.ensure_fresh(lambda: done.append(1)); assert wait(lambda: done)
-    assert st.settings["voip_server"] == "sip.somewhere-else.org" and st.settings["voip_user"] == "7777"                  # nothing puts the administrator's details back while he is free
+    assert st.settings["voip_server"] == "sip.somewhere-else.org" and st.settings["voip_user"] == "7777"                  # nothing puts the Admin's details back while he is free
     assert not pg.acc.blocked()[0]
-    # the administrator brings him back
+    # the Admin brings him back
     calls = []; ph.reg_state = "registered"; monkeypatch.setattr(ph, "sign_out", lambda *x, **k: calls.append("out")); monkeypatch.setattr(ph, "sign_in", lambda *x, **k: calls.append("in") or True)
     a.post("voip", "voip_restore", _tab="acc", rid=str(rid)); check(pg, st, lambda: st.settings.get("voip_released") is False)
-    assert st.settings["voip_server"] == "pbx.example.org" and st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1"   # the administrator's details are back
+    assert st.settings["voip_server"] == "pbx.example.org" and st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1"   # the Admin's details are back
     assert "put the account back" in pg.req_lbl.text() and pg.user.isReadOnly() and pg.user.property("locked") is True and not pg.transport.isEnabled()      # and locked again
-    assert calls == ["out", "in"]                                                                                         # a phone that was signed in elsewhere signs in to the administrator's server
+    assert calls == ["out", "in"]                                                                                         # a phone that was signed in elsewhere signs in to the Admin's server
     assert base.sql("SELECT COUNT(*) n FROM dc_events WHERE kind IN ('voip_rel','voip_res')")[0]["n"] == 2
     from app import i18n
     i18n.set_language("el")
-    try: assert "προσωρινά" in i18n.tr("The administrator has let you use another server for now: the fields are unlocked and the details saved here stay as they are.") and "επανέφερε" in i18n.tr("The administrator has put the account back: your details were replaced by the server's and locked.")
+    try: assert "προσωρινά" in i18n.tr("The Admin has let you use another server for now: the fields are unlocked and the details saved here stay as they are.") and "επανέφερε" in i18n.tr("The Admin has put the account back: your details were replaced by the server's and locked.")
     finally: i18n.set_language("en")
 
 
@@ -195,7 +195,7 @@ def test_a_linked_program_has_no_way_to_point_the_account_somewhere_else(base, t
     st, pg, a, rid = linked(base, tmp_path)
     assert not hasattr(pg, "unlink_btn") and not [b for b in pg.findChildren(W.QPushButton) if b.text() == "Use another account"]     # no button that unlocks the fields
     for w in (pg.server, pg.port, pg.user, pg.auth_user, pg.domain, pg.pw): w.setText("evil.example.org"); w.editingFinished.emit()   # even a forced edit does not stick:
-    pg.acc.check(True); assert wait(lambda: st.settings["voip_server"] == "pbx.example.org"), st.settings["voip_server"]               # the next check puts the administrator's details back
+    pg.acc.check(True); assert wait(lambda: st.settings["voip_server"] == "pbx.example.org"), st.settings["voip_server"]               # the next check puts the Admin's details back
     assert st.settings["voip_user"] == "2001" and st.settings["voip_pw"] == "Secret-pass-1" and pg.server.text() == "pbx.example.org"
 
 

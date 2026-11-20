@@ -1,4 +1,4 @@
-"""The VoIP phone and the administrator's server: the administrator can close and open the phone remotely (the same Modes switches as the radio modes), and the stations list of the panel
+"""The VoIP phone and the Admin's server: the Admin can close and open the phone remotely (the same Modes switches as the radio modes), and the stations list of the panel
 shows who is signed in to the VoIP server (green) and who is not (red), as the programs themselves report it. Real PHP server, real program objects."""
 import json, re, time, urllib.parse, urllib.request
 import pytest
@@ -23,7 +23,7 @@ def ping(srv, iid="inst-1", **q):
     return json.loads(urllib.request.urlopen(srv.base + "ping.php?" + urllib.parse.urlencode(q)).read())
 
 
-# ---- the administrator closes / opens the phone ---------------------------------------------------------------------------------------------------
+# ---- the Admin closes / opens the phone ---------------------------------------------------------------------------------------------------
 def test_the_panel_lists_voip_among_the_modes_and_closes_it_for_everyone_or_one_installation(srv):
     lic(srv).register(PERSON); a = Admin(srv.base)
     assert "VoIP" in a.page("modes") and "VoIP" not in pol(srv)["off"]                       # open by default

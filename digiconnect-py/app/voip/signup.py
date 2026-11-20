@@ -1,4 +1,4 @@
-"""Asking the administrator of the VoIP server for an account. The program sends the request to the licence server (voip_request.php), the administrator approves it in the panel,
+"""Asking the Admin of the VoIP server for an account. The program sends the request to the licence server (voip_request.php), the Admin approves it in the panel,
 and the program fetches the extension and the password from there. The password stays with the account on the server, so a lost or changed password never needs typing: the program asks again at every sign-in. Everything is a real HTTPS call; the
 functions block, so the page runs them on a worker thread. Nothing is invented: an error is the server's own error code or the network's own message."""
 import json, urllib.error, urllib.request
@@ -7,7 +7,7 @@ from .. import net
 
 BASE = "https://hellaszone.com/digiconnect/"
 ERRORS = {"closed": "The server is not accepting account requests now", "consent": "You must agree before the request is sent", "name": "Write your name", "call": "The callsign does not look right",
-          "too_many": "Too many requests from this address today; try again tomorrow", "pending": "A request with this callsign is already waiting for the administrator",
+          "too_many": "Too many requests from this address today; try again tomorrow", "pending": "A request with this callsign is already waiting for the Admin",
           "unknown": "The server does not know this request (it may have been deleted)", "action": "The server did not understand the request"}
 
 
@@ -42,7 +42,7 @@ def submit(name: str, call: str, want: str = "", msg: str = "", lang: str = "", 
 
 def status(rid: int, token: str, base: str = "", inst: str = "") -> dict:
     """{'status': 'new'|'approved'|'rejected', ...}; when approved: ext, password, server, port, transport, domain, blocked, block_until, block_reason.
-    Asked again every time the program signs in, so a new password or a block set by the administrator arrives by itself."""
+    Asked again every time the program signs in, so a new password or a block set by the Admin arrives by itself."""
     return _post(base or BASE, action="status", id=rid, token=token, inst=inst)
 
 

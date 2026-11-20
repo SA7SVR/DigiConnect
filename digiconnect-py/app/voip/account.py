@@ -1,9 +1,9 @@
-"""The VoIP account the administrator gave to this installation (see signup.py), kept in step with the server.
+"""The VoIP account the Admin gave to this installation (see signup.py), kept in step with the server.
 
-States (settings "voip_req_state"): "" nothing asked, "pending" waiting for the administrator, "rejected", "linked" = the account exists on the server and this program holds its token.
+States (settings "voip_req_state"): "" nothing asked, "pending" waiting for the Admin, "rejected", "linked" = the account exists on the server and this program holds its token.
 A linked account is asked from the server again at every sign-in and every few minutes, so
-  - a new password the administrator sets in the panel arrives by itself (nobody types anything),
-  - a block (for a time, or until the administrator lifts it) stops the phone here, with the administrator's reason,
+  - a new password the Admin sets in the panel arrives by itself (nobody types anything),
+  - a block (for a time, or until the Admin lifts it) stops the phone here, with the Admin's reason,
   - an account that was deleted on the server is noticed.
 Everything is a real call to the licence server; nothing is invented. If the server cannot be reached, the saved details are used as they are."""
 import threading, time
@@ -40,7 +40,7 @@ class AccountSync(QtCore.QObject):
     def released(self) -> bool: return self.state() == "linked" and bool(self.st.get("voip_released"))
 
     def blocked(self):
-        """(blocked now?, until (0 = until the administrator lifts it), reason)"""
+        """(blocked now?, until (0 = until the Admin lifts it), reason)"""
         if not self.st.get("voip_block"): return False, 0, ""
         u = int(self.st.get("voip_block_until", 0) or 0)
         if u and u <= time.time(): return False, 0, ""
@@ -48,7 +48,7 @@ class AccountSync(QtCore.QObject):
 
     def block_text(self) -> str:
         b, u, r = self.blocked()
-        return "" if not b else i18n.tr("This account is blocked by the administrator") + (": " + r if r else "")
+        return "" if not b else i18n.tr("This account is blocked by the Admin") + (": " + r if r else "")
 
     def _save(self): self.ctx.store.save_settings()
 
@@ -93,7 +93,7 @@ class AccountSync(QtCore.QObject):
         try:
             if ok == "err": self._error(kind, val, silent)
             elif kind == "submit":
-                s.update(voip_req_id=val[0], voip_req_token=val[1], voip_req_state="pending", voip_req_reason=""); self._save(); self.note.emit("The request was sent. You will receive the account here as soon as the administrator approves it."); self.state_changed.emit()
+                s.update(voip_req_id=val[0], voip_req_token=val[1], voip_req_state="pending", voip_req_reason=""); self._save(); self.note.emit("The request was sent. You will receive the account here as soon as the Admin approves it."); self.state_changed.emit()
             elif kind == "recover":
                 s.update(voip_req_id=val[0], voip_req_token=val[1], voip_req_state="linked"); self._save()
                 self.check(True, then); then = None                                           # the answer to this check calls then()
@@ -106,20 +106,20 @@ class AccountSync(QtCore.QObject):
         s = self.st
         if ex.code == "unknown" and kind == "status":                                        # the server has no such request / account any more
             was = self.state(); s.update(voip_req_state="", voip_req_token="", voip_req_id=0, voip_block=False, voip_block_until=0, voip_block_reason="", voip_released=False); self._save(); self.state_changed.emit()
-            self.note.emit("The administrator removed this account from the server: the fields are unlocked and you can use any server. The details saved here stay as they are." if was == "linked" else "The server no longer has this request.")
+            self.note.emit("The Admin removed this account from the server: the fields are unlocked and you can use any server. The details saved here stay as they are." if was == "linked" else "The server no longer has this request.")
         elif kind != "recover" and not (silent and not ex.code): self.note.emit(ex.text if ex.code else "The server cannot be reached now: " + ex.text)
 
     def _status(self, a: dict, silent: bool):
         s = self.st; state = a.get("status")
         if state == "rejected":
             s.update(voip_req_state="rejected", voip_req_token="", voip_req_reason=a.get("reason", "")); self._save(); self.state_changed.emit()
-            self.note.emit("The administrator did not approve the request." + (" " + a["reason"] if a.get("reason") else "")); return
+            self.note.emit("The Admin did not approve the request." + (" " + a["reason"] if a.get("reason") else "")); return
         if state != "approved":
-            if not silent or self.state() == "pending": self.note.emit("Your request is still waiting for the administrator.")
+            if not silent or self.state() == "pending": self.note.emit("Your request is still waiting for the Admin.")
             return
-        if a.get("released"):                                                                 # the administrator let this user go for now: nothing is changed or taken back, the fields are free
+        if a.get("released"):                                                                 # the Admin let this user go for now: nothing is changed or taken back, the fields are free
             was = bool(s.get("voip_released")); s.update(voip_req_state="linked", voip_released=True, voip_block=False, voip_block_until=0, voip_block_reason=""); self._save(); self.state_changed.emit()
-            if not was: self.note.emit("The administrator has let you use another server for now: the fields are unlocked and the details saved here stay as they are.")
+            if not was: self.note.emit("The Admin has let you use another server for now: the fields are unlocked and the details saved here stay as they are.")
             return
         was_free = bool(s.get("voip_released")); first = self.state() != "linked"; ph = self.ctx.phone
         new = dict(voip_user=str(a.get("ext", "")), voip_pw=str(a.get("password", "")), voip_server=str(a.get("server", "")) or s.get("voip_server", ""), voip_port=int(a.get("port") or 5060),
@@ -135,9 +135,9 @@ class AccountSync(QtCore.QObject):
         if bl and not bl_before:
             ph.hangup(); ph.sign_out(0.0); m = self.block_text(); self.ctx.note_problem(m); self.ctx.toast.emit(m); self.note.emit(m)
         elif bl_before and not bl: self.note.emit("The block was lifted. You can sign in again.")
-        elif was_free: self.note.emit("The administrator has put the account back: your details were replaced by the server's and locked."); self.state_changed.emit()
+        elif was_free: self.note.emit("The Admin has put the account back: your details were replaced by the server's and locked."); self.state_changed.emit()
         elif first:
             self.note.emit("The account was approved and filled in: extension {}. Press Sign in.".format(new["voip_user"]))
-            self.ctx.toast.emit("Your VoIP account is ready for use: extension {}.".format(new["voip_user"]))             # the administrator created it: the user is told, also when another page is open
-        elif changed and not bl: self.note.emit("The administrator changed the account details; they were updated here.")
-        if changed and was_in and not bl: ph.sign_out(0.0); ph.sign_in()                    # a phone that was signed in is signed in again with the administrator's new details; nobody types anything
+            self.ctx.toast.emit("Your VoIP account is ready for use: extension {}.".format(new["voip_user"]))             # the Admin created it: the user is told, also when another page is open
+        elif changed and not bl: self.note.emit("The Admin changed the account details; they were updated here.")
+        if changed and was_in and not bl: ph.sign_out(0.0); ph.sign_in()                    # a phone that was signed in is signed in again with the Admin's new details; nobody types anything
