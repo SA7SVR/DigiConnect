@@ -21,6 +21,20 @@ def no_background_downloads(monkeypatch):
     monkeypatch.setattr(account, "AUTO", False)                 # no automatic look-up of the VoIP account on the real network
 
 
+@pytest.fixture(autouse=True)
+def no_leaked_windows():
+    """A test that opens a MainWindow only closes it: the window stays alive. app.setStyleSheet() (every test that needs the look calls it) re-polishes ALL live widgets, so each
+    finished test made the next one slower - with the VoIP page's many widgets a full run took hours. Windows of a finished test are deleted here."""
+    yield
+    app = QtWidgets.QApplication.instance()
+    if app is None: return
+    from app.qt import QtCore
+    for w in app.topLevelWidgets():
+        try: w.close(); w.deleteLater()
+        except RuntimeError: pass
+    app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete); app.processEvents()
+
+
 _STATUS = [0]
 
 
